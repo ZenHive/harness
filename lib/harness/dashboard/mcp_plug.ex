@@ -21,6 +21,7 @@ defmodule Harness.Dashboard.MCPPlug do
   require Logger
 
   @default_session_header "mcp-session-id"
+  @loopback_hosts ~w(localhost 127.0.0.1 ::1)
   @read_body_length 1_000_000
 
   # A blocking `tools/call` (await/await_runs/compare can wait up to 30 min) writes
@@ -50,7 +51,18 @@ defmodule Harness.Dashboard.MCPPlug do
   defp keepalive_interval(_invalid), do: @default_keepalive_interval_ms
 
   @impl Plug
-  def call(%Plug.Conn{method: "POST"} = conn, %{session_header: session_header} = opts) do
+  def call(conn, opts) do
+    if allowed_origin?(conn) do
+      dispatch(conn, opts)
+    else
+      conn
+      |> send_resp(:forbidden, "Forbidden origin")
+      |> halt()
+    end
+  end
+
+  @spec dispatch(Plug.Conn.t(), map()) :: Plug.Conn.t()
+  defp dispatch(%Plug.Conn{method: "POST"} = conn, %{session_header: session_header} = opts) do
     if get_req_header(conn, session_header) == [] do
       AnubisPlug.call(conn, opts.anubis)
     else
@@ -58,7 +70,26 @@ defmodule Harness.Dashboard.MCPPlug do
     end
   end
 
-  def call(conn, opts), do: AnubisPlug.call(conn, opts.anubis)
+  defp dispatch(conn, opts), do: AnubisPlug.call(conn, opts.anubis)
+
+  @spec allowed_origin?(Plug.Conn.t()) :: boolean()
+  defp allowed_origin?(conn) do
+    case get_req_header(conn, "origin") do
+      [] -> true
+      origins -> Enum.all?(origins, &loopback_origin?/1)
+    end
+  end
+
+  @spec loopback_origin?(String.t()) :: boolean()
+  defp loopback_origin?(origin) do
+    case URI.new(origin) do
+      {:ok, %URI{host: host}} when is_binary(host) -> loopback_host?(String.downcase(host))
+      _invalid -> false
+    end
+  end
+
+  @spec loopback_host?(String.t()) :: boolean()
+  defp loopback_host?(host), do: host in @loopback_hosts or String.ends_with?(host, ".localhost")
 
   @spec direct_post(Plug.Conn.t(), map()) :: Plug.Conn.t()
   defp direct_post(conn, opts) do

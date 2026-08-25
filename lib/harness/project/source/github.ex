@@ -28,6 +28,8 @@ defmodule Harness.Project.Source.Github do
   alias Harness.Project
 
   @default_cache_root "~/_DATA/harness/projects"
+  @allowed_url_schemes ~w(http https ssh git)
+  @scp_url_pattern ~r/\Agit@[^:\s]+:[^\s]+\z/
 
   @typedoc "The tagged tuple form stored on `%Harness.Project{}.source`."
   @type t :: {:github, url :: String.t()}
@@ -38,6 +40,7 @@ defmodule Harness.Project.Source.Github do
           | {:fetch_failed, term()}
           | {:default_branch_lookup_failed, term()}
           | {:fast_forward_failed, term()}
+          | {:invalid_url, :leading_dash | :unsupported_scheme}
           | {:mkdir_failed, String.t(), File.posix()}
 
   @doc "Returns the upstream GitHub URL for a `{:github, _}` project."
@@ -92,16 +95,40 @@ defmodule Harness.Project.Source.Github do
   defp git_repo?(path), do: File.dir?(Path.join(path, ".git"))
 
   @spec clone(String.t(), String.t()) :: {:ok, String.t()} | {:error, error()}
+  defp clone(url, path) do
+    with :ok <- validate_clone_url(url) do
+      clone_validated(url, path)
+    end
+  end
+
+  @spec validate_clone_url(String.t()) :: :ok | {:error, error()}
+  defp validate_clone_url("-" <> _rest), do: {:error, {:invalid_url, :leading_dash}}
+
+  defp validate_clone_url(url) do
+    case URI.new(url) do
+      {:ok, %URI{scheme: scheme}} when is_binary(scheme) ->
+        if String.downcase(scheme) in @allowed_url_schemes,
+          do: :ok,
+          else: {:error, {:invalid_url, :unsupported_scheme}}
+
+      _without_allowed_scheme ->
+        if Regex.match?(@scp_url_pattern, url),
+          do: :ok,
+          else: {:error, {:invalid_url, :unsupported_scheme}}
+    end
+  end
+
+  @spec clone_validated(String.t(), String.t()) :: {:ok, String.t()} | {:error, error()}
   # `path` and its parent are harness-owned cache directories under
   # `cache_root`, not user input — the project name is validated upstream by
   # `Harness.ProjectRegistry`.
   # sobelow_skip ["Traversal.FileModule"]
-  defp clone(url, path) do
+  defp clone_validated(url, path) do
     parent = Path.dirname(path)
 
     case File.mkdir_p(parent) do
       :ok ->
-        case System.cmd("git", ["clone", "--quiet", url, path], stderr_to_stdout: true) do
+        case System.cmd("git", ["clone", "--quiet", "--", url, path], stderr_to_stdout: true) do
           {_output, 0} -> {:ok, path}
           {output, status} -> {:error, {:clone_failed, status, output}}
         end
