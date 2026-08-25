@@ -83,8 +83,11 @@ defmodule Harness.Dashboard.MCPPlug do
   @spec loopback_origin?(String.t()) :: boolean()
   defp loopback_origin?(origin) do
     case URI.new(origin) do
-      {:ok, %URI{host: host}} when is_binary(host) -> loopback_host?(String.downcase(host))
-      _invalid -> false
+      {:ok, %URI{scheme: scheme, host: host}} when scheme in ["http", "https"] and is_binary(host) ->
+        loopback_host?(String.downcase(host))
+
+      _invalid ->
+        false
     end
   end
 

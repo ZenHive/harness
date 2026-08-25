@@ -349,5 +349,35 @@ defmodule Harness.Dashboard.MCPPlugTest do
         assert conn.status == 200
       end
     end
+
+    test "serves a request with no Origin" do
+      conn = call(post_conn(%{"jsonrpc" => "2.0", "id" => "req-1", "method" => "ping"}, "application/json"))
+
+      assert conn.status == 200
+    end
+
+    test "refuses a null or non-http Origin" do
+      for origin <- ["null", "file://localhost"] do
+        conn =
+          %{"jsonrpc" => "2.0", "id" => "req-1", "method" => "ping"}
+          |> post_conn("application/json")
+          |> put_req_header("origin", origin)
+          |> call()
+
+        assert conn.status == 403
+        assert conn.halted
+      end
+    end
+
+    test "refuses a foreign Origin on the non-POST anubis path" do
+      conn =
+        :get
+        |> conn("/harness/mcp")
+        |> put_req_header("origin", "https://attacker.example")
+        |> call()
+
+      assert conn.status == 403
+      assert conn.halted
+    end
   end
 end

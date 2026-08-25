@@ -211,6 +211,36 @@ defmodule Harness.Project.Source.GithubTest do
 
       refute File.exists?(cache_root)
     end
+
+    test "rejects file URLs before invoking git" do
+      cache_root = GitFixture.tmp_base(name: "file-url-cache")
+      project = build_project("file-url", "file:///tmp/does-not-matter")
+
+      assert {:error, {:invalid_url, :unsupported_scheme}} =
+               Github.ensure_local(project, cache_root: cache_root)
+
+      refute File.exists?(cache_root)
+    end
+
+    test "rejects ssh URLs whose host starts with a dash" do
+      cache_root = GitFixture.tmp_base(name: "ssh-dash-host")
+      project = build_project("ssh-dash", "ssh://git@-oProxyCommand=true/repo.git")
+
+      assert {:error, {:invalid_url, :leading_dash}} =
+               Github.ensure_local(project, cache_root: cache_root)
+
+      refute File.exists?(cache_root)
+    end
+
+    test "rejects scp-style URLs whose host starts with a dash" do
+      cache_root = GitFixture.tmp_base(name: "scp-dash-host")
+      project = build_project("scp-dash", "git@-oProxyCommand=true:repo")
+
+      assert {:error, {:invalid_url, :leading_dash}} =
+               Github.ensure_local(project, cache_root: cache_root)
+
+      refute File.exists?(cache_root)
+    end
   end
 
   defp build_project(name, url) do

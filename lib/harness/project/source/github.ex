@@ -29,7 +29,7 @@ defmodule Harness.Project.Source.Github do
 
   @default_cache_root "~/_DATA/harness/projects"
   @allowed_url_schemes ~w(http https ssh git)
-  @scp_url_pattern ~r/\Agit@[^:\s]+:[^\s]+\z/
+  @scp_url_pattern ~r/\Agit@([^:\s]+):([^\s]+)\z/
 
   @typedoc "The tagged tuple form stored on `%Harness.Project{}.source`."
   @type t :: {:github, url :: String.t()}
@@ -106,17 +106,40 @@ defmodule Harness.Project.Source.Github do
 
   defp validate_clone_url(url) do
     case URI.new(url) do
-      {:ok, %URI{scheme: scheme}} when is_binary(scheme) ->
-        if String.downcase(scheme) in @allowed_url_schemes,
-          do: :ok,
-          else: {:error, {:invalid_url, :unsupported_scheme}}
+      {:ok, %URI{scheme: scheme, host: host}} when is_binary(scheme) ->
+        validate_parsed_url(scheme, host)
 
       _without_allowed_scheme ->
-        if Regex.match?(@scp_url_pattern, url),
-          do: :ok,
-          else: {:error, {:invalid_url, :unsupported_scheme}}
+        validate_scp_url(url)
     end
   end
+
+  @spec validate_parsed_url(String.t(), String.t() | nil) :: :ok | {:error, error()}
+  defp validate_parsed_url(scheme, host) do
+    with :ok <- validate_scheme(scheme) do
+      validate_host(host)
+    end
+  end
+
+  @spec validate_scheme(String.t()) :: :ok | {:error, error()}
+  defp validate_scheme(scheme) do
+    if String.downcase(scheme) in @allowed_url_schemes,
+      do: :ok,
+      else: {:error, {:invalid_url, :unsupported_scheme}}
+  end
+
+  @spec validate_scp_url(String.t()) :: :ok | {:error, error()}
+  defp validate_scp_url(url) do
+    case Regex.run(@scp_url_pattern, url) do
+      [_, host, _path] -> validate_host(host)
+      nil -> {:error, {:invalid_url, :unsupported_scheme}}
+    end
+  end
+
+  @spec validate_host(term()) :: :ok | {:error, error()}
+  defp validate_host("-" <> _rest), do: {:error, {:invalid_url, :leading_dash}}
+  defp validate_host(host) when is_binary(host) and host != "", do: :ok
+  defp validate_host(_host), do: {:error, {:invalid_url, :unsupported_scheme}}
 
   @spec clone_validated(String.t(), String.t()) :: {:ok, String.t()} | {:error, error()}
   # `path` and its parent are harness-owned cache directories under
