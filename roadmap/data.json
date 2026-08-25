@@ -18921,6 +18921,40 @@
       "created_at": "2026-08-25",
       "scored_at": "2026-08-25",
       "cross_repo": []
+    },
+    {
+      "id": "413",
+      "phase": 23,
+      "bundle": "witness-legibility",
+      "status": "pending",
+      "title": "Surface an in-flight audit signal on the fleet count strip, not just the ops panel",
+      "scores": {
+        "d": 4,
+        "b": 7,
+        "u": 6
+      },
+      "eff": 1.63,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "cursor",
+      "model": "cursor-grok-4.6-high",
+      "acceptance_criteria": [
+        "The /harness index page shows a distinct, live-updating signal (e.g. a tile alongside the existing run-state count strip, or an equivalent at-a-glance indicator near it) for the count of audits currently in flight, sourced from Harness.Audit's existing audit_started/audit_settled OpsFeed broadcasts — no new audit-lifecycle broadcast mechanism is introduced.",
+        "The signal is mechanical only: it counts in-flight audits (started without a matching settled); it never renders or infers a verdict, outcome, or judgment about the audit.",
+        "The signal updates live via the existing harness:ops PubSub topic while the LiveView is connected, with no polling.",
+        "Unit test: broadcasting an audit_started Op increments the in-flight count on a mounted socket; broadcasting the matching audit_settled Op decrements it back.",
+        "LiveView panel verified in-browser: the tile/indicator renders in its idle (zero) state and updates to a nonzero state during a real or simulated in-flight audit, per this repo's UI-work verification rule."
+      ],
+      "out_of_scope": [
+        "Persisting audit counts or history beyond the current live LiveView session — the existing ops_panel is already session-scoped/ephemeral by design (Task 243); this task doesn't add durability.",
+        "Any change to what Harness.Audit decides or how it runs — counting only, per the harness mantra."
+      ],
+      "body": "Operator feedback this session (2026-08-25): watching /harness during a live wave, the\noperator repeatedly asked why no audit indicator appears anywhere near the fleet count\nstrip (the \"DISPATCHED/RUNNING/COMMITTING/RECOVERING/REVIEWING/HELD/DONE/FAILED\" tiles\nat the top of the index page) and only found audit activity in Oban Web. Root cause,\nverified by reading the code this session: `count_tiles/1`\n(lib/harness/dashboard/live.ex:1509) is hardcoded to the 8 `Harness.Run.Status.state()`\nvalues; `Harness.Audit` is a separate Oban worker that never reaches `Harness.Run`, so\nit structurally cannot appear in that tile set (by design, per Task 243). Task 243 did\nship a live \"Audit & land ops\" panel (`ops_panel/1`, live.ex:1023) fed by\n`Harness.Audit`'s existing `audit_started`/`audit_settled` OpsFeed broadcasts\n(lib/harness/audit.ex:266 and :134) — but it sits below the run tables, is easy to miss,\nand gives no at-a-glance \"is an audit running right now\" signal the way the count strip\ndoes for runs.\n\nAdd a small, live, mechanical \"audit\" signal near the existing count strip — a count of\naudits currently in flight (audit_started broadcast seen without its matching\naudit_settled for the same range/sha), reusing the OpsFeed events and PubSub wiring\nTask 243 already built. This is a UI addition on the existing dashboard design system\n(kpi-strip / tile pattern already in `render_index/1`), not a new visual identity, so it\nis normal incremental dispatch work per this repo's UI routing rule.\n",
+      "created_at": "2026-08-25",
+      "scored_at": "2026-08-25",
+      "cross_repo": []
     }
   ]
 }
