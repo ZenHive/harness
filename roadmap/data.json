@@ -18411,6 +18411,56 @@
       "verified_by": "grok",
       "verification_ref": "harness-run:run-1787622461639-1c67e2ee",
       "cross_repo": []
+    },
+    {
+      "id": "405",
+      "phase": 23,
+      "bundle": "roadmap-writeback",
+      "milestone": "v0_16",
+      "status": "pending",
+      "title": "Audit discovery filing writes into the operator's live checkout and is never committed",
+      "scores": {
+        "d": 3,
+        "b": 7,
+        "u": 6
+      },
+      "eff": 2.17,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-5.6-sol",
+      "acceptance_criteria": [
+        "An audit agent's `rmap new` discovery write lands in a git-durable place: either the audit's own detached worktree so it rides the `audit(<sha>)` commit harness already ff-pushes, or the roadmap repository via the same durable-write path `mark_*` transitions use. Which one is chosen is stated in the moduledoc.",
+        "After a post-merge audit that files a discovery, the project's registered source checkout has no new uncommitted or unstaged change attributable to that filing — asserted by a test that snapshots `git status --porcelain` in the source tree before and after.",
+        "A test drives an audit run that files one discovery and asserts the filed task is reachable on the target branch after the audit push (or, for a split roadmap repo, in the roadmap repository), not merely present on some local filesystem path.",
+        "The harness-side cold-check follow-up filing (`Harness.Audit.rmap_new/2`, reached when the cold check is red) goes through the same durable path — both filing call sites, not just the prompt-driven agent one.",
+        "mix check.dispatch green plus focused `mix test.json` for the audit surface."
+      ],
+      "out_of_scope": [
+        "Changing what the audit agent decides to file, how it scores a discovery, or whether harness reads the filing back — that judgment stays with the agent (the mantra).",
+        "The `mark_*` transition durability machinery itself; Task 378 shipped it and Task 379 covers its silent-no-op failure mode.",
+        "Reviewer-side `proposed_tasks`, which are already artifact-only and never touch roadmap files.",
+        "Adding a lock or any cross-run coordination on tasks.toml — rmap's validate-then-write plus the merge-train rebase remain the reconciliation story (Task 251)."
+      ],
+      "files_to_modify": [
+        "lib/harness/audit.ex"
+      ],
+      "touches": [
+        "lib/harness/audit.ex",
+        "lib/harness/audit/worker.ex",
+        "lib/harness/roadmap.ex"
+      ],
+      "domains": [
+        "git"
+      ],
+      "body": "Observed 2026-08-25 while syncing the operator checkout after the 358/403/404/393 wave: a\nbrand-new `[[task]]` sat UNCOMMITTED in `/Users/efries/_DATA/code/harness/roadmap/tasks.toml`,\nauthored by the post-merge audit of `8ab2ff8` (its body cites `capability_score.ex:149, read on\n2026-08-25 in the post-merge audit of 8ab2ff8`). It collided on the operator's `git rebase\norigin/main`, leaving `tasks.toml` in a non-parsing conflicted state — the exact corruption class\n`rmap.md` warns makes harness re-dispatch already-landed work.\n\nCause, read on 2026-08-25 in `lib/harness/audit.ex`: the audit prompt (audit.ex:459) hands the\nagent `rmap new --from-stdin --roadmap-path #{inspect(project.roadmap_path)}` — an ABSOLUTE path\ninto the project's registered source directory, i.e. the operator's live checkout — even though\nthe agent is running in its own detached `origin/<target>` worktree and commits everything else\nthere. So the one roadmap write the audit performs deliberately escapes the worktree, escapes the\n`audit(<sha>)` commit, and is never pushed. The same absolute path is used by the harness-side\ncold-check filing (`rmap_new/2` at audit.ex:650, reached from audit.ex:618) and by\n`rmap_status_blocked/3`, so a red cold check has the same fate.\n\nTask 251 filed the discovery-filing stage and its acceptance criteria explicitly wanted the write\n\"riding the merge-train commit\". Task 378 made the `mark_*` transitions git-durable but listed\n\"the audit worker\" in `out_of_scope`, so this call site was never converted. Both channels exist;\nneither covers this one.\n\nConsequences, in ascending severity: the discovery is invisible to everyone but the operator who\nhappens to `git status`; the operator's checkout is left dirty, so the next dispatch can trip\n`:checkout_polluted`; and a rebase over the same region corrupts `tasks.toml` until someone\nresolves it by hand.\n",
+      "created_at": "2026-08-25",
+      "scored_at": "2026-08-25",
+      "cross_repo": []
     }
   ]
 }

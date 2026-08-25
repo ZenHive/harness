@@ -12243,3 +12243,49 @@ started_at = "2026-08-25"
 scored_at = "2026-08-25"
 done_at = "2026-08-25"
 shipped_in = "55456a41857a9e10242a90c03952b28a1f41ca1f"
+
+[[task]]
+id = "405"
+phase = 23
+bundle = "roadmap-writeback"
+milestone = "v0_16"
+status = "pending"
+title = "Audit discovery filing writes into the operator's live checkout and is never committed"
+scores = { d = 3, b = 7, u = 6 }
+markers = ["bug"]
+acceptance_criteria = ["An audit agent's `rmap new` discovery write lands in a git-durable place: either the audit's own detached worktree so it rides the `audit(<sha>)` commit harness already ff-pushes, or the roadmap repository via the same durable-write path `mark_*` transitions use. Which one is chosen is stated in the moduledoc.", "After a post-merge audit that files a discovery, the project's registered source checkout has no new uncommitted or unstaged change attributable to that filing — asserted by a test that snapshots `git status --porcelain` in the source tree before and after.", "A test drives an audit run that files one discovery and asserts the filed task is reachable on the target branch after the audit push (or, for a split roadmap repo, in the roadmap repository), not merely present on some local filesystem path.", "The harness-side cold-check follow-up filing (`Harness.Audit.rmap_new/2`, reached when the cold check is red) goes through the same durable path — both filing call sites, not just the prompt-driven agent one.", "mix check.dispatch green plus focused `mix test.json` for the audit surface."]
+out_of_scope = ["Changing what the audit agent decides to file, how it scores a discovery, or whether harness reads the filing back — that judgment stays with the agent (the mantra).", "The `mark_*` transition durability machinery itself; Task 378 shipped it and Task 379 covers its silent-no-op failure mode.", "Reviewer-side `proposed_tasks`, which are already artifact-only and never touch roadmap files.", "Adding a lock or any cross-run coordination on tasks.toml — rmap's validate-then-write plus the merge-train rebase remain the reconciliation story (Task 251)."]
+files_to_modify = ["lib/harness/audit.ex"]
+touches = ["lib/harness/audit.ex", "lib/harness/audit/worker.ex", "lib/harness/roadmap.ex"]
+domains = ["git"]
+assignee = "codex"
+model = "gpt-5.6-sol"
+body = """
+Observed 2026-08-25 while syncing the operator checkout after the 358/403/404/393 wave: a
+brand-new `[[task]]` sat UNCOMMITTED in `/Users/efries/_DATA/code/harness/roadmap/tasks.toml`,
+authored by the post-merge audit of `8ab2ff8` (its body cites `capability_score.ex:149, read on
+2026-08-25 in the post-merge audit of 8ab2ff8`). It collided on the operator's `git rebase
+origin/main`, leaving `tasks.toml` in a non-parsing conflicted state — the exact corruption class
+`rmap.md` warns makes harness re-dispatch already-landed work.
+
+Cause, read on 2026-08-25 in `lib/harness/audit.ex`: the audit prompt (audit.ex:459) hands the
+agent `rmap new --from-stdin --roadmap-path #{inspect(project.roadmap_path)}` — an ABSOLUTE path
+into the project's registered source directory, i.e. the operator's live checkout — even though
+the agent is running in its own detached `origin/<target>` worktree and commits everything else
+there. So the one roadmap write the audit performs deliberately escapes the worktree, escapes the
+`audit(<sha>)` commit, and is never pushed. The same absolute path is used by the harness-side
+cold-check filing (`rmap_new/2` at audit.ex:650, reached from audit.ex:618) and by
+`rmap_status_blocked/3`, so a red cold check has the same fate.
+
+Task 251 filed the discovery-filing stage and its acceptance criteria explicitly wanted the write
+"riding the merge-train commit". Task 378 made the `mark_*` transitions git-durable but listed
+"the audit worker" in `out_of_scope`, so this call site was never converted. Both channels exist;
+neither covers this one.
+
+Consequences, in ascending severity: the discovery is invisible to everyone but the operator who
+happens to `git status`; the operator's checkout is left dirty, so the next dispatch can trip
+`:checkout_polluted`; and a rebase over the same region corrupts `tasks.toml` until someone
+resolves it by hand.
+"""
+created_at = "2026-08-25"
+scored_at = "2026-08-25"
