@@ -13,6 +13,8 @@ defmodule Harness.Dashboard.LiveMountTest do
   # async: false because tests read singleton ProjectRegistry and run registry state.
   use Harness.Dashboard.ConnCase, async: false
 
+  alias Harness.Dashboard.OpsFeed
+  alias Harness.Dashboard.OpsFeed.Op
   alias Harness.Dashboard.Transcript
   alias Harness.GitFixture
   alias Harness.ProjectFixture
@@ -75,6 +77,8 @@ defmodule Harness.Dashboard.LiveMountTest do
       assert html =~ ~s(class="kpi-stat is-zero")
       assert html =~ ~s(<span class="kpi-stat-label">reviewing</span>)
       assert html =~ ~s(<span class="kpi-stat-label">held</span>)
+      assert html =~ ~s(<span class="kpi-stat-label">audit</span>)
+      assert html =~ ~s(data-audits-in-flight="0")
 
       # Under a project filter the idle claim narrows to that project — the rest
       # of the fleet is out of the table's scope and so out of the sentence.
@@ -101,6 +105,46 @@ defmodule Harness.Dashboard.LiveMountTest do
       |> render_change(%{"project" => ""})
 
       assert_patch(view, "/harness")
+    end
+  end
+
+  describe "in-flight audit count tile (Task 413)" do
+    test "broadcasting audit_started increments the tile; matching audit_settled decrements it", %{
+      conn: conn
+    } do
+      {:ok, view, html} = live(conn, "/harness")
+
+      assert html =~ ~s(class="kpi-stat fleet-audit is-zero")
+      assert html =~ ~s(data-audits-in-flight="0")
+      assert html =~ ~s(aria-label="Audits in flight")
+
+      range = "abc def"
+      :ok = OpsFeed.broadcast(Op.audit_started("demo", "codex", range))
+      started = render(view)
+
+      assert started =~ ~s(data-audits-in-flight="1")
+      refute started =~ ~s(data-audits-in-flight="0")
+      refute started =~ ~s(fleet-audit is-zero)
+
+      :ok = OpsFeed.broadcast(Op.audit_settled("demo", "codex", range, {:audited, "deadbeef"}, "out"))
+      settled = render(view)
+
+      assert settled =~ ~s(data-audits-in-flight="0")
+      assert settled =~ ~s(fleet-audit is-zero)
+    end
+
+    test "a land op does not change the in-flight audit count", %{conn: conn} do
+      {:ok, view, _html} = live(conn, "/harness")
+
+      :ok = OpsFeed.broadcast(Op.audit_started("demo", "codex", "range-a"))
+      assert render(view) =~ ~s(data-audits-in-flight="1")
+
+      req = %{project: %{name: "demo", target_branch: "main"}, run_id: "r1"}
+      :ok = OpsFeed.broadcast(Op.land_started(req))
+      :ok = OpsFeed.broadcast(Op.land_settled(req, {:landed, "cafe"}))
+
+      html = render(view)
+      assert html =~ ~s(data-audits-in-flight="1")
     end
   end
 

@@ -11,6 +11,7 @@ defmodule Harness.Dashboard.LiveTest do
 
   alias Harness.AgentRegistry
   alias Harness.Dashboard.Live
+  alias Harness.Dashboard.OpsFeed.Op
   alias Harness.GitFixture
   alias Harness.Project
   alias Harness.ProjectFixture
@@ -88,6 +89,49 @@ defmodule Harness.Dashboard.LiveTest do
     for state <- [:reviewing, :recovering, :held] do
       assert Live.bucket_label(state) == Atom.to_string(state)
       assert StatusView.classify(%Status{run_id: "r", task_id: "1", state: state}) == state
+    end
+  end
+
+  describe "track_audit_flights/2" do
+    test "audit_started prepends a flight; matching audit_settled removes it" do
+      started = Op.audit_started("demo", "codex", "abc def")
+      settled = Op.audit_settled("demo", "codex", "abc def", {:audited, "deadbeef"}, "out")
+
+      assert [{"demo", "abc def"}] = Live.track_audit_flights([], started)
+      assert [] = Live.track_audit_flights([{"demo", "abc def"}], settled)
+    end
+
+    test "a land op does not change the flight list" do
+      req = %{project: %{name: "demo", target_branch: "main"}, run_id: "r1"}
+      flights = [{"demo", "abc"}]
+
+      assert flights == Live.track_audit_flights(flights, Op.land_started(req))
+      assert flights == Live.track_audit_flights(flights, Op.land_settled(req, {:landed, "cafe"}))
+    end
+
+    test "a settled op with a different range leaves the in-flight entry" do
+      flights = [{"demo", "abc"}]
+      settled = Op.audit_settled("demo", "codex", "other", :no_changes, "out")
+
+      assert flights == Live.track_audit_flights(flights, settled)
+    end
+
+    test "a settled op with no matching start is a no-op" do
+      settled = Op.audit_settled("demo", "codex", "abc", :noop, nil)
+
+      assert [] == Live.track_audit_flights([], settled)
+    end
+
+    test "two in-flight audits; settling one leaves the other" do
+      flights =
+        []
+        |> Live.track_audit_flights(Op.audit_started("demo", "codex", "range-a"))
+        |> Live.track_audit_flights(Op.audit_started("other", "grok", "range-b"))
+
+      assert [{"other", "range-b"}, {"demo", "range-a"}] = flights
+
+      settled_a = Op.audit_settled("demo", "codex", "range-a", :no_changes, "out")
+      assert [{"other", "range-b"}] = Live.track_audit_flights(flights, settled_a)
     end
   end
 

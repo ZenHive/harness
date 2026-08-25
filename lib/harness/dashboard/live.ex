@@ -4,9 +4,12 @@ defmodule Harness.Dashboard.Live do
 
   Renders two views off the same module:
 
-    * `:index` (`/harness`) — project switcher, per-state run counts, and two
-      `Phoenix.LiveView` streams: "Active runs" (live lifecycle states) and
-      "Run history" (settled runs). One row per run with state and verdict.
+    * `:index` (`/harness`) — project switcher, per-state run counts plus a
+      mechanical in-flight audit count on the same strip (OpsFeed
+      `audit_started` without a matching `audit_settled` for that project/range;
+      audits never ride `Run.Status`), and two `Phoenix.LiveView` streams:
+      "Active runs" (live lifecycle states) and "Run history" (settled runs).
+      One row per run with state and verdict.
     * `:show` (`/harness/runs/:run_id`) — drill-down on a single run with its
       live `Harness.Run.Status` fields and a streaming transcript pane fed by
       `Harness.Dashboard.Transcript` (Pass 2) broadcasts.
@@ -127,6 +130,7 @@ defmodule Harness.Dashboard.Live do
      |> assign(:projects, projects)
      |> assign(:roadmap, roadmap)
      |> assign(:ops, [])
+     |> assign(:audit_flights, [])
      |> assign(:now, DateTime.utc_now(:millisecond))
      |> assign(:show_landed, false)
      |> assign(:notice, nil)
@@ -333,10 +337,13 @@ defmodule Harness.Dashboard.Live do
   # Audit + land lifecycle (OpsFeed). Separate Oban workers that never reach the
   # run gen_statem, so they ride their own topic into a dedicated ops panel —
   # newest-first, bounded. Prepend on every transition; no run-stream touch.
+  # Audit started/settled also maintain the in-flight audit count on the index
+  # strip (session-scoped, matching the ops panel's ephemeral contract).
   def handle_info({:harness_op, %Op{} = op}, socket) do
     socket =
       socket
       |> assign(:ops, Enum.take([op | socket.assigns.ops], @ops_limit))
+      |> assign(:audit_flights, track_audit_flights(socket.assigns.audit_flights, op))
       |> maybe_mark_history_landed(op)
 
     {:noreply, socket}
@@ -776,6 +783,14 @@ defmodule Harness.Dashboard.Live do
       >
         <span class="kpi-stat-num">{count}</span>
         <span class="kpi-stat-label">{bucket_label(state)}</span>
+      </div>
+      <div
+        class={["kpi-stat", "fleet-audit", @audit_flights == [] && "is-zero"]}
+        aria-label="Audits in flight"
+        data-audits-in-flight={length(@audit_flights)}
+      >
+        <span class="kpi-stat-num">{length(@audit_flights)}</span>
+        <span class="kpi-stat-label">audit</span>
       </div>
     </div>
 
@@ -1510,6 +1525,25 @@ defmodule Harness.Dashboard.Live do
     for state <- [:dispatched, :running, :committing, :recovering, :reviewing, :held, :done, :failed],
         do: {state, Map.fetch!(counts, state)}
   end
+
+  @typep audit_flight_key :: {String.t() | nil, String.t() | nil}
+
+  @doc false
+  @spec track_audit_flights([audit_flight_key()], Op.t()) :: [audit_flight_key()]
+  def track_audit_flights(flights, %Op{kind: :audit, stage: :started} = op) do
+    [audit_flight_key(op) | flights]
+  end
+
+  def track_audit_flights(flights, %Op{kind: :audit} = op) do
+    List.delete(flights, audit_flight_key(op))
+  end
+
+  def track_audit_flights(flights, %Op{}), do: flights
+
+  # Identity is project + range: `audit_started` has no sha, and `audit_settled`
+  # reuses the same `range.log` the start broadcast carried.
+  @spec audit_flight_key(Op.t()) :: audit_flight_key()
+  defp audit_flight_key(%Op{project: project, range: range}), do: {project, range}
 
   @spec badge_bucket(Status.state()) :: :in_flight | :repairing | :green | :red
   defp badge_bucket(state) when state in [:dispatched, :running, :committing, :reviewing, :held], do: :in_flight
