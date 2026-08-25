@@ -12286,7 +12286,7 @@ id = "405"
 phase = 23
 bundle = "roadmap-writeback"
 milestone = "v0_16"
-status = "in_progress"
+status = "done"
 title = "Audit discovery filing writes into the operator's live checkout and is never committed"
 scores = { d = 3, b = 7, u = 6 }
 markers = ["bug"]
@@ -12324,9 +12324,16 @@ happens to `git status`; the operator's checkout is left dirty, so the next disp
 `:checkout_polluted`; and a rebase over the same region corrupts `tasks.toml` until someone
 resolves it by hand.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1787661770391-31e494a7, 38dea6c944e9ffbe20b7b4a0a646a70b871b53fb)."
+delivered_by = "codex"
+verified = true
+verified_by = "cursor"
+verification_ref = "harness-run:run-1787661770391-31e494a7"
 created_at = "2026-08-25"
 started_at = "2026-08-25"
 scored_at = "2026-08-25"
+done_at = "2026-08-25"
+shipped_in = "38dea6c944e9ffbe20b7b4a0a646a70b871b53fb"
 
 [[task]]
 id = "406"
