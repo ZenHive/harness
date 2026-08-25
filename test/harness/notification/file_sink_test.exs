@@ -37,7 +37,7 @@ defmodule Harness.Notification.FileSinkTest do
       assert :ok = FileSink.notify(%{event() | type: :landed, outcome: "abc123"})
 
       lines = path |> File.read!() |> String.split("\n", trim: true)
-      assert length(lines) == 2
+      assert match?([_, _], lines)
 
       first = Jason.decode!(hd(lines))
       assert first["type"] == "settled"

@@ -257,8 +257,8 @@ defmodule Harness.Dashboard.SettingsComponents do
   attr(:dispatch, :map, required: true)
 
   @doc """
-  The dispatch-default card — the implementer agent an unassigned task routes to
-  when capability scores have no data yet (the `recommend` no-data fallback).
+  Dispatch-default card: implementer chosen for an unassigned item when
+  capability scores have no data yet (`recommend` no-data fallback).
   """
   @spec dispatch_default_card(map()) :: Rendered.t()
   def dispatch_default_card(assigns) do

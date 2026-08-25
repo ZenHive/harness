@@ -416,12 +416,12 @@ defmodule Harness.Chat.Session do
     Stream.broadcast(session_id, %{type: "text_delta", text: text})
   end
 
-  defp stream_event(session_id, {:tool_use, tool_use}) do
+  defp stream_event(session_id, {:tool_use, tool_use}) when is_map(tool_use) do
     Stream.broadcast(session_id, %{
       type: "tool_call",
-      id: tool_use[:id] || tool_use["id"],
-      name: tool_use[:name] || tool_use["name"],
-      arguments: tool_use[:input] || tool_use["input"] || %{}
+      id: tool_use_field(tool_use, :id),
+      name: tool_use_field(tool_use, :name),
+      arguments: tool_use_field(tool_use, :input) || %{}
     })
   end
 
@@ -545,5 +545,13 @@ defmodule Harness.Chat.Session do
     end
 
     :ok
+  end
+
+  @spec tool_use_field(map(), atom()) :: term()
+  defp tool_use_field(tool_use, key) do
+    case tool_use do
+      %{^key => value} -> value
+      _other -> Map.get(tool_use, Atom.to_string(key))
+    end
   end
 end

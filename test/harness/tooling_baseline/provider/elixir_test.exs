@@ -15,7 +15,7 @@ defmodule Harness.ToolingBaseline.Provider.ElixirTest do
     assert Enum.any?(snapshot.items, &(&1.id == "dep:credo" and &1.status == :missing))
     assert Enum.any?(snapshot.items, &(&1.id == "alias:precommit" and &1.status == :missing))
     assert Enum.any?(snapshot.items, &(&1.id == "config:.credo.exs" and &1.status == :missing))
-    assert length(snapshot.advisory) == 3
+    assert match?([_, _, _], snapshot.advisory)
   end
 
   test "records overrides as facts instead of silent skips" do

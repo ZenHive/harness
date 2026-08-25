@@ -140,11 +140,14 @@ defmodule Harness.Chat.Claude do
 
   # `--continue` resumes the most recent conversation in `cwd`. The very first
   # turn has only the just-added user message; any subsequent turn carries
-  # prior assistant content too, so `length(messages) > 1` is the resume gate.
+  # prior assistant content too, so two-or-more messages is the resume gate.
   @doc false
   @spec resume_argv([map()]) :: [String.t()]
   def resume_argv(messages) when is_list(messages) do
-    if length(messages) > 1, do: ["--continue"], else: []
+    case messages do
+      [_, _ | _] -> ["--continue"]
+      _ -> []
+    end
   end
 
   @doc false

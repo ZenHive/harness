@@ -458,7 +458,7 @@ defmodule Harness.Dashboard.KPILiveTest do
       # liveview card's table is gone (its label survives only in the pill).
       assert filtered =~ ~s(class="facet-pill active")
       # Exactly one facet card table body remains (the filtered group).
-      assert length(String.split(filtered, ~s(class="facet-card"))) == 2
+      assert match?([_, _], String.split(filtered, ~s(class="facet-card")))
     end
   end
 

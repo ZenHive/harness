@@ -51,7 +51,7 @@ defmodule Harness.Dispatch.WriteSetPlanTest do
       %WriteSetPlan{waves: waves, collisions: collisions} = WriteSetPlan.plan(tasks)
 
       # All four tasks collide on the same file — they serialize into 4 waves.
-      assert length(waves) == 4
+      assert match?([_, _, _, _], waves)
       assert Enum.map(waves, fn [t] -> t["id"] end) == ["a", "b", "c", "d"]
 
       # One merged collision component covering all four task ids in input order.

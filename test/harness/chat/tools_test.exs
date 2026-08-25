@@ -113,7 +113,7 @@ defmodule Harness.Chat.ToolsTest do
     sample = "dispatch-task"
     qualified = "harness__" <> sample
     assert qualified == "harness__dispatch-task"
-    assert length(Regex.scan(~r/__/, qualified)) == 1
+    assert match?([_], Regex.scan(~r/__/, qualified))
   end
 
   test "dispatch/3 translates JSON-shaped (string-keyed map) filters for result_store-list_run_records, atomizing known keys and ignoring unknowns" do

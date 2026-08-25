@@ -1032,12 +1032,13 @@ defmodule Harness.ModelAvailability do
 
   @spec retry_after_seconds(map()) :: non_neg_integer() | nil
   defp retry_after_seconds(map) do
-    Map.get(map, :retry_after_seconds) || Map.get(map, :retry_after) || Map.get(map, "retry_after")
+    map = normalize_map_keys(map)
+    Map.get(map, "retry_after_seconds") || Map.get(map, "retry_after")
   end
 
   @spec model_from_map(map()) :: String.t() | nil
   defp model_from_map(map) do
-    case Map.get(map, :model) || Map.get(map, "model") do
+    case Map.get(normalize_map_keys(map), "model") do
       model when is_binary(model) and model != "" -> model
       _ -> nil
     end

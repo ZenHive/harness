@@ -111,8 +111,8 @@ defmodule Harness.Run.Worker do
   @doc false
   @spec enqueue_coalesced(Project.t(), Item.t(), module(), keyword()) ::
           {:ok, String.t(), Oban.Job.t()} | {:error, term()}
-  def enqueue_coalesced(%Project{} = project, %Item{task_ids: task_ids} = item, adapter, opts \\ [])
-      when is_list(task_ids) and length(task_ids) > 1 and is_atom(adapter) and is_list(opts) do
+  def enqueue_coalesced(%Project{} = project, %Item{task_ids: [_, _ | _] = task_ids} = item, adapter, opts \\ [])
+      when is_atom(adapter) and is_list(opts) do
     # Oban's unique key is {project_name, item_id}, which only covers the FIRST
     # member. Any other member may already have a live run of its own — landing
     # it twice is the duplicate-delivery trap — so every member is checked before
@@ -819,12 +819,9 @@ defmodule Harness.Run.Worker do
   end
 
   @spec arg_run_id(map()) :: {:ok, String.t()} | :error
-  defp arg_run_id(args) do
-    case Map.get(args, "run_id") || Map.get(args, :run_id) do
-      run_id when is_binary(run_id) -> {:ok, run_id}
-      _other -> :error
-    end
-  end
+  defp arg_run_id(%{"run_id" => run_id}) when is_binary(run_id), do: {:ok, run_id}
+  defp arg_run_id(%{run_id: run_id}) when is_binary(run_id), do: {:ok, run_id}
+  defp arg_run_id(_args), do: :error
 
   @spec live_run_id(String.t(), String.t()) :: {:ok, String.t()} | :error
   defp live_run_id(project_name, item_id) do

@@ -918,7 +918,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
 
     assert keys == unique, "duplicate harness_settings reads in one tick: #{inspect(keys -- unique)}"
 
-    assert length(keys) <= 10,
+    assert Enum.count_until(keys, 11) <= 10,
            "expected <= 10 harness_settings reads per :meta_tick, got #{length(keys)} (#{inspect(keys)})"
   end
 

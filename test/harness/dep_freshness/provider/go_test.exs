@@ -68,7 +68,7 @@ defmodule Harness.DepFreshness.Provider.GoTest do
     }
 
     assert {:ok, rows} = Provider.parse_output(@sample_output, requirements)
-    assert length(rows) == 3
+    assert match?([_, _, _], rows)
 
     assert %Row{
              name: "github.com/acme/lib",

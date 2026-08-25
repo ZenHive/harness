@@ -23,7 +23,7 @@ defmodule Harness.DepFreshness.Provider.ElixirTest do
 
   test "parse_output/1 maps hex.outdated rows mechanically" do
     assert {:ok, rows} = Provider.parse_output(@sample_output)
-    assert length(rows) == 3
+    assert match?([_, _, _], rows)
 
     assert %Row{
              name: "dune",

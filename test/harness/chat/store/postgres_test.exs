@@ -38,7 +38,7 @@ defmodule Harness.Chat.Store.PostgresTest do
       :ok = PostgresStore.save("chat-cap", messages, [])
 
       assert {:ok, %{messages: loaded}} = PostgresStore.load("chat-cap", [])
-      assert length(loaded) == 200
+      assert Enum.count_until(loaded, 201) == 200
       assert List.last(loaded) == %{role: :user, content: "m250"}
       assert hd(loaded) == %{role: :user, content: "m51"}
     end

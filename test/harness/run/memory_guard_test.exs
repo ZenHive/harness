@@ -74,7 +74,7 @@ defmodule Harness.Run.MemoryGuardTest do
 
     test "reaps the entire descendant tree — no orphan grandchild survives" do
       {os_pid, children} = spawn_tree(2)
-      assert length(children) == 2
+      assert match?([_, _], children)
 
       MemoryGuard.kill_tree(os_pid)
 

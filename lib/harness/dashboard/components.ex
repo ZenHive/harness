@@ -1844,14 +1844,15 @@ defmodule Harness.Dashboard.Components do
 
   @spec file_path_from_input(term()) :: String.t() | nil
   defp file_path_from_input(input) when is_map(input) do
-    input["file_path"] || input["path"] || input[:file_path] || input[:path]
+    input = normalize_map(input)
+    input["file_path"] || input["path"]
   end
 
   defp file_path_from_input(_other), do: nil
 
   @spec command_from_input(term()) :: String.t() | nil
   defp command_from_input(input) when is_map(input) do
-    input["command"] || input[:command]
+    normalize_map(input)["command"]
   end
 
   defp command_from_input(_other), do: nil
@@ -1895,16 +1896,14 @@ defmodule Harness.Dashboard.Components do
 
   @spec input_field(map(), atom()) :: term()
   defp input_field(input, key) when is_map(input) do
-    input[key] || input[Atom.to_string(key)]
+    normalize_map(input)[Atom.to_string(key)]
   end
 
   defp input_field(_input, _key), do: nil
 
   @spec normalize_map(term()) :: map()
   defp normalize_map(map) when is_map(map) do
-    Enum.reduce(map, %{}, fn {key, value}, acc ->
-      Map.put(acc, to_string(key), value)
-    end)
+    Map.new(map, fn {key, value} -> {to_string(key), value} end)
   end
 
   defp normalize_map(_other), do: %{}

@@ -1088,7 +1088,7 @@ defmodule Harness.Dispatch do
       when is_binary(project_name) and is_list(task_ids) and is_binary(adapter) and is_boolean(scrub_anthropic_key) do
     ids = task_ids |> Enum.filter(&is_binary/1) |> Enum.uniq()
 
-    with true <- length(ids) > 1 || {:error, :invalid_task_ids},
+    with true <- match?([_, _ | _], ids) || {:error, :invalid_task_ids},
          {:ok, {adapter_module, render_agent}} <- resolve_delegatable_adapter(adapter),
          {:ok, project} <- lookup_project(project_name),
          {:ok, items} <- ingest_coalesced(ids, project, render_agent),

@@ -59,9 +59,9 @@ defmodule Harness.CapabilityScoreTest do
     grouped = CapabilityScore.group_by_facet(records)
 
     assert map_size(grouped) == 3
-    assert length(Map.get(grouped, facet_key(%{"language" => "elixir", "surface" => "otp"}))) == 2
-    assert length(Map.get(grouped, facet_key(%{"surface" => "liveview"}))) == 1
-    assert length(Map.get(grouped, facet_key(%{}))) == 1
+    assert match?([_, _], Map.get(grouped, facet_key(%{"language" => "elixir", "surface" => "otp"})))
+    assert match?([_], Map.get(grouped, facet_key(%{"surface" => "liveview"})))
+    assert match?([_], Map.get(grouped, facet_key(%{})))
   end
 
   test "facet_facts rolls per-agent KPI facts without weighting" do

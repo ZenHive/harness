@@ -15,7 +15,7 @@ defmodule Harness.ToolingBaseline.Manifest do
           advisory: [Advisory.t()]
         }
 
-  @elixir_manifest_path Path.expand("../../../priv/tooling_baseline/elixir.json", __DIR__)
+  @elixir_manifest_path Application.app_dir(:harness, "priv/tooling_baseline/elixir.json")
   @external_resource @elixir_manifest_path
 
   @doc "Loads the Elixir baseline manifest from priv."

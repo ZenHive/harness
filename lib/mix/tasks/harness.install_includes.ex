@@ -11,7 +11,7 @@ defmodule Mix.Tasks.Harness.InstallIncludes do
 
   If the target file exists and differs, a .bak-<unix> backup is made before
   overwrite (use --force to skip backup). Idempotent when content matches.
-  The source is located via :code.priv_dir(:harness) or a dev-tree fallback.
+  The source is located via `Application.app_dir/2`.
 
   After install, other repos adopt the harness workflow the normal way:
 
@@ -46,19 +46,7 @@ defmodule Mix.Tasks.Harness.InstallIncludes do
 
   @spec locate_source() :: String.t()
   defp locate_source do
-    # Preferred: the priv that ships with the :harness application (works for
-    # hex dep installs and for `iex -S mix` after compile).
-    case_result =
-      case :code.priv_dir(:harness) do
-        {:error, _} ->
-          # Dev-tree fallback: task lives at lib/mix/tasks/, priv is three levels up.
-          Path.expand("../../../priv/includes/harness-workflow.md", __DIR__)
-
-        priv_dir ->
-          Path.join([priv_dir, "includes", "harness-workflow.md"])
-      end
-
-    Path.expand(case_result)
+    Application.app_dir(:harness, "priv/includes/harness-workflow.md")
   end
 
   @spec install_file(String.t(), String.t(), keyword()) :: String.t()

@@ -421,7 +421,11 @@ defmodule Harness.AgentKPI do
   defp quality_score(value) when is_number(value), do: value
 
   defp quality_score(value) when is_map(value) do
-    Map.get(value, "score") || Map.get(value, :score)
+    case value do
+      %{"score" => score} -> score
+      %{score: score} -> score
+      _other -> nil
+    end
   end
 
   defp quality_score(_other), do: nil

@@ -643,7 +643,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
       # not park a duplicate nor re-fire the witness event.
       assert :ok = RoadmapPoller.perform(%Oban.Job{})
       refute_received {:notify, _event}
-      assert length(PendingDispatch.list()) == 1
+      assert match?([_], PendingDispatch.list())
     end
   end
 

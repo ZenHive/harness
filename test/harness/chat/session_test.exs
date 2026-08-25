@@ -66,7 +66,7 @@ defmodule Harness.Chat.SessionTest do
       assert_received {:second_call_messages, messages}
 
       # Expected shape: [user, assistant(2 tools), tool_result(t1), tool_result(t2)]
-      assert length(messages) == 4
+      assert match?([_, _, _, _], messages)
       assert %{role: :user, content: "two tools"} = Enum.at(messages, 0)
       assert %{role: :assistant} = Enum.at(messages, 1)
 
@@ -588,7 +588,7 @@ defmodule Harness.Chat.SessionTest do
       assert Enum.all?(results, &match?({:ok, ^id, _}, &1))
 
       pids = for {:ok, _, pid} <- results, do: pid
-      assert length(Enum.uniq(pids)) == 1
+      assert match?([_], Enum.uniq(pids))
     end
   end
 

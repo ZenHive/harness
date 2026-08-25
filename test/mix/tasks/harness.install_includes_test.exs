@@ -71,7 +71,7 @@ defmodule Mix.Tasks.Harness.InstallIncludesTest do
 
     # A .bak- file was left next to it
     baks = Path.wildcard(target <> ".bak-*")
-    assert length(baks) == 1
+    assert match?([_], baks)
   end
 
   test "--force overwrites without creating backup", %{dest: dest, src: src} do
@@ -95,9 +95,8 @@ defmodule Mix.Tasks.Harness.InstallIncludesTest do
   # Mirror the task's locate logic but prefer the tree copy we bootstrapped for the run.
   defp locate_priv_source_for_test do
     candidates = [
-      Path.expand("priv/includes/harness-workflow.md", File.cwd!()),
-      # In case test cwd differs
-      [Path.dirname(__DIR__), "..", "..", "priv", "includes", "harness-workflow.md"] |> Path.join() |> Path.expand()
+      Application.app_dir(:harness, "priv/includes/harness-workflow.md"),
+      Path.join([File.cwd!(), "priv", "includes", "harness-workflow.md"])
     ]
 
     Enum.find(candidates, &File.regular?/1) ||

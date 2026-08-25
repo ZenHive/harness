@@ -38,7 +38,7 @@ defmodule Harness.Chat.StoreTest do
       :ok = Store.save("chat-big", messages, root: dir)
 
       {:ok, %{messages: loaded}} = Store.load("chat-big", root: dir)
-      assert length(loaded) == 200
+      assert Enum.count_until(loaded, 201) == 200
       # The tail is kept (oldest dropped).
       assert List.first(loaded) == %{role: :user, content: "m51"}
       assert List.last(loaded) == %{role: :user, content: "m250"}
@@ -51,7 +51,7 @@ defmodule Harness.Chat.StoreTest do
       :ok = Store.save("chat-2", [%{role: :user, content: "beta task"}, %{role: :assistant, content: []}], root: dir)
 
       summaries = Store.list(root: dir)
-      assert length(summaries) == 2
+      assert match?([_, _], summaries)
       ids = Enum.map(summaries, & &1.session_id)
       assert "chat-1" in ids
       assert "chat-2" in ids

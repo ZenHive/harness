@@ -580,12 +580,12 @@ defmodule Harness.BatchTest do
       end)
 
     assert_eventually(fn ->
-      assert length(active_batch_task_ids(~w(1 2))) == 1
+      assert match?([_], active_batch_task_ids(~w(1 2)))
     end)
 
     File.write!(gate, "go")
     assert {:ok, %BatchResult{max_concurrency: 1, results: results}} = Task.await(batch_task, @run_timeout_ms)
-    assert length(results) == 2
+    assert match?([_, _], results)
   end
 
   test "dispatch applies the run worker in-flight uniqueness spec to every job" do

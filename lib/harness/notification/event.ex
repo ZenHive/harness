@@ -134,7 +134,7 @@ defmodule Harness.Notification.Event do
   defp persist_failed_detail(%{} = outcome) do
     parts =
       Enum.reject(
-        [Map.get(outcome, :reason) || Map.get(outcome, "reason"), spill_part(outcome), pending_part(outcome)],
+        [event_field(outcome, :reason), spill_part(outcome), pending_part(outcome)],
         &is_nil/1
       )
 
@@ -148,7 +148,7 @@ defmodule Harness.Notification.Event do
 
   @spec spill_part(map()) :: String.t() | nil
   defp spill_part(outcome) do
-    case Map.get(outcome, :spilled_path) || Map.get(outcome, "spilled_path") do
+    case event_field(outcome, :spilled_path) do
       path when is_binary(path) and path != "" -> "spilled to #{path}"
       _absent -> nil
     end
@@ -156,12 +156,20 @@ defmodule Harness.Notification.Event do
 
   @spec pending_part(map()) :: String.t() | nil
   defp pending_part(outcome) do
-    case Map.get(outcome, :pending_migrations) || Map.get(outcome, "pending_migrations") do
+    case event_field(outcome, :pending_migrations) do
       labels when is_list(labels) and labels != [] ->
         "pending migrations: " <> Enum.join(labels, ", ")
 
       _absent ->
         nil
+    end
+  end
+
+  @spec event_field(map(), atom()) :: term()
+  defp event_field(map, key) do
+    case map do
+      %{^key => value} -> value
+      _other -> Map.get(map, Atom.to_string(key))
     end
   end
 end

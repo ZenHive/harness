@@ -203,7 +203,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
                eval_opts(base, max_concurrency: 3, result_store: false)
              )
 
-    assert length(entries) == 3
+    assert match?([_, _, _], entries)
 
     by_adapter = Map.new(entries, &{&1.adapter, &1})
     assert by_adapter[GoodAdapter].state == :done
@@ -224,7 +224,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
                eval_opts(base, max_concurrency: 2)
              )
 
-    assert length(batch.results) == 2
+    assert match?([_, _], batch.results)
     assert Enum.at(batch.results, 0).state == :done
     assert Enum.at(batch.results, 1).state == :failed
   end
@@ -271,7 +271,7 @@ defmodule Harness.Batch.AgentEvaluationTest do
 
     assert comparison.batch_id == batch_id
     assert comparison.task_id == "reload"
-    assert length(comparison.entries) == 2
+    assert match?([_, _], comparison.entries)
     assert Enum.all?(comparison.entries, &(&1.state == :done and &1.verdict == :approve))
   end
 

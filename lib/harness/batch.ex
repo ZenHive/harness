@@ -288,10 +288,7 @@ defmodule Harness.Batch do
   defp resolve_project(%Project{} = project), do: {:ok, project}
 
   defp resolve_project(name) when is_binary(name) do
-    case ProjectRegistry.lookup(name) do
-      {:ok, project} -> {:ok, project}
-      {:error, {:unknown_project, name}} -> {:error, {:unknown_project, name}}
-    end
+    ProjectRegistry.lookup(name)
   end
 
   @spec max_concurrency(Project.t(), keyword()) :: {:ok, pos_integer()} | {:error, error()}

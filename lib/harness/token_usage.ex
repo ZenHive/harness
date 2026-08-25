@@ -163,7 +163,7 @@ defmodule Harness.TokenUsage do
     output
     |> json_objects()
     |> Enum.flat_map(&pi_usage_entry/1)
-    |> Enum.reduce(%{}, fn {response_id, usage}, acc -> Map.put(acc, response_id, usage) end)
+    |> Map.new()
     |> Map.values()
     |> sum_usages(&from_pi_usage/1)
   end

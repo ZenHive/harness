@@ -105,7 +105,7 @@ defmodule Harness.WorktreeTest do
         )
         |> Enum.map(fn {:ok, {:ok, wt}} -> wt end)
 
-      assert length(worktrees) == 8
+      assert Enum.count_until(worktrees, 9) == 8
       assert worktrees |> Enum.map(& &1.id) |> Enum.uniq() |> length() == 8
       assert worktrees |> Enum.map(& &1.path) |> Enum.uniq() |> length() == 8
       assert worktrees |> Enum.map(& &1.branch) |> Enum.uniq() |> length() == 8

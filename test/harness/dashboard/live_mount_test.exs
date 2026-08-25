@@ -43,7 +43,7 @@ defmodule Harness.Dashboard.LiveMountTest do
     test "mounts the index, listing the registered project", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/harness")
 
-      assert length(Regex.scan(~r/<h1(?:\s|>)/, html)) == 1
+      assert match?([_], Regex.scan(~r/<h1(?:\s|>)/, html))
       assert html =~ "Harness fleet"
       assert html =~ "Active runs"
       assert html =~ "livemount-demo"

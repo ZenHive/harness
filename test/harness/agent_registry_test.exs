@@ -146,7 +146,7 @@ defmodule Harness.AgentRegistryTest do
     test "all/0 returns the six adapter modules" do
       adapters = AgentRegistry.all()
 
-      assert length(adapters) == 6
+      assert Enum.count_until(adapters, 7) == 6
       assert Claude in adapters
       assert Pi in adapters
     end

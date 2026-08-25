@@ -625,6 +625,9 @@ defmodule Harness.Dashboard.CompareLive do
           MapSet.member?(chosen, Atom.to_string(agent)),
           do: %{agent: agent, module: module}
 
-    if length(adapters) >= 2, do: {:ok, adapters}, else: {:error, :need_two_adapters}
+    case adapters do
+      [_, _ | _] -> {:ok, adapters}
+      _ -> {:error, :need_two_adapters}
+    end
   end
 end

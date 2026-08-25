@@ -272,10 +272,7 @@ defmodule Harness.CodeSearch do
     open_index = fn ctx ->
       ctx = Map.put(ctx, :prefix, prefix(opts))
 
-      case ctx.exograph.index([], index_opts(ctx, false, opts)) do
-        {:ok, index} -> {:ok, index}
-        {:error, reason} -> {:error, reason}
-      end
+      ctx.exograph.index([], index_opts(ctx, false, opts))
     end
 
     Server.with_index(index_path, opts, open_index, fn index, ctx ->
@@ -325,16 +322,16 @@ defmodule Harness.CodeSearch do
 
   @spec definition_fact(term(), map()) :: fact()
   defp definition_fact(hit, ctx) do
-    definition = Map.get(hit, :definition) || Map.get(hit, "definition")
-    fragment = Map.get(hit, :fragment) || Map.get(hit, "fragment")
+    definition = hit_field(hit, :definition)
+    fragment = hit_field(hit, :fragment)
 
     Fact.new(
       file: file_for(definition, fragment, ctx),
-      line: Map.get(definition, :line),
-      kind: Map.get(definition, :kind),
-      module: Map.get(definition, :module),
-      name: Map.get(definition, :name),
-      arity: Map.get(definition, :arity)
+      line: hit_field(definition, :line),
+      kind: hit_field(definition, :kind),
+      module: hit_field(definition, :module),
+      name: hit_field(definition, :name),
+      arity: hit_field(definition, :arity)
     )
   end
 
@@ -674,11 +671,21 @@ defmodule Harness.CodeSearch do
   @spec file_for(term(), term(), map()) :: String.t() | nil
   defp file_for(definition, fragment, ctx) do
     cond do
-      is_map(fragment) and Map.get(fragment, :file) -> Map.get(fragment, :file)
-      is_map(definition) -> file_by_id(Map.get(definition, :file_id), ctx)
+      is_map(fragment) and hit_field(fragment, :file) -> hit_field(fragment, :file)
+      is_map(definition) -> file_by_id(hit_field(definition, :file_id), ctx)
       true -> nil
     end
   end
+
+  @spec hit_field(term(), atom()) :: term()
+  defp hit_field(map, key) when is_map(map) and is_atom(key) do
+    case map do
+      %{^key => value} -> value
+      _other -> Map.get(map, Atom.to_string(key))
+    end
+  end
+
+  defp hit_field(_map, _key), do: nil
 
   @spec file_by_id(integer() | nil, map()) :: String.t() | nil
   defp file_by_id(nil, _ctx), do: nil

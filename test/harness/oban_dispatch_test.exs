@@ -67,7 +67,7 @@ defmodule Harness.ObanDispatchTest do
                item("49", :codex)
              ])
 
-    assert length(jobs) == 2
+    assert match?([_, _], jobs)
 
     assert_received {:inserted,
                      %Oban.Job{
@@ -1529,7 +1529,7 @@ defmodule Harness.ObanDispatchTest do
       refute second_run_id == first_run_id
       refute second_job.id == first_job.id
       assert second_job.conflict? == false
-      assert length(run_jobs(project, item.id)) == 2
+      assert match?([_, _], run_jobs(project, item.id))
     end
 
     test "settled approved unlanded run with retained branch returns existing run id without duplicate work" do

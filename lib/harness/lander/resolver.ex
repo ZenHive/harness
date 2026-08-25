@@ -255,15 +255,9 @@ defmodule Harness.Lander.Resolver do
   end
 
   @spec read_conflict_file(String.t()) :: {:ok, String.t()} | {:error, File.posix()}
-  defp read_conflict_file(file_path) do
-    case File.read(file_path) do
-      {:ok, content} ->
-        {:ok, content}
-
-      {:error, reason} ->
-        {:error, reason}
-    end
-  end
+  # Path is confined to the worktree by conflict_file_path/2 before this read.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp read_conflict_file(file_path), do: File.read(file_path)
 
   @spec format_conflict_excerpt(String.t(), String.t()) :: String.t()
   defp format_conflict_excerpt(file, content) do

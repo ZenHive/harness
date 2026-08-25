@@ -197,7 +197,7 @@ defmodule Harness.Dashboard.ChatLive do
   end
 
   defp apply_event(socket, %{type: "tool_result", id: id} = event) do
-    decoded = decode_tool_result(Map.get(event, :content) || Map.get(event, "content"))
+    decoded = decode_tool_result(Map.get(event, :content))
     target_id = to_string(id)
 
     socket
