@@ -81,6 +81,7 @@ defmodule Harness.Dashboard.KPILive do
   alias Harness.CapabilityScore
   alias Harness.CapabilityScore.Assessment
   alias Harness.CapabilityScore.Entry
+  alias Harness.Dashboard.Components
   alias Harness.Dashboard.RunFeed
   alias Harness.Facet
   alias Harness.ResultStore
@@ -701,7 +702,7 @@ defmodule Harness.Dashboard.KPILive do
 
   @spec format_count(number() | nil) :: String.t()
   defp format_count(nil), do: "—"
-  defp format_count(value), do: value |> round() |> Integer.to_string() |> delimit()
+  defp format_count(value), do: value |> round() |> Integer.to_string() |> Components.delimit()
 
   # A reviewer rating mean (e.g. 8.0); an agent never rated on this key shows a dash.
   @spec format_rating(number() | nil) :: String.t()
@@ -712,14 +713,5 @@ defmodule Harness.Dashboard.KPILive do
   @spec rating_label(String.t()) :: String.t()
   defp rating_label(key) do
     key |> String.replace("_", " ") |> String.capitalize()
-  end
-
-  # Group an integer string into thousands so a 27M-token count reads at a glance.
-  @spec delimit(String.t()) :: String.t()
-  defp delimit(digits) do
-    digits
-    |> String.reverse()
-    |> String.replace(~r/(\d{3})(?=\d)/, "\\1,")
-    |> String.reverse()
   end
 end

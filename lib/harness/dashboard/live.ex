@@ -1484,19 +1484,10 @@ defmodule Harness.Dashboard.Live do
     if Harness.TokenUsage.measured?(usage) do
       usage.total
       |> Integer.to_string()
-      |> delimit()
+      |> Components.delimit()
     else
       "—"
     end
-  end
-
-  # Group an integer string into thousands so a 27M-token count reads at a glance.
-  @spec delimit(String.t()) :: String.t()
-  defp delimit(digits) do
-    digits
-    |> String.reverse()
-    |> String.replace(~r/(\d{3})(?=\d)/, "\\1,")
-    |> String.reverse()
   end
 
   # Grok omits usage on stdout; recover its cumulative total from the on-disk

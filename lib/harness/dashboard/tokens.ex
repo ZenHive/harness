@@ -104,7 +104,12 @@ defmodule Harness.Dashboard.Tokens do
         --surface: #15171d;
         --surface-2: #1c1f27;
         --rule: #2a2e38;
-        --rule-strong: #555e72;
+        /* Border/divider tokens are non-text (WCAG 2.1 SC 1.4.11, 3:1
+           minimum) — table row dividers, form-control and toggle-switch
+           borders, and the degraded-connection footer boundary all use this
+           value against --bg/--surface/--surface-2. Keep >=3:1 against all
+           three; don't round it back down toward the old #555e72. */
+        --rule-strong: #737c98;
         --text: #e8e5dd;
         --text-subtle: #8a8e98;
         --text-muted: #808694;

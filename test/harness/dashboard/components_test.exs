@@ -85,6 +85,34 @@ defmodule Harness.Dashboard.ComponentsTest do
     end
   end
 
+  describe "operator_flash/1" do
+    test "renders no live region at all when there is nothing to announce" do
+      html = render_component(&Components.operator_flash/1, notice: nil, include_persistent: false)
+
+      refute html =~ "operator-flash"
+      refute html =~ ~s(aria-live="polite")
+    end
+
+    test "with no transient notice and settings-store persistence configured, stays empty" do
+      # Default `include_persistent: true`; the persistent settings-store warning
+      # only fires when `SettingsStore.configured() == false` (see the
+      # "renders a persistent no-op settings-store banner" LiveView test), which
+      # is not this suite's default env.
+      html = render_component(&Components.operator_flash/1, %{})
+
+      refute html =~ "operator-flash"
+      refute html =~ ~s(aria-live="polite")
+    end
+
+    test "renders exactly one live region carrying a transient notice" do
+      html = render_component(&Components.operator_flash/1, notice: {:ok, "Run cancelled"}, include_persistent: false)
+
+      assert html =~ ~s(aria-live="polite")
+      assert html =~ "Run cancelled"
+      assert count_occurrences(html, "aria-live") == 1
+    end
+  end
+
   describe "run_timing/1" do
     test "renders elapsed, current-stage time, and per-stage durations" do
       started_at = ~U[2026-06-17 08:00:00.000Z]
@@ -700,12 +728,64 @@ defmodule Harness.Dashboard.ComponentsTest do
       assert html =~ ~s(<p id="page-body">content</p>)
       assert html =~ "page-footer"
     end
+
+    test "carries exactly one live region (the footer's) when there is nothing to announce" do
+      assigns = %{inner_block: inner_block(~s(<p id="page-body">content</p>))}
+      html = render_component(&Components.page_shell/1, assigns)
+
+      # Two simultaneous always-present `aria-live` regions make screen reader
+      # announcements race (Finding #5). `operator_flash/1` renders nothing when
+      # empty, so `footer/1`'s connection witness is the only one left in the
+      # common case where there is no operator notice to announce.
+      assert count_occurrences(html, "aria-live") == 1
+      assert html =~ "conn-witness"
+      refute html =~ "operator-flash"
+    end
+  end
+
+  describe "delimit/1" do
+    test "groups thousands with commas" do
+      assert Components.delimit("1234567") == "1,234,567"
+    end
+
+    test "leaves an empty string unchanged" do
+      assert Components.delimit("") == ""
+    end
+
+    test "leaves fewer than four digits unchanged" do
+      assert Components.delimit("5") == "5"
+      assert Components.delimit("42") == "42"
+      assert Components.delimit("999") == "999"
+    end
+
+    test "inserts exactly one comma at the thousands boundary" do
+      assert Components.delimit("1000") == "1,000"
+      assert Components.delimit("9999") == "9,999"
+    end
+
+    test "handles a leading sign without misplacing a comma" do
+      assert Components.delimit("-1234567") == "-1,234,567"
+    end
+
+    test "groups a very long digit string across many boundaries" do
+      assert Components.delimit("1234567890123") == "1,234,567,890,123"
+    end
   end
 
   # Builds a minimal slot list so `render_slot/1` inside `page_shell/1` renders
-  # the supplied raw HTML.
+  # the supplied raw HTML. `{:safe, html}` is the same pre-escaped tuple
+  # `Phoenix.HTML.raw/1` builds for a binary — spelled out directly so this
+  # test-only literal-HTML fixture doesn't read as an XSS-prone `raw/1` call.
   defp inner_block(html) do
-    [%{inner_block: fn _changed, _arg -> Phoenix.HTML.raw(html) end}]
+    [%{inner_block: fn _changed, _arg -> {:safe, html} end}]
+  end
+
+  @spec count_occurrences(String.t(), String.t()) :: non_neg_integer()
+  defp count_occurrences(haystack, needle) do
+    haystack
+    |> String.split(needle)
+    |> length()
+    |> Kernel.-(1)
   end
 
   defp diff_file(status, path, added, deleted, lines) do

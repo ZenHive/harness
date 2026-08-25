@@ -169,13 +169,21 @@ defmodule Harness.Dashboard.Components do
   Persistent notices are derived from live runtime state, such as the no-op
   settings store. LiveViews pass transient `{kind, message}` tuples for event
   feedback and keep the markup here.
+
+  The wrapping `role="status" aria-live="polite"` element only enters the DOM
+  when there is a notice to announce (`:if={@notices != []}`). `footer/1`'s
+  connection witness is the page's one steady-state live region; a second
+  region present at all times — even empty — competes with it for a screen
+  reader's attention on every unrelated re-render. Rendering nothing when
+  `@notices` is empty keeps at most one live region announcing at a time in
+  the common case.
   """
   @spec operator_flash(map()) :: Rendered.t()
   def operator_flash(assigns) do
     assigns = assign(assigns, :notices, operator_notices(assigns.notice, assigns.include_persistent))
 
     ~H"""
-    <div class="operator-flash" role="status" aria-live="polite">
+    <div :if={@notices != []} class="operator-flash" role="status" aria-live="polite">
       <div
         :for={notice <- @notices}
         class="operator-notice"
@@ -621,6 +629,26 @@ defmodule Harness.Dashboard.Components do
       minutes > 0 -> "#{minutes}m #{seconds}s"
       true -> "#{seconds}s"
     end
+  end
+
+  @doc """
+  Group a non-negative-looking digit string into thousands with commas, e.g.
+  `"1234567"` -> `"1,234,567"`, so a 27M-token count reads at a glance.
+
+  Shared by `KPILive.format_count/1` and `Live.token_label/2` — previously
+  duplicated verbatim in both modules. Not a `Number`/`ex_cldr_numbers`
+  candidate: this only ever formats already-stringified integer counts (no
+  decimals, currency, or locale), so pulling in a formatting dependency for
+  it would trade a 5-line pure function for a package plus its own
+  dependency and precision/locale defaults callers would then have to
+  override on every call.
+  """
+  @spec delimit(String.t()) :: String.t()
+  def delimit(digits) do
+    digits
+    |> String.reverse()
+    |> String.replace(~r/(\d{3})(?=\d)/, "\\1,")
+    |> String.reverse()
   end
 
   ## --- Live transcript chrome (Task 314) ------------------------------------
