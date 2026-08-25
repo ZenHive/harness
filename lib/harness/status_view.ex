@@ -1,6 +1,6 @@
 defmodule Harness.StatusView do
   @moduledoc """
-  Human-readable fleet status for in-flight, repairing, green, and red runs.
+  Human-readable fleet status grouped by each lifecycle state's own name.
 
   Aggregates live `Harness.Run.Status` snapshots and agent availability from
   `Harness.AgentRegistry`. Intended for `mix harness.status`, not JSON parsing.
@@ -16,12 +16,13 @@ defmodule Harness.StatusView do
 
   require Logger
 
-  @type bucket :: :in_flight | :repairing | :green | :red
+  @type bucket :: Status.state()
 
   @type run_entry :: %{
           status: Status.t(),
           bucket: bucket(),
-          detail: String.t() | nil
+          detail: String.t() | nil,
+          review_concerns: [term()]
         }
 
   @type t :: %{
@@ -36,13 +37,17 @@ defmodule Harness.StatusView do
   @history_limit 200
   @run_status_timeout_ms 100
 
-  @bucket_order [:in_flight, :repairing, :green, :red]
+  @bucket_order [:dispatched, :running, :committing, :recovering, :reviewing, :held, :done, :failed]
 
   @bucket_labels %{
-    in_flight: "IN FLIGHT",
-    repairing: "REPAIRING",
-    green: "GREEN",
-    red: "RED"
+    dispatched: "DISPATCHED",
+    running: "RUNNING",
+    committing: "COMMITTING",
+    recovering: "RECOVERING",
+    reviewing: "REVIEWING",
+    held: "HELD",
+    done: "DONE",
+    failed: "FAILED"
   }
 
   # Total map from a settle-reason *head* to a fixed operator sentence. Lookup
@@ -129,7 +134,7 @@ defmodule Harness.StatusView do
   """
   @spec run_entry_for(Status.t()) :: run_entry()
   def run_entry_for(%Status{} = status) do
-    %{status: status, bucket: classify(status), detail: detail(status)}
+    %{status: status, bucket: classify(status), detail: detail(status), review_concerns: []}
   end
 
   # Settled runs read back from the configured ResultStore, minus any run_id
@@ -169,7 +174,10 @@ defmodule Harness.StatusView do
 
   @spec history_entry(LogRecord.t()) :: run_entry()
   defp history_entry(%LogRecord{} = record) do
-    record |> Status.from_log_record() |> run_entry_for()
+    record
+    |> Status.from_log_record()
+    |> run_entry_for()
+    |> Map.put(:review_concerns, record.review_concerns || [])
   end
 
   @doc "Renders `snapshot/0` output for terminal display."
@@ -193,15 +201,8 @@ defmodule Harness.StatusView do
 
   @doc "Classifies a run status into a human-facing bucket."
   @spec classify(Status.t()) :: bucket()
-  def classify(%Status{state: :done}), do: :green
-  def classify(%Status{state: :failed}), do: :red
-
-  # A recovering/reviewing run IS red work being fixed — the human-facing
-  # "being repaired" bucket, even though the fixer is now an AI agent.
-  def classify(%Status{state: :recovering}), do: :repairing
-  def classify(%Status{state: :reviewing}), do: :repairing
-
-  def classify(%Status{state: state}) when state in [:dispatched, :running, :committing, :held], do: :in_flight
+  def classify(%Status{state: state})
+      when state in [:dispatched, :running, :committing, :recovering, :reviewing, :held, :done, :failed], do: state
 
   @spec run_entry(String.t()) :: [run_entry()]
   defp run_entry(run_id) do

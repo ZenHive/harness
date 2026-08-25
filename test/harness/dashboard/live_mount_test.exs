@@ -43,8 +43,15 @@ defmodule Harness.Dashboard.LiveMountTest do
     test "mounts the index, listing the registered project", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/harness")
 
+      assert length(Regex.scan(~r/<h1(?:\s|>)/, html)) == 1
+      assert html =~ "Harness fleet"
       assert html =~ "Active runs"
       assert html =~ "livemount-demo"
+
+      {active_at, _} = :binary.match(html, "Active runs")
+      {history_at, _} = :binary.match(html, "Run history")
+      {ops_at, _} = :binary.match(html, "Audit &amp; land ops")
+      assert active_at < history_at and history_at < ops_at
     end
 
     test "renders a persistent no-op settings-store banner", %{conn: conn} do
@@ -63,6 +70,7 @@ defmodule Harness.Dashboard.LiveMountTest do
       assert html =~ ~s(class="empty-state")
       assert html =~ "The fleet is idle — no run is executing."
       assert html =~ "No merge or audit step has been reported since this page was opened."
+      refute html =~ ~s(<tbody id="active-runs")
 
       # Under a project filter the idle claim narrows to that project — the rest
       # of the fleet is out of the table's scope and so out of the sentence.

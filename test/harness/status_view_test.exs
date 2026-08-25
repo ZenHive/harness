@@ -38,42 +38,28 @@ defmodule Harness.StatusViewTest do
     assert output =~ "Cron polling: next tick 2026-05-27 02:00:00Z (0 */2 * * *)"
   end
 
-  test "classify/1 maps lifecycle states into the four buckets" do
-    assert StatusView.classify(%Status{state: :running, run_id: "r", task_id: "1"}) == :in_flight
-    assert StatusView.classify(%Status{state: :recovering, run_id: "r", task_id: "1"}) == :repairing
-    assert StatusView.classify(%Status{state: :reviewing, run_id: "r", task_id: "1"}) == :repairing
-    assert StatusView.classify(%Status{state: :done, run_id: "r", task_id: "1"}) == :green
-    assert StatusView.classify(%Status{state: :failed, run_id: "r", task_id: "1"}) == :red
-  end
-
-  test "classify/1 covers every lifecycle state in the Status typespec" do
+  test "classify/1 gives every lifecycle state its identically named bucket" do
     # Regression guard for Task 148: a Run state added without a classify/1
     # clause crashes every concurrent snapshot/0 caller, poisoning the
     # snapshot for all dispatched runs.
-    in_flight_states = [:dispatched, :running, :committing, :held]
-
-    for state <- in_flight_states do
-      assert StatusView.classify(%Status{state: state, run_id: "r", task_id: "1"}) == :in_flight
+    for state <- [:dispatched, :running, :committing, :recovering, :reviewing, :held, :done, :failed] do
+      assert StatusView.classify(%Status{state: state, run_id: "r", task_id: "1"}) == state
     end
-
-    assert StatusView.classify(%Status{state: :reviewing, run_id: "r", task_id: "1"}) == :repairing
-    assert StatusView.classify(%Status{state: :done, run_id: "r", task_id: "1"}) == :green
-    assert StatusView.classify(%Status{state: :failed, run_id: "r", task_id: "1"}) == :red
   end
 
   test "render/1 groups runs into the four buckets with failure and availability detail" do
     snapshot = %{
       runs: [
-        %{status: %Status{run_id: "run-a", task_id: "1", state: :running}, bucket: :in_flight, detail: nil},
+        %{status: %Status{run_id: "run-a", task_id: "1", state: :running}, bucket: :running, detail: nil},
         %{
           status: %Status{run_id: "run-b", task_id: "2", state: :reviewing},
-          bucket: :repairing,
+          bucket: :reviewing,
           detail: nil
         },
-        %{status: %Status{run_id: "run-c", task_id: "3", state: :done}, bucket: :green, detail: nil},
+        %{status: %Status{run_id: "run-c", task_id: "3", state: :done}, bucket: :done, detail: nil},
         %{
           status: %Status{run_id: "run-d", task_id: "4", state: :failed, reason: :cancelled},
-          bucket: :red,
+          bucket: :failed,
           detail: "cancelled"
         }
       ],
@@ -83,13 +69,13 @@ defmodule Harness.StatusViewTest do
 
     output = StatusView.render(snapshot)
 
-    assert output =~ "IN FLIGHT (1)"
+    assert output =~ "RUNNING (1)"
     assert output =~ "task 1  run-a  running"
-    assert output =~ "REPAIRING (1)"
+    assert output =~ "REVIEWING (1)"
     assert output =~ "task 2  run-b  reviewing"
-    assert output =~ "GREEN (1)"
+    assert output =~ "DONE (1)"
     assert output =~ "task 3  run-c  done"
-    assert output =~ "RED (1)"
+    assert output =~ "FAILED (1)"
     assert output =~ "task 4  run-d  failed  cancelled"
     assert output =~ "UNAVAILABLE AGENTS (1)"
     assert output =~ "FakeAdapter  review stuck on task-7: implementer hit a usage limit"
@@ -105,7 +91,7 @@ defmodule Harness.StatusViewTest do
 
     entry = StatusView.run_entry_for(status)
 
-    assert entry.bucket == :red
+    assert entry.bucket == :failed
     assert entry.detail == "Configured model is unavailable"
   end
 
@@ -166,8 +152,8 @@ defmodule Harness.StatusViewTest do
       assert Enum.map(mine, & &1.status.run_id) == ~w(sv-hist-003 sv-hist-002 sv-hist-001)
 
       buckets = Map.new(mine, &{&1.status.run_id, &1.bucket})
-      assert buckets["sv-hist-003"] == :green
-      assert buckets["sv-hist-002"] == :red
+      assert buckets["sv-hist-003"] == :done
+      assert buckets["sv-hist-002"] == :failed
     end
 
     test "excludes a run that is still live (the live entry wins)" do
@@ -211,12 +197,12 @@ defmodule Harness.StatusViewTest do
   describe "run_entry_for/1" do
     test "wraps a status into a classified, detailed entry" do
       entry = StatusView.run_entry_for(%Status{run_id: "e-1", task_id: "1", state: :running})
-      assert %{status: %Status{run_id: "e-1"}, bucket: :in_flight, detail: nil} = entry
+      assert %{status: %Status{run_id: "e-1"}, bucket: :running, detail: nil} = entry
 
       failed =
         StatusView.run_entry_for(%Status{run_id: "e-2", task_id: "1", state: :failed, reason: :cancelled})
 
-      assert %{bucket: :red, detail: "Run was cancelled"} = failed
+      assert %{bucket: :failed, detail: "Run was cancelled"} = failed
     end
   end
 
@@ -309,7 +295,7 @@ defmodule Harness.StatusViewTest do
       entries = StatusView.live_runs()
       mine = Enum.find(entries, &(&1.status.run_id == run_id))
 
-      assert %{status: %Status{run_id: ^run_id, state: :running}, bucket: :in_flight} = mine
+      assert %{status: %Status{run_id: ^run_id, state: :running}, bucket: :running} = mine
 
       assert :ok = Run.cancel(run_id)
     end

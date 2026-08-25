@@ -145,6 +145,7 @@ defmodule Harness.Dashboard.Live do
      |> assign(:events_last_seq, 0)
      |> assign(:last_transcript_at, nil)
      |> assign(:run_status, nil)
+     |> assign(:review_record, nil)
      |> assign(:run_diff, nil)
      |> assign(:run_id, nil)
      |> assign(:task_item, nil)
@@ -169,6 +170,7 @@ defmodule Harness.Dashboard.Live do
     |> maybe_unsubscribe(socket.assigns[:run_id])
     |> assign(:run_id, nil)
     |> assign(:run_status, nil)
+    |> assign(:review_record, nil)
     |> assign(:selected_project, selected)
     |> assign(:counts, bucket_counts(%{runs: runs}))
     |> assign(:active_empty?, active == [])
@@ -191,6 +193,7 @@ defmodule Harness.Dashboard.Live do
       |> assign(:events_last_seq, 0)
       |> assign(:last_transcript_at, nil)
       |> assign(:run_diff, nil)
+      |> assign(:review_record, load_review_record(run_id))
 
     # Resolve the source once: a live run streams over PubSub; a settled run is
     # replayed from its persisted LogRecord so the drill-down survives a restart.
@@ -422,11 +425,17 @@ defmodule Harness.Dashboard.Live do
 
   @spec apply_run_settled(Socket.t(), Status.t()) :: Socket.t()
   defp apply_run_settled(%{assigns: %{live_action: :show}} = socket, %Status{} = status) do
-    refresh_focused_run(socket, status)
+    socket = refresh_focused_run(socket, status)
+
+    if socket.assigns.run_id == status.run_id do
+      assign(socket, :review_record, load_review_record(status.run_id))
+    else
+      socket
+    end
   end
 
   defp apply_run_settled(socket, %Status{} = status) do
-    entry = StatusView.run_entry_for(status)
+    entry = settled_entry(status)
     history_all = prepend_history(entry, socket.assigns.history_all)
 
     socket =
@@ -444,6 +453,17 @@ defmodule Harness.Dashboard.Live do
     else
       socket
     end
+  end
+
+  @spec settled_entry(Status.t()) :: StatusView.run_entry()
+  defp settled_entry(%Status{} = status) do
+    concerns =
+      case load_review_record(status.run_id) do
+        %LogRecord{review_concerns: concerns} -> concerns || []
+        nil -> []
+      end
+
+    status |> StatusView.run_entry_for() |> Map.put(:review_concerns, concerns)
   end
 
   @spec refresh_focused_run(Socket.t(), Status.t()) :: Socket.t()
@@ -614,10 +634,19 @@ defmodule Harness.Dashboard.Live do
       {:ok, [%LogRecord{} = record | _]} ->
         socket
         |> assign(:run_status, Status.from_log_record(record))
+        |> assign(:review_record, record)
         |> replay_transcript(record)
 
       _ ->
         assign(socket, :run_status, nil)
+    end
+  end
+
+  @spec load_review_record(String.t()) :: LogRecord.t() | nil
+  defp load_review_record(run_id) do
+    case ResultStore.list_run_records(run_id: run_id) do
+      {:ok, [%LogRecord{} = record | _]} -> record
+      _ -> nil
     end
   end
 
@@ -732,20 +761,25 @@ defmodule Harness.Dashboard.Live do
   @spec render_index(map()) :: Rendered.t()
   defp render_index(assigns) do
     ~H"""
+    <h1>Harness fleet</h1>
     <div class="topbar">
       <strong>Project:</strong>
       <.project_switcher projects={@projects} selected={@selected_project} />
-      <span class="count">{@counts.in_flight} in flight</span>
-      <span class="count">{@counts.repairing} repairing</span>
-      <span class="count">{@counts.green} green</span>
-      <span class="count">{@counts.red} red</span>
       <a href="/harness/kpi">Agent KPIs →</a>
       <a href="/harness/oban">Open Oban Web →</a>
     </div>
 
-    <Components.operator_flash notice={@notice} include_persistent={false} />
+    <div class="kpi-strip fleet-counts" aria-label="Run state counts">
+      <div
+        :for={{state, count} <- count_tiles(@counts)}
+        class={[~c"kpi-stat", count == 0 && ~c"is-zero"]}
+      >
+        <span class="kpi-stat-num">{count}</span>
+        <span class="kpi-stat-label">{bucket_label(state)}</span>
+      </div>
+    </div>
 
-    <.ops_panel ops={@ops} />
+    <Components.operator_flash notice={@notice} include_persistent={false} />
 
     <h2>Active runs</h2>
     <p :if={@active_empty?} class="empty-state">{active_empty_line(@selected_project)}</p>
@@ -755,6 +789,7 @@ defmodule Harness.Dashboard.Live do
       summaries={@roadmap}
       landable_projects={landable_project_names(@projects)}
       caption="Active runs"
+      empty={@active_empty?}
     />
 
     <h2>
@@ -776,7 +811,10 @@ defmodule Harness.Dashboard.Live do
       summaries={@roadmap}
       landable_projects={landable_project_names(@projects)}
       caption="Run history"
+      empty={@history_empty?}
     />
+
+    <.ops_panel ops={@ops} />
     """
   end
 
@@ -811,6 +849,7 @@ defmodule Harness.Dashboard.Live do
     <nav :if={@run_status != nil} class="run-detail-nav">
       <a href="#run-info">Run info</a>
       <a :if={@task_item != nil} href="#run-task">Task</a>
+      <a :if={@review_record != nil} href="#review-testimony">Review</a>
       <a href="#run-diff">Changed files</a>
       <a href="#run-transcript">Transcript</a>
     </nav>
@@ -884,6 +923,8 @@ defmodule Harness.Dashboard.Live do
         </dl>
       </details>
     </div>
+
+    <.review_testimony :if={@review_record != nil} record={@review_record} />
 
     <.task_section :if={@task_item != nil} item={@task_item} />
 
@@ -1028,6 +1069,7 @@ defmodule Harness.Dashboard.Live do
   attr(:summaries, :map, default: %{})
   attr(:landable_projects, :any, default: MapSet.new())
   attr(:caption, :string, required: true)
+  attr(:empty, :boolean, required: true)
 
   # Shared by the "Active runs" and "Run history" tables. `rows` is a
   # `Phoenix.LiveView` stream; the `<tbody>` carries `phx-update="stream"` and a
@@ -1038,45 +1080,109 @@ defmodule Harness.Dashboard.Live do
   @spec run_table(map()) :: Rendered.t()
   defp run_table(assigns) do
     ~H"""
-    <table>
-      <caption>{@caption}</caption>
-      <thead>
-        <tr>
-          <th scope="col">Task</th>
-          <th scope="col">Project</th>
-          <th scope="col">Run</th>
-          <th scope="col">Agent</th>
-          <th scope="col">Model</th>
-          <th scope="col">State</th>
-          <th scope="col">Verdict</th>
-          <th scope="col">Landed</th>
-          <th scope="col">Detail</th>
-          <th scope="col">Action</th>
-        </tr>
-      </thead>
-      <tbody id={@id} phx-update="stream">
-        <tr :for={{dom_id, entry} <- @rows} id={dom_id}>
-          <td>{entry.status.task_id}</td>
-          <td>{entry.status.project_name || "—"}</td>
-          <td><.run_link run_id={entry.status.run_id} /></td>
-          <td><code>{stage_agent_label(entry.status)}</code></td>
-          <td>{model_label(entry.status.agent, entry.status.model, "")}</td>
-          <td>
-            <Components.bucket_badge bucket={entry.bucket} label={to_string(entry.status.state)} />
-          </td>
-          <td>{verdict_label(entry.status.review_verdict)}</td>
-          <td>{landed_label(entry.status)}</td>
-          <td>{entry.detail || ""}</td>
-          <td>
-            <.row_actions
-              status={entry.status}
-              summaries={@summaries}
-              landable_projects={@landable_projects}
-            />
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <div :if={!@empty} class="table-scroll run-table-scroll">
+      <table class="run-table">
+        <caption>{@caption}</caption>
+        <thead>
+          <tr>
+            <th scope="col">Task</th>
+            <th scope="col">Project</th>
+            <th scope="col">Run</th>
+            <th scope="col">Agent</th>
+            <th scope="col">Model</th>
+            <th scope="col">State</th>
+            <th scope="col">Verdict</th>
+            <th scope="col">Landed</th>
+            <th scope="col">Detail</th>
+            <th scope="col">Action</th>
+          </tr>
+        </thead>
+        <tbody id={@id} phx-update="stream">
+          <tr
+            :for={{dom_id, entry} <- @rows}
+            id={dom_id}
+            class={entry.status.review_warning? && "has-review-warning"}
+          >
+            <td data-label="Task">{entry.status.task_id}</td>
+            <td data-label="Project">{entry.status.project_name || "—"}</td>
+            <td data-label="Run"><.run_link run_id={entry.status.run_id} /></td>
+            <td data-label="Agent"><code>{stage_agent_label(entry.status)}</code></td>
+            <td data-label="Model">{model_label(entry.status.agent, entry.status.model, "")}</td>
+            <td data-label="State">
+              <Components.bucket_badge
+                bucket={badge_bucket(entry.status.state)}
+                label={bucket_label(entry.status.state)}
+              />
+            </td>
+            <td data-label="Verdict">
+              {verdict_label(entry.status.review_verdict)}
+              <span :if={entry.review_concerns != []} class="review-warning-mark">concerns</span>
+              <span
+                :if={entry.status.review_warning? and entry.review_concerns == []}
+                class="review-warning-mark"
+              >review warning</span>
+            </td>
+            <td data-label="Landed">{landed_label(entry.status)}</td>
+            <td data-label="Detail">
+              <details :if={entry.detail not in [nil, ""]} class="run-detail-disclosure">
+                <summary>{entry.detail}</summary>
+                <div>{entry.detail}</div>
+              </details>
+            </td>
+            <td data-label="Action">
+              <.row_actions
+                status={entry.status}
+                summaries={@summaries}
+                landable_projects={@landable_projects}
+              />
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    """
+  end
+
+  attr(:record, :map, required: true)
+
+  @spec review_testimony(map()) :: Rendered.t()
+  defp review_testimony(assigns) do
+    ~H"""
+    <section
+      id="review-testimony"
+      class={[
+        ~c"run-section",
+        ~c"review-testimony",
+        @record.review_warning? && ~c"has-review-warning"
+      ]}
+    >
+      <h2>Reviewer testimony</h2>
+      <dl class="field">
+        <dt :if={is_integer(@record.reviewer_diff_size)}>Reviewer diff size</dt>
+        <dd :if={is_integer(@record.reviewer_diff_size)}>
+          {@record.reviewer_diff_size} changed lines
+        </dd>
+      </dl>
+      <.review_fact label="Concerns" value={@record.review_concerns} />
+      <.review_fact label="Checks" value={@record.review_checks} />
+      <.review_fact label="Ratings" value={@record.review_ratings} />
+      <.review_fact label="Facets" value={@record.review_facets} />
+      <.review_fact label="Skills" value={@record.review_skills} />
+      <.review_fact label="Proposed tasks" value={@record.review_proposed_tasks} />
+    </section>
+    """
+  end
+
+  attr(:label, :string, required: true)
+  attr(:value, :any, required: true)
+
+  @spec review_fact(map()) :: Rendered.t()
+  defp review_fact(assigns) do
+    ~H"""
+    <div :if={present_review_fact?(@value)} class="review-fact">
+      <h3>{@label}</h3>
+      <pre>{review_fact_text(@value)}</pre>
+    </div>
     """
   end
 
@@ -1388,10 +1494,35 @@ defmodule Harness.Dashboard.Live do
           required(StatusView.bucket()) => non_neg_integer()
         }
   def bucket_counts(%{runs: runs}) do
-    Enum.reduce(runs, %{in_flight: 0, repairing: 0, green: 0, red: 0}, fn entry, acc ->
+    empty = %{dispatched: 0, running: 0, committing: 0, recovering: 0, reviewing: 0, held: 0, done: 0, failed: 0}
+
+    Enum.reduce(runs, empty, fn entry, acc ->
       Map.update(acc, entry.bucket, 1, &(&1 + 1))
     end)
   end
+
+  @doc false
+  @spec bucket_label(Status.state()) :: String.t()
+  def bucket_label(state), do: Atom.to_string(state)
+
+  @spec count_tiles(map()) :: [{Status.state(), non_neg_integer()}]
+  defp count_tiles(counts) do
+    for state <- [:dispatched, :running, :committing, :recovering, :reviewing, :held, :done, :failed],
+        do: {state, Map.fetch!(counts, state)}
+  end
+
+  @spec badge_bucket(Status.state()) :: :in_flight | :repairing | :green | :red
+  defp badge_bucket(state) when state in [:dispatched, :running, :committing, :reviewing, :held], do: :in_flight
+  defp badge_bucket(:recovering), do: :repairing
+  defp badge_bucket(:done), do: :green
+  defp badge_bucket(:failed), do: :red
+
+  @spec present_review_fact?(term()) :: boolean()
+  defp present_review_fact?(value), do: value not in [nil, "", [], %{}]
+
+  @spec review_fact_text(term()) :: String.t()
+  defp review_fact_text(value) when is_binary(value), do: value
+  defp review_fact_text(value), do: inspect(value, pretty: true, limit: :infinity)
 
   @doc false
   @spec filter_runs([StatusView.run_entry()], String.t() | nil) :: [StatusView.run_entry()]

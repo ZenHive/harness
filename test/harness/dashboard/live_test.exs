@@ -33,34 +33,61 @@ defmodule Harness.Dashboard.LiveTest do
       project_name: Keyword.get(opts, :project_name),
       landed_sha: Keyword.get(opts, :landed_sha),
       state: Keyword.get(opts, :state, :running),
-      review_verdict: Keyword.get(opts, :review_verdict, nil)
+      review_verdict: Keyword.get(opts, :review_verdict, nil),
+      review_warning?: Keyword.get(opts, :review_warning?, false)
     }
 
     %{
       status: status,
-      bucket: Keyword.get(opts, :bucket, :in_flight),
-      detail: Keyword.get(opts, :detail, nil)
+      bucket: Keyword.get(opts, :bucket, Keyword.get(opts, :state, :running)),
+      detail: Keyword.get(opts, :detail, nil),
+      review_concerns: Keyword.get(opts, :review_concerns, [])
     }
   end
 
   describe "bucket_counts/1" do
     test "returns zeros when the snapshot has no runs" do
-      assert Live.bucket_counts(%{runs: []}) == %{in_flight: 0, repairing: 0, green: 0, red: 0}
+      assert Live.bucket_counts(%{runs: []}) == %{
+               dispatched: 0,
+               running: 0,
+               committing: 0,
+               recovering: 0,
+               reviewing: 0,
+               held: 0,
+               done: 0,
+               failed: 0
+             }
     end
 
     test "groups runs by their classified bucket" do
       snapshot = %{
         runs: [
-          run_entry("a", bucket: :in_flight),
-          run_entry("b", bucket: :in_flight),
-          run_entry("c", bucket: :repairing),
-          run_entry("d", bucket: :green),
-          run_entry("e", bucket: :red),
-          run_entry("f", bucket: :red)
+          run_entry("a", bucket: :running),
+          run_entry("b", bucket: :running),
+          run_entry("c", bucket: :recovering),
+          run_entry("d", bucket: :done),
+          run_entry("e", bucket: :failed),
+          run_entry("f", bucket: :failed)
         ]
       }
 
-      assert Live.bucket_counts(snapshot) == %{in_flight: 2, repairing: 1, green: 1, red: 2}
+      assert Live.bucket_counts(snapshot) == %{
+               dispatched: 0,
+               running: 2,
+               committing: 0,
+               recovering: 1,
+               reviewing: 0,
+               held: 0,
+               done: 1,
+               failed: 2
+             }
+    end
+  end
+
+  test "topbar count and row badge share labels for split states" do
+    for state <- [:reviewing, :recovering, :held] do
+      assert Live.bucket_label(state) == Atom.to_string(state)
+      assert StatusView.classify(%Status{run_id: "r", task_id: "1", state: state}) == state
     end
   end
 
@@ -817,6 +844,67 @@ defmodule Harness.Dashboard.LiveTest do
       assert status.review_warning? == true
     end
 
+    test "renders the reviewer's open-vocabulary testimony without deriving a score" do
+      status = %Status{
+        run_id: "r",
+        task_id: "1",
+        state: :done,
+        review_verdict: :approve,
+        review_warning?: true
+      }
+
+      record = %LogRecord{
+        batch_id: "b",
+        run_id: "r",
+        task_id: "1",
+        adapter: FakeAdapter,
+        state: :done,
+        reason: :approved,
+        duration_ms: 1,
+        verdict: :approve,
+        reviewer_diff_size: 96,
+        review_warning?: true,
+        review_concerns: ["release caveat exactly as written"],
+        review_checks: %{"mix check" => %{"passed" => false, "log_path" => "/tmp/review.log"}},
+        review_ratings: %{"truthfulness" => 7},
+        review_facets: %{"surface" => "liveview"},
+        review_skills: %{"accessibility" => %{"score" => 6, "note" => "keyboard pass"}},
+        review_proposed_tasks: [%{"title" => "Follow-up witness"}]
+      }
+
+      html =
+        status
+        |> show_render_assigns("")
+        |> Map.put(:review_record, record)
+        |> Live.render()
+        |> rendered_to_string()
+
+      assert html =~ "Reviewer testimony"
+      assert html =~ "96 changed lines"
+      assert html =~ "release caveat exactly as written"
+      assert html =~ "mix check"
+      assert html =~ "/tmp/review.log"
+      assert html =~ "truthfulness"
+      assert html =~ "liveview"
+      assert html =~ "accessibility"
+      assert html =~ "Follow-up witness"
+      refute html =~ "average"
+      refute html =~ "composite"
+    end
+
+    test "omits absent reviewer testimony fields instead of inventing placeholders" do
+      status = %Status{run_id: "r", task_id: "1", state: :done, review_verdict: :approve}
+
+      html =
+        status
+        |> show_render_assigns("")
+        |> Live.render()
+        |> rendered_to_string()
+
+      refute html =~ "Reviewer testimony"
+      refute html =~ "Reviewer diff size"
+    end
+
     test "renders the recovery-reviewer pass as the active live stage" do
       started_at = ~U[2026-06-17 08:00:00.000Z]
       reviewing_at = DateTime.shift(started_at, second: 5)
@@ -1060,7 +1148,8 @@ defmodule Harness.Dashboard.LiveTest do
       raw_view: false,
       now: DateTime.utc_now(:millisecond),
       roadmap: %{},
-      projects: []
+      projects: [],
+      review_record: nil
     }
   end
 

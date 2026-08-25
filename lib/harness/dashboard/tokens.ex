@@ -234,8 +234,11 @@ defmodule Harness.Dashboard.Tokens do
       }
       .navbar-links {
         display: flex;
+        flex-wrap: wrap;
+        justify-content: flex-end;
         align-items: center;
         gap: var(--space-1);
+        min-width: 0;
       }
       .navbar-links a {
         text-decoration: none;
@@ -732,6 +735,10 @@ defmodule Harness.Dashboard.Tokens do
         text-transform: uppercase;
         letter-spacing: 0.05em;
       }
+      .kpi-stat.is-zero { background: transparent; }
+      .kpi-stat.is-zero .kpi-stat-num,
+      .kpi-stat.is-zero .kpi-stat-label { color: var(--text-muted); font-weight: 400; }
+      .fleet-counts { grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr)); }
 
       .kpi-section {
         margin-block: var(--space-5);
@@ -794,7 +801,26 @@ defmodule Harness.Dashboard.Tokens do
       .run-detail-nav a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
       /* Wrap a wide table (the ledger's dynamic rating columns) so it scrolls in place */
-      .table-scroll { overflow-x: auto; }
+      .table-scroll { overflow-x: auto; max-width: 100%; }
+      .run-detail-disclosure { max-width: 24rem; }
+      .run-detail-disclosure summary {
+        max-width: 24rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        cursor: pointer;
+      }
+      .run-detail-disclosure div { margin-top: var(--space-2); white-space: normal; overflow-wrap: anywhere; }
+      .review-warning-mark {
+        display: block;
+        margin-top: var(--space-1);
+        color: var(--verdict-warn);
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+      }
+      .has-review-warning { background: rgba(184, 123, 53, 0.08); }
+      .review-testimony.has-review-warning { border-color: var(--verdict-warn); }
+      .review-fact pre { white-space: pre-wrap; overflow-wrap: anywhere; }
       .kpi-section,
       .run-section { scroll-margin-top: calc(var(--navbar-height) + 3rem); }
 
@@ -1861,6 +1887,44 @@ defmodule Harness.Dashboard.Tokens do
       @keyframes cursor-pulse {
         0%, 60% { opacity: 1; }
         61%, 100% { opacity: 0.15; }
+      }
+
+      @media (max-width: 900px) {
+        .navbar { height: auto; min-height: var(--navbar-height); gap: var(--space-2); padding: var(--space-2) var(--space-3); }
+        .navbar-links { flex: 1 1 100%; justify-content: flex-start; }
+        .navbar-links a { padding: var(--space-2); }
+        .page-main { padding-inline: var(--space-3); }
+        .run-table-scroll { overflow: visible; }
+        .run-table, .run-table tbody, .run-table tr, .run-table td { display: block; width: 100%; box-sizing: border-box; }
+        .run-table thead, .run-table caption { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+        .run-table { border: 0; }
+        .run-table tr {
+          margin-bottom: var(--space-3);
+          border: 1px solid var(--rule);
+          border-radius: 0.5rem;
+          background: var(--surface);
+          overflow: hidden;
+        }
+        .run-table td {
+          display: grid;
+          grid-template-columns: minmax(6rem, 32%) minmax(0, 1fr);
+          gap: var(--space-3);
+          padding: var(--space-2) var(--space-3);
+          border-bottom: 1px solid var(--rule);
+          overflow-wrap: anywhere;
+        }
+        .run-table td:last-child { border-bottom: 0; }
+        .run-table td::before {
+          content: attr(data-label);
+          color: var(--text-muted);
+          font-family: var(--font-display);
+          font-size: var(--text-xs);
+          font-weight: 600;
+          letter-spacing: 0.04em;
+          text-transform: uppercase;
+        }
+        .run-detail-disclosure, .run-detail-disclosure summary { max-width: 100%; min-width: 0; }
+        .row-actions button, .row-actions a { min-height: 44px; }
       }
 
       @media (prefers-reduced-motion: reduce) {
