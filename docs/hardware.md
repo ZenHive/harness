@@ -196,6 +196,18 @@ Installed: `git` 2.43, `cargo` 1.98, Postgres 18.6, `claude`
       `== :prod` a crashed supervision tree left a live-but-dead BEAM that
       `Restart=` never noticed.
 - [x] Worktree root off ext4 via `HARNESS_WORKTREE_ROOT`
+- [x] Project credentials + GitHub access for the registered targets. The
+      integration suites of most registered projects flunk without their
+      provider keys, so the node must carry them: `ExecStart` is a wrapper that
+      sources the operator's `~/.secrets` before `exec mix run --no-halt`, and
+      every agent Port inherits that env. A systemd `EnvironmentFile=` cannot
+      replace it — the file is shell syntax (`export`, quoting, `${VAR}`), which
+      `EnvironmentFile=` does not parse. Credentials that no repo references
+      (home-network / ISP logins) are deliberately withheld: a box running
+      dispatched agents should not hold access it has no use for. GitHub is a
+      dedicated per-host ed25519 key whose private half never leaves the server,
+      registered on the account and revocable alone; the checkouts use `git@`
+      remotes so the lander can push
 - [ ] Verify reflink end-to-end (`filefrag -v` → `shared` extents, `df` delta) —
       **blocked on the `cp -cR` fix above**; verify with `filefrag`/`df`, never
       with `du`, which counts blocks per inode and so reports a *successful*
