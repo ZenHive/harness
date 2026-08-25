@@ -12020,7 +12020,7 @@ scored_at = "2026-08-24"
 id = "400"
 phase = 22
 bundle = "autolanding"
-status = "in_progress"
+status = "done"
 title = "Self-land must not mutate the running harness node's own checkout — Git.TargetSync needs a self-host guard"
 scores = { d = 4, b = 7, u = 7 }
 acceptance_criteria = ["A landing (or durable roadmap write) whose target project's local source directory IS the source tree of the currently running harness node does not advance that checkout's working tree. It resolves to a skip carrying a reason that names the self-host case, exactly like the existing dirty-tree and non-ff skips — never a silent no-op and never a --force.", """The self-host case is detected from a fact, not a name match on the string "harness": the check compares the project's resolved local source path against the running node's own source path (e.g. the application's compiled source root / File.cwd! at boot), so a differently-named clone of harness and a rename of the registered project both still trip the guard.""", "The skip is witnessed the same way the other skips are, so the operator learns their local target is behind origin and syncs manually; the landing itself still succeeds (the ff-push to origin is unaffected and must not be gated on the local sync).", "Every non-self-host project keeps today's behaviour byte-for-byte: operator off target -> ff the branch ref; operator on target with a clean tree -> merge --ff-only; dirty or non-ff -> the existing skip. Tests pin all three plus the new fourth case, plus the behind_count drift message, using local git fixtures, and preserve the existing missing-remote error assertion (this coverage was rescoped out of task 361 on 2026-08-25 so the same module is not tested twice).", "A test proves the guard from the caller side, not only from Git.TargetSync: a lander/durable-write path invoked for a self-host project leaves the checkout's HEAD where it was.", "CLAUDE.md's claim that the lander 'deliberately never touches your checkout' is corrected to describe what TargetSync actually does and when it now declines, and AGENTS.md is regenerated from it.", "mix check.dispatch green plus focused mix test.json runs for the TargetSync, lander and durable-roadmap paths."]
@@ -12043,9 +12043,16 @@ TargetSync is correct and wanted for every other registered project — an opera
 
 Dispatch trigger: harness runtime and a self-hosting invariant — the lander/roadmap-durability path that every autonomous land walks.
 """
+implemented = "Landed by cursor via merge-train; reviewer-approved (run run-1787617093965-ed32643e, 630d83dd15a545220c0fc7b64f46124e721a2f54)."
+delivered_by = "cursor"
+verified = true
+verified_by = "grok"
+verification_ref = "harness-run:run-1787617093965-ed32643e"
 created_at = "2026-08-24"
 started_at = "2026-08-25"
 scored_at = "2026-08-24"
+done_at = "2026-08-25"
+shipped_in = "630d83dd15a545220c0fc7b64f46124e721a2f54"
 
 [[task]]
 id = "401"

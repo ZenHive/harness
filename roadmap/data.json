@@ -18136,7 +18136,7 @@
       "id": "400",
       "phase": 22,
       "bundle": "autolanding",
-      "status": "in_progress",
+      "status": "done",
       "title": "Self-land must not mutate the running harness node's own checkout — Git.TargetSync needs a self-host guard",
       "scores": {
         "d": 4,
@@ -18172,10 +18172,17 @@
         "lib/harness/notification.ex",
         "test/harness/git/target_sync_test.exs"
       ],
+      "shipped_in": "630d83dd15a545220c0fc7b64f46124e721a2f54",
       "body": "Harness landed its own task 397 on 2026-08-24 and killed the node that was running the land.\n\nObserved facts, all from ground truth rather than recollection:\n\n- The delivery commit 6596acd deleted 18 files under lib/harness/agent_adapter/ and moved that code to a git dependency, so mix.exs and mix.lock both changed.\n- `git reflog` in the operator's live harness checkout records two entries, `merge origin/main: Fast-forward` at 21:07:22 and 21:07:30 local time. Nothing in the session ran those by hand: they are Harness.Git.TargetSync, which the lander calls after its ff-push and durable roadmap writes call after theirs (lib/harness/git/target_sync.ex, extracted in task 6614's durable-roadmap work).\n- Fifteen seconds later, at 13:07:45 UTC, the running node lost its own modules. oban_jobs rows 8103 and 8106 (Harness.Audit.Worker) failed with `function Harness.Audit.run/1 is undefined (module Harness.Audit is not available)`; row 8104 (Harness.Run.Worker) failed with `(EXIT) :undef` and then `module is not a worker: Harness.Run.Worker`. Two post-merge audits were discarded and one live zen_websocket run was thrown back to attempt 3.\n\nPremise unverified — confirm before building on it: the exact step that purged the beam files is not established. The old node's logs are gone with it, and deleting .ex files does not by itself unload loaded modules, so something recompiled or wiped _build/dev/lib/harness/ebin in the window between the ff-merge and the failures. Establish that mechanism first; it may change what the right guard is. What IS established is that TargetSync mutated the working tree of the node performing the land, at the second the land happened.\n\nTargetSync is correct and wanted for every other registered project — an operator whose local target drifts behind origin hits the merge conflicts that motivated durable roadmap writes in the first place. Its three documented skip cases (operator off target, clean tree on target, dirty/non-ff) all reason about the operator's state and none of them reason about whether the repo being advanced is the one currently executing the code. Under dogfooding that is the common case, and the failure is silent until a job dies.\n\nDispatch trigger: harness runtime and a self-hosting invariant — the lander/roadmap-durability path that every autonomous land walks.\n",
       "created_at": "2026-08-24",
       "started_at": "2026-08-25",
+      "done_at": "2026-08-25",
       "scored_at": "2026-08-24",
+      "implemented": "Landed by cursor via merge-train; reviewer-approved (run run-1787617093965-ed32643e, 630d83dd15a545220c0fc7b64f46124e721a2f54).",
+      "delivered_by": "cursor",
+      "verified": true,
+      "verified_by": "grok",
+      "verification_ref": "harness-run:run-1787617093965-ed32643e",
       "cross_repo": []
     },
     {
