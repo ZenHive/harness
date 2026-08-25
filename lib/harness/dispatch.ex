@@ -891,7 +891,7 @@ defmodule Harness.Dispatch do
 
   api(
     :register_project,
-    "Register a project for dispatch from JSON scalars: build a validated %Harness.Project{} (with path expansion, same as a config entry) and register it. The JSON-native counterpart to Harness.ProjectRegistry.register/1. Runtime registration does NOT survive a BEAM restart unless :repo_enabled — for durable registration use config :harness, :projects.",
+    "Register a project for dispatch from JSON scalars: build a validated %Harness.Project{} (with path expansion, same as a config entry) and register it. The JSON-native counterpart to Harness.ProjectRegistry.register/1. Registration persists to Postgres by default (:repo_enabled defaults to true) and survives a BEAM restart. Set repo_enabled: false for ephemeral in-memory registration. config :harness, :projects only seeds missing rows on first boot.",
     params: [
       name: [
         kind: :value,

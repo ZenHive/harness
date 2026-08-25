@@ -9,7 +9,7 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (10 of 26 done · 1 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (10 of 27 done · 1 in progress)
 
 **Last shipped:** Task 358 — Bound KPI dashboard fleet-wide aggregate reads on run settlement, Task 361 — Add direct coverage for Harness.Store.EtsScope create/lookup and owner-exit table ownership, Task 389 — Expose roadmap_target_branch on the operator registration surfaces, Task 403 — Make the loopback posture true: Origin/Host guard on /harness/mcp + source-URL validation before git clone, Task 404 — Take the uncached SettingsStore reads and the synchronous CLI catalog probes off the 5s settings tick, Task 405 — Audit discovery filing writes into the operator's live checkout and is never committed on 2026-08-25
 
@@ -367,4 +367,5 @@
 | Task 404 | ✅ | 🎁 **audit-perf** · 🚀 **v0_16** · Take the uncached SettingsStore reads and the synchronous CLI catalog probes off the 5s settings tick [D:3/B:5/U:5 → Eff:1.67] 🚀 |
 | Task 405 | ✅ | 🎁 **roadmap-writeback** · 🚀 **v0_16** · 🐛 Audit discovery filing writes into the operator's live checkout and is never committed [D:3/B:7/U:6 → Eff:2.17] 🎯 |
 | Task 413 | 🔄 | 🎁 **witness-legibility** · Surface an in-flight audit signal on the fleet count strip, not just the ops panel [D:4/B:7/U:6 → Eff:1.62] 🚀 |
+| Task 414 | ⬜ | 🎁 **config-surface** · 🐛 Give dispatch-register_project a typed languages schema so MCP clients can send a JSON array [D:3/B:7/U:6 → Eff:2.17] 🎯 |
 <!-- TASKS:END -->

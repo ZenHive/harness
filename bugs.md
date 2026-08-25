@@ -6,6 +6,8 @@ Running log of confirmed defects. Newest first. Promote to `rmap new` tasks when
 
 ## 3. `dispatch-register_project` is uncallable over MCP — `nonempty_list(...)` in the `@spec` yields a typeless `languages` schema, so JSON clients stringify the array
 
+**Promoted 2026-08-25 (audit a8cffbd) → Task 414.** Left below as the original write-up.
+
 - **Severity:** moderate (the tool is advertised but provably uncallable from a standard MCP client with the documented argument; an orchestrator registering a project must drop to raw JSON-RPC or `project_eval`. Reproducible, 100%.)
 - **Surface:** descripex `@spec`→JSON-Schema derivation, consumed by `Harness.Manifest`/`Harness.Chat.Tools`; validation lands in `Harness.ProjectRegistry.validate_languages/1` (`lib/harness/project_registry.ex:508-509`).
 - **Discovered:** 2026-08-20, registering `zen_websocket` from a Claude Code session in that repo. Origin: zen_websocket.
@@ -23,7 +25,7 @@ In the first case the array arrived at `validate_languages/1` as the literal **s
 
 ### Root cause (two layers, neither in harness)
 
-`register_project/8` carries a usable `@spec` (`lib/harness/dispatch.ex:940-950`) and descripex's spec-derived enrichment does fire — but only for one of its two list params:
+`register_project/9` carries a usable `@spec` (`lib/harness/dispatch.ex`) and descripex's spec-derived enrichment does fire — but only for one of its two list params:
 
 | Param | `@spec` type | Emitted JSON Schema |
 |---|---|---|
@@ -91,6 +93,8 @@ Add a clause handling `{:cancel, {:redispatched, new_run_id}}` that settles the 
 ---
 
 ## 1. `dispatch-register_project` MCP description misframes persistence as opt-in (`:repo_enabled` is opt-out, defaults `true`)
+
+**Fixed 2026-08-25 (audit a8cffbd).** Reworded the `dispatch-register_project` MCP description, `ProjectRegistry.register/upsert` copy, and the driver-skill row so persistence is on-by-default. Left below as the original write-up.
 
 - **Severity:** minor (doc/accuracy — no runtime misbehavior, but actively misleads operators/agents into redundant work and false "registration will be lost" conclusions)
 - **Surface:** MCP tool description + `Harness.ProjectRegistry` moduledoc

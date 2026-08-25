@@ -9,11 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Audit discovery filing stays in the audit worktree (Task 405).** The audit prompt now points `rmap new` at `--tasks-path` inside the detached audit worktree rather than the project's registered source checkout, so filed tasks ride the `audit(<sha>)` commit. A red cold-check follow-up is committed in the same worktree (`audit(<sha>): file cold-check discovery`) before the audit push. Split-roadmap paths that are not descendants of the code repo fall back to the in-worktree `roadmap/tasks.toml` rather than escaping to the operator checkout.
+
+- **`dispatch-register_project` no longer describes Postgres persistence as opt-in.** `:repo_enabled` defaults to `true`; registration survives a BEAM restart unless the operator sets `repo_enabled: false`. `config :harness, :projects` remains first-boot seed-only. The MCP tool description, `ProjectRegistry.register/upsert` copy, and the driver-skill row now match that default.
+
 - **Compare lanes read the run's own state word.** `/harness/compare` lane badges labelled themselves with the colour bucket's name, so a reviewing lane read `repairing` while the Task 407 index badge read `reviewing` for the same run. The badge now carries the state word (or `approved`/`rejected` once settled) with the four-tone colour vocabulary unchanged — the same tone/label split `live.ex` uses.
 
 - **Historical run-detail `Elapsed` renders its persisted duration.** `Harness.Run.Status` now carries `duration_ms` and `from_log_record/1` copies it off the run record, so a settled run reconstructed from Postgres — where `started_at` is not a column — renders its measured wall-clock instead of an em-dash. Closes the reviewer concern left open by Task 406; a run with neither fact still renders the placeholder.
 
 ### Added
+
+- **`roadmap_target_branch` on the operator registration surfaces (Task 389).** `dispatch-register_project` takes an optional trailing `roadmap_target_branch` scalar (`register_project/9`), and the `/harness/settings` create/edit form reads and writes the field (blank stays `nil`). Same-repo registrations still omit it and derive the durable branch from `target_branch`; split-repo registrations need it or durable `mark_*` writes stay local. Invalid git branch names are rejected with `{:invalid_project, {:invalid_roadmap_target_branch, _}}`.
 
 - **Failed run detail now leads with diagnosis and recovery actions (Task 406).** The run page renders the same operator-language failure headline as the history index, states whether the implementer's branch contains retained commits, names the applicable recovery command, and keeps the raw reason behind a disclosure. Resume, escalate, re-land, delete, and kill controls now share one predicate-gated action group between the index and detail views; retained-branch copy is derived from persisted commit/review facts rather than the worktree path.
 
@@ -84,6 +90,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **KPI + ResultStore surface for self-heal recovery facts (Task 235).** `recovery_attempts`, `recovery_outcome`, `recovery_repaired`, and `recovery_token_usage` (persisted by Task 229) are now rolled up in `AgentKPI` and exposed via ResultStore aggregates and the `/harness/kpi` dashboard. Tests the v0_14 hypothesis with observable facts only; no new judgment in harness.
 
 ### Changed
+
+- **ExSlop recommended checks are now in the explicit Credo enabled list (Task 402).** `.credo.exs` appends `ExSlop.recommended_checks/0` instead of registering the plugin with none of its checks active. Pre-existing findings (literal `length/1` comparisons, dual atom/string key access, identity `case`, `Path.expand(priv)`, narrator docs) were fixed at source rather than suppressing the plugin.
 
 - **KPI settlement refreshes are coalesced and bounded (Task 358).** `/harness/kpi` now batches a burst of `:harness_run_settled` events into one deferred aggregate refresh per LiveView, then reopens the window for later settlements. The record-derived review-stuck and recovery aggregates read only the 1,000 newest runs instead of scanning the full ledger; tests pin both the refresh lifecycle and query limit.
 

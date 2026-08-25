@@ -62,7 +62,7 @@ defmodule Harness.ProjectRegistry do
 
   api(
     :register,
-    "Register a project struct under its name. When :repo_enabled, survives a BEAM restart via Postgres; config :harness, :projects only seeds missing rows on first boot.",
+    "Register a project struct under its name. Persists to Postgres by default (:repo_enabled defaults to true) and survives a BEAM restart. Set repo_enabled: false for ephemeral in-memory registration. config :harness, :projects only seeds missing rows on first boot.",
     params: [
       project: [
         # A %Harness.Project{} struct a stateless JSON caller cannot construct —
@@ -100,7 +100,7 @@ defmodule Harness.ProjectRegistry do
 
   api(
     :upsert,
-    "Replace or insert a project registration under its name. Updates the in-memory registry, persists the row when :repo_enabled, and ensures/scales the project's Oban queues.",
+    "Replace or insert a project registration under its name. Updates the in-memory registry, persists the row by default (:repo_enabled defaults to true), and ensures/scales the project's Oban queues. Set repo_enabled: false for ephemeral in-memory registration.",
     params: [
       project: [
         kind: :exchange_data,
