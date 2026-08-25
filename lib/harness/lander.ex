@@ -12,7 +12,7 @@ defmodule Harness.Lander do
     2. checks out the settled run's `harness/<run-id>` branch into a fresh
        **detached** worktree and, if `origin/<target>` has moved past it,
        rebases onto it,
-       3. fast-forward-pushes the tip to `origin/<target_branch>` (never `--force`;
+    3. fast-forward-pushes the tip to `origin/<target_branch>` (never `--force`;
        then fast-forwards the operator's local target via `Git.TargetSync` when
        that is safe — skipped and witnessed when dirty, non-ff, or self-host),
     4. writes the outcome back to rmap (`done` + `verified` + `shipped_in`),
