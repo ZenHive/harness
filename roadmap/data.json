@@ -18341,7 +18341,7 @@
       "phase": 23,
       "bundle": "audit-perf",
       "milestone": "v0_16",
-      "status": "in_progress",
+      "status": "done",
       "title": "Take the uncached SettingsStore reads and the synchronous CLI catalog probes off the 5s settings tick",
       "scores": {
         "d": 3,
@@ -18385,10 +18385,17 @@
         "ecto",
         "phoenix"
       ],
+      "shipped_in": "55456a41857a9e10242a90c03952b28a1f41ca1f",
       "body": "Surfaced by the 2026-08-25 project health audit (perf-audit, H2 + H3). Verified against source:\nHarness.SettingsStore has no read cache — every question routes to a fresh point read of the\nharness_settings table. Harness.ModelAvailability asks a lot of such questions: blocks/0\n(model_availability.ex:384) is a SettingsStore.fetch on every blocked_now?/agent_blocked?/\npair_blocked? call, and cached_catalog/1 (:465) is another per agent. SettingsLive.refresh/1\nfans out over every agent and model on a 5s :meta_tick, so one tick drives dozens of identical\nreads and each connected settings tab multiplies them.\n\nThe sharper half is H3. cached_or_probe/1 (:456) falls through to probe_and_cache/1 whenever\nthe cached catalog is not fresh, and probe_and_cache shells out via System.cmd to cursor-agent,\ngrok, pi, codex, and agy. That call happens inside the LiveView process on the tick path, so a\nstale catalog turns a 5s refresh into up to five synchronous CLI invocations while the socket\nwaits. Serve the stale value and revalidate out of band.\n\nHarness.Config already solved the first half for its own keys — a write-through cache over the\nsame SettingsStore. Give SettingsStore the equivalent so every consumer benefits rather than\ncaching once more at the ModelAvailability layer. The correctness constraint is that a put must\nbe visible to the next get: these keys drive routing and operator blocks, so a stale read is a\ndispatch to a model the operator just blocked.\n",
       "created_at": "2026-08-25",
       "started_at": "2026-08-25",
+      "done_at": "2026-08-25",
       "scored_at": "2026-08-25",
+      "implemented": "Landed by cursor via merge-train; reviewer-approved (run run-1787622461639-1c67e2ee, 55456a41857a9e10242a90c03952b28a1f41ca1f).",
+      "delivered_by": "cursor",
+      "verified": true,
+      "verified_by": "grok",
+      "verification_ref": "harness-run:run-1787622461639-1c67e2ee",
       "cross_repo": []
     }
   ]

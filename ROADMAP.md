@@ -9,9 +9,9 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (5 of 24 done · 2 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (6 of 24 done · 1 in progress)
 
-**Last shipped:** Task 358 — Bound KPI dashboard fleet-wide aggregate reads on run settlement on 2026-08-25
+**Last shipped:** Task 358 — Bound KPI dashboard fleet-wide aggregate reads on run settlement, Task 404 — Take the uncached SettingsStore reads and the synchronous CLI catalog probes off the 5s settings tick on 2026-08-25
 
 **Up next:** Task 361 — Add direct coverage for Harness.Store.EtsScope create/lookup and owner-exit table ownership [D:2/B:5/U:4 → Eff:2.25] 🎯
 <!-- FOCUS:END -->
@@ -361,5 +361,5 @@
 | Task 389 | ⬜ | 🎁 **config-surface** · 🚀 **v0_16** · Expose roadmap_target_branch on the operator registration surfaces [D:3/B:6/U:5 → Eff:1.83] 🚀 |
 | Task 391 | ⬜ | 🎁 **surface** · Four `roadmap-mark_*` MCP tools expose zero parameters — declare their params, then guard the class [D:3/B:6/U:6 → Eff:2.0] 🎯 |
 | Task 403 | 🔄 | 🎁 **audit-hygiene** · 🚀 **v0_16** · 🔒 Make the loopback posture true: Origin/Host guard on /harness/mcp + source-URL validation before git clone [D:2/B:9/U:7 → Eff:4.0] 🎯 |
-| Task 404 | 🔄 | 🎁 **audit-perf** · 🚀 **v0_16** · Take the uncached SettingsStore reads and the synchronous CLI catalog probes off the 5s settings tick [D:3/B:5/U:5 → Eff:1.67] 🚀 |
+| Task 404 | ✅ | 🎁 **audit-perf** · 🚀 **v0_16** · Take the uncached SettingsStore reads and the synchronous CLI catalog probes off the 5s settings tick [D:3/B:5/U:5 → Eff:1.67] 🚀 |
 <!-- TASKS:END -->
