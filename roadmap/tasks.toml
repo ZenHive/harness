@@ -12365,7 +12365,7 @@ shipped_in = "efd35720ccb02065ddbed0c80e504aaac327b12f"
 id = "407"
 phase = 24
 bundle = "witness-legibility"
-status = "pending"
+status = "in_progress"
 title = "Split the run-state bucket vocabulary and recompose the index around it"
 scores = { d = 3, b = 7, u = 6 }
 markers = ["parallel", "bug"]
@@ -12414,6 +12414,7 @@ read; the live fleet is buried under settled history; and the page announces emp
 the least readable way available.
 """
 created_at = "2026-08-25"
+started_at = "2026-08-25"
 scored_at = "2026-08-25"
 
 [[task]]
