@@ -75,10 +75,8 @@ The thing worth deduplicating is N worktrees carrying near-identical `deps/`
 and `_build/`. Two ways to get there:
 
 - **XFS reflink** — copy-on-write at clone time. `git worktree add`, then
-  `cp --reflink=always` the `deps/` and `_build/` trees from a warm base
-  checkout. Zero dedup index, zero CPU tax per write, and it directly kills the
-  documented cold-worktree sharp edge (every run today pays `mix deps.get` plus
-  a cold compile).
+  reflink the `deps/` and `_build/` trees from a warm base checkout. Zero dedup
+  index, zero CPU tax per write.
 - **VDO** — block-level dedup applied *after the fact*, paying RAM for the
   dedup index, CPU per write, and added latency, against a workload that is
   millions of small `.beam` writes.
@@ -86,8 +84,26 @@ and `_build/`. Two ways to get there:
 Reflink wins on merit. It also wins on availability: `dm-vdo` landed in
 mainline 6.9, the target runs 6.8, and Ubuntu does not ship it.
 
+**What reflink actually buys — not what it looks like.** It does *not* remove a
+cold compile: `Harness.Worktree.warm/2` already copies `deps/`, `_build/` and
+`priv/plts` into every run's worktree on every dispatch, on every platform. The
+bytes already land. Reflink turns that existing ~331 MB-per-run byte copy into a
+metadata operation — same result, near-zero time and near-zero space.
+
+**🚨 Blocker: harness cannot produce a reflink on Linux today.**
+`Worktree.clone_copy/2` shells out to `cp -cR` — the *macOS* clonefile flag. GNU
+coreutils rejects `-c` outright, so every Linux warm operation falls through to
+`File.cp_r`, a full byte copy. Measured: `File.cp_r` 0.74 s / 250 MiB written vs
+`cp --reflink=auto -R` 0.12 s / 4 MiB. The fix is an OS branch on the flag
+(`--reflink=auto` on Linux, `-c` on Darwin); until it lands, an XFS `reflink=1`
+volume changes nothing about harness's disk usage.
+
 **Constraint: the warm base checkout and the worktrees must live on the same
-filesystem, or `cp --reflink` silently falls back to a full copy.**
+filesystem, or the reflink silently degrades to a full copy.** This is the real
+reason the worktree root cannot stay on `/home` — that is ext4 on vg0, which has
+no reflink support at all. Relocate with `HARNESS_WORKTREE_ROOT`
+(`config/runtime.exs`); the compiled-in default under `~/_DATA/worktrees` is
+laptop-shaped.
 
 Independent of VDO: **never put Postgres on a dedup layer** — write
 amplification plus latency.
@@ -158,17 +174,34 @@ belt-and-braces rather than necessity.
 Installed: `git` 2.43, `cargo` 1.98, Postgres 18.6, `claude`
 (`~/.local/bin/claude`).
 
-- [ ] Erlang/OTP + Elixir per `.tool-versions` (1.20.0-otp-29) via `mise`/`asdf`
-- [ ] Node (several agent CLIs need it)
-- [ ] `codex`, `cursor-agent`, `grok` CLIs
-- [ ] **Authenticate each agent CLI headlessly** — subscription OAuth on a box
+- [x] Erlang/OTP + Elixir per `.tool-versions` via `asdf` (`mise` was tried and
+      abandoned — it re-extracts over a manual OTP relocation, so `code_server`
+      never starts)
+- [x] Node (several agent CLIs need it)
+- [x] `codex`, `cursor-agent`, `grok` CLIs
+- [x] **Authenticate each agent CLI headlessly** — subscription OAuth on a box
       with no browser is the real migration work, not the hardware
-- [ ] Dedicated system user for harness (everything currently runs as `ethereum`)
-- [ ] `harness` database + `mix ecto.setup`
-- [ ] Warm base checkout, verify `cp --reflink=always` actually reflinks
-      (`filefrag -v` shows `shared` extents)
-- [ ] systemd slices above
-- [ ] Reach the dashboard (4018) over Tailscale, not a public port
+- [x] Dedicated system user for harness (`harness`, uid 1002), deliberately
+      **not** in the sudo group: `ethereum` holds `NOPASSWD: ALL` and owns the
+      node's data dirs and `jwt.hex`, so running harness there would hand every
+      dispatched agent passwordless root over the Ethereum node
+- [x] `harness_prod` database + migrations (`MIX_ENV=prod` — `mix.exs` sets
+      `start_permanent` only in prod; under `dev` a crashed supervision tree
+      leaves a live-but-dead BEAM that `Restart=` never notices)
+- [x] Worktree root off ext4 via `HARNESS_WORKTREE_ROOT`
+- [ ] Verify reflink end-to-end (`filefrag -v` → `shared` extents, `df` delta) —
+      **blocked on the `cp -cR` fix above**; verify with `filefrag`/`df`, never
+      with `du`, which counts blocks per inode and so reports a *successful*
+      reflink at full size
+- [x] systemd slices above — and read the effective value from
+      `/sys/fs/cgroup/...`, not `systemctl show`: a parent slice at
+      `memory.low = 0` clamps the child to nothing while `systemctl show`
+      cheerfully reports the configured number
+- [x] Reach the dashboard (4018) over the existing forward-only SSH tunnel — a
+      fifth `permitopen` on the same restricted key that already carries the ETH
+      RPC ports, plus a `LocalForward` in the operator's `blockwatch-one-rpc`
+      block. No public port, no new access path, and no Tailscale: the server
+      already runs WireGuard, and the operator's tailnet does not include it
 
 ## Accepted Risks
 
