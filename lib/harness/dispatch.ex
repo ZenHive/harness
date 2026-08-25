@@ -885,6 +885,9 @@ defmodule Harness.Dispatch do
   # rarer struct fields (landing_policy, target_branch, pollution_allowlist) are
   # intentionally NOT exposed here — register those via config or the project_eval
   # struct path (see docs/orchestrator-surface-inventory.md § Omissions).
+  # `roadmap_target_branch` IS exposed: split-repo registrations cannot set it
+  # any other JSON-native way, and omitting it keeps the same-repo derivation
+  # from `target_branch`.
 
   api(
     :register_project,
@@ -928,15 +931,23 @@ defmodule Harness.Dispatch do
         default: [],
         description:
           "Optional repo-relative gitignored directories to seed into fresh worktrees in addition to the default warm paths."
+      ],
+      roadmap_target_branch: [
+        kind: :value,
+        default: nil,
+        description:
+          "Optional git branch for durable roadmap commits. Required when roadmap_path and source are different repositories. Omit/blank for same-repo registrations, which derive the durable branch from target_branch. Invalid names return {:error, {:invalid_project, {:invalid_roadmap_target_branch, value}}}."
       ]
     ],
     returns: %{
       type: :tuple,
       description:
-        "{:ok, %{name: name}} on success. {:error, reason}: {:invalid_source_type, value}, {:invalid_project, _} (missing/invalid field), or {:duplicate, name}."
+        "{:ok, %{name: name}} on success. {:error, reason}: {:invalid_source_type, value}, {:invalid_project, {:invalid_roadmap_target_branch, _}} (or other missing/invalid field), or {:duplicate, name}."
     }
   )
 
+  # JSON-native scalar params map 1:1 onto apply/3; this 9th optional field
+  # is the same tool, not a new knob family.
   @spec register_project(
           String.t(),
           String.t(),
@@ -945,9 +956,11 @@ defmodule Harness.Dispatch do
           nonempty_list(atom() | String.t()),
           String.t() | nil,
           pos_integer() | nil,
-          [String.t()]
+          [String.t()],
+          String.t() | nil
         ) ::
           {:ok, %{name: String.t()}} | {:error, term()}
+  # credo:disable-for-next-line Credo.Check.Refactor.FunctionArity
   def register_project(
         name,
         source_type,
@@ -956,7 +969,8 @@ defmodule Harness.Dispatch do
         languages,
         check_command \\ nil,
         concurrency_cap \\ nil,
-        warm_paths \\ []
+        warm_paths \\ [],
+        roadmap_target_branch \\ nil
       )
       when is_binary(name) and is_binary(source_type) and is_binary(source_location) and is_binary(roadmap_path) do
     with {:ok, source} <- build_source(source_type, source_location),
@@ -967,7 +981,8 @@ defmodule Harness.Dispatch do
            check_command: check_command,
            concurrency_cap: concurrency_cap,
            languages: languages,
-           warm_paths: warm_paths
+           warm_paths: warm_paths,
+           roadmap_target_branch: normalize_roadmap_target_branch(roadmap_target_branch)
          ],
          :ok <- ProjectRegistry.register(attrs) do
       {:ok, %{name: name}}
@@ -979,6 +994,16 @@ defmodule Harness.Dispatch do
   defp build_source("local", location), do: {:ok, {:local, location}}
   defp build_source("github", location), do: {:ok, {:github, location}}
   defp build_source(other, _location), do: {:error, {:invalid_source_type, other}}
+
+  @spec normalize_roadmap_target_branch(term()) :: term()
+  defp normalize_roadmap_target_branch(branch) when is_binary(branch) do
+    case String.trim(branch) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp normalize_roadmap_target_branch(other), do: other
 
   # --- Fan-out over JSON: whole-bundle dispatch + same-task A/B compare ---
 

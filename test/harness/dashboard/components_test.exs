@@ -678,6 +678,7 @@ defmodule Harness.Dashboard.ComponentsTest do
           check_command: "mix precommit",
           languages: "elixir",
           target_branch: "development",
+          roadmap_target_branch: "roadmap-main",
           concurrency_cap: "2",
           concurrency_label: "2",
           warm_paths: "priv/discoveries\nsource"
@@ -691,6 +692,8 @@ defmodule Harness.Dashboard.ComponentsTest do
       assert html =~ ~s(id="project-form-new")
       assert html =~ ~s(name="warm_paths")
       assert html =~ ~s(name="languages")
+      assert html =~ ~s(name="roadmap_target_branch")
+      assert html =~ ~s(value="roadmap-main")
       assert html =~ "priv/discoveries"
       assert html =~ ~s(id="unregister-project-demo")
     end

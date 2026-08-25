@@ -1378,6 +1378,13 @@ defmodule Harness.Dashboard.Components do
               aria-label={"Target branch for #{project.label}"}
             />
             <input
+              type="text"
+              name="roadmap_target_branch"
+              value={project.roadmap_target_branch}
+              placeholder="roadmap target branch"
+              aria-label={"Roadmap target branch for #{project.label}"}
+            />
+            <input
               type="number"
               name="concurrency_cap"
               min="1"
@@ -1439,6 +1446,12 @@ defmodule Harness.Dashboard.Components do
               name="target_branch"
               placeholder="target branch"
               aria-label="Target branch"
+            />
+            <input
+              type="text"
+              name="roadmap_target_branch"
+              placeholder="roadmap target branch"
+              aria-label="Roadmap target branch"
             />
             <input
               type="number"

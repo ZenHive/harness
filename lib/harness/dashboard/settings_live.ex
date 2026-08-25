@@ -160,8 +160,14 @@ defmodule Harness.Dashboard.SettingsLive do
            :ok <- ProjectRegistry.upsert(attrs) do
         {:ok, "Project #{attrs.name} saved."}
       else
-        :error -> {:error, "Project name, source, and roadmap path are required."}
-        {:error, _reason} -> {:error, "Could not save project."}
+        :error ->
+          {:error, "Project name, source, and roadmap path are required."}
+
+        {:error, {:invalid_project, {:invalid_roadmap_target_branch, _branch}}} ->
+          {:error, "Roadmap target branch is not a valid git branch name."}
+
+        {:error, _reason} ->
+          {:error, "Could not save project."}
       end
 
     {:noreply, socket |> assign(:notice, notice) |> refresh()}
@@ -588,6 +594,7 @@ defmodule Harness.Dashboard.SettingsLive do
         roadmap_path: project.roadmap_path,
         check_command: project.check_command || "",
         target_branch: project.target_branch || "",
+        roadmap_target_branch: project.roadmap_target_branch || "",
         concurrency_cap: cap,
         concurrency_label: if(cap == "", do: "default", else: cap),
         warm_paths: Enum.join(project.warm_paths, "\n"),
@@ -617,6 +624,7 @@ defmodule Harness.Dashboard.SettingsLive do
          check_command: optional_param(params, "check_command"),
          languages: languages,
          target_branch: optional_param(params, "target_branch"),
+         roadmap_target_branch: optional_param(params, "roadmap_target_branch"),
          concurrency_cap: cap,
          warm_paths: parse_warm_paths(Map.get(params, "warm_paths", ""))
        })}

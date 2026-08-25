@@ -480,13 +480,28 @@ defmodule Harness.DispatchTest do
     end
   end
 
-  describe "register_project/8 — input validation" do
+  describe "register_project/9 — input validation" do
     # An invalid source_type is rejected by build_source before any registry
     # interaction, so this stays async-safe (no global registry mutation). The
     # registration round-trip lives in the async: false ProjectRegistry test.
     test "rejects an unknown source_type before touching the registry" do
       assert {:error, {:invalid_source_type, "ftp"}} =
                Dispatch.register_project("p", "ftp", "/tmp/p", "/tmp/p", [:elixir])
+    end
+
+    test "rejects an invalid roadmap_target_branch before registering" do
+      assert {:error, {:invalid_project, {:invalid_roadmap_target_branch, "bad branch"}}} =
+               Dispatch.register_project(
+                 "p",
+                 "local",
+                 "/tmp/p",
+                 "/tmp/p",
+                 [:elixir],
+                 nil,
+                 nil,
+                 [],
+                 "bad branch"
+               )
     end
   end
 
@@ -1208,8 +1223,10 @@ defmodule Harness.DispatchTest do
       refute Map.has_key?(props, :language)
       assert Map.has_key?(props, :warm_paths)
       assert props.warm_paths["type"] == "array"
+      assert Map.has_key?(props, :roadmap_target_branch)
 
-      # check_command, concurrency_cap, and warm_paths default; the other five are required.
+      # check_command, concurrency_cap, warm_paths, and roadmap_target_branch default;
+      # the other five are required.
       assert Enum.sort(tool.inputSchema.required) ==
                ["languages", "name", "roadmap_path", "source_location", "source_type"]
 

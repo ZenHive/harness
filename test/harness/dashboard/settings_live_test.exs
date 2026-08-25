@@ -518,6 +518,8 @@ defmodule Harness.Dashboard.SettingsLiveTest do
 
     assert has_element?(view, "#concurrency-form-#{project.name} input[name=concurrency_cap]")
     assert has_element?(view, "#project-form-#{project.name} input[name=source_location]")
+    assert has_element?(view, "#project-form-#{project.name} input[name=roadmap_target_branch]")
+    assert has_element?(view, "#project-form-new input[name=roadmap_target_branch]")
     assert has_element?(view, "#project-form-new")
     assert has_element?(view, "#unregister-project-#{project.name}")
   end
@@ -548,6 +550,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
         check_command: "mix precommit",
         languages: "elixir",
         target_branch: "development",
+        roadmap_target_branch: "",
         concurrency_cap: "3",
         warm_paths: ""
       })
@@ -559,6 +562,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     assert project.roadmap_path == "/tmp/harness-settings-new/roadmap"
     assert project.check_command == "mix precommit"
     assert project.target_branch == "development"
+    assert project.roadmap_target_branch == nil
     assert project.concurrency_cap == 3
     assert project.languages == [:elixir]
     assert project.warm_paths == []
@@ -588,6 +592,58 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     assert lookup_project!("settings-warm").warm_paths == ["priv/discoveries", "source", "tmp/cache"]
 
     ProjectRegistry.unregister("settings-warm")
+  end
+
+  test "registering a new project persists a roadmap_target_branch", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html =
+      view
+      |> form("#project-form-new", %{
+        name: "settings-roadmap-branch",
+        source_type: "local",
+        source_location: "/tmp/harness-settings-roadmap-branch",
+        roadmap_path: "/tmp/harness-settings-roadmap-branch/roadmap",
+        check_command: "",
+        languages: "elixir",
+        target_branch: "development",
+        roadmap_target_branch: "roadmap-main",
+        concurrency_cap: "",
+        warm_paths: ""
+      })
+      |> render_submit()
+
+    assert html =~ "Project settings-roadmap-branch saved."
+    project = lookup_project!("settings-roadmap-branch")
+    assert project.target_branch == "development"
+    assert project.roadmap_target_branch == "roadmap-main"
+
+    ProjectRegistry.unregister("settings-roadmap-branch")
+  end
+
+  test "an invalid roadmap_target_branch is rejected by the form", %{conn: conn} do
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html =
+      view
+      |> form("#project-form-new", %{
+        name: "settings-bad-roadmap-branch",
+        source_type: "local",
+        source_location: "/tmp/harness-settings-bad-roadmap-branch",
+        roadmap_path: "/tmp/harness-settings-bad-roadmap-branch/roadmap",
+        check_command: "",
+        languages: "elixir",
+        target_branch: "",
+        roadmap_target_branch: "bad branch",
+        concurrency_cap: "",
+        warm_paths: ""
+      })
+      |> render_submit()
+
+    assert html =~ "not a valid git branch name"
+
+    assert {:error, {:unknown_project, "settings-bad-roadmap-branch"}} =
+             ProjectRegistry.lookup("settings-bad-roadmap-branch")
   end
 
   test "editing an existing project path through the form updates it", %{conn: conn, project: project} do
@@ -652,6 +708,52 @@ defmodule Harness.Dashboard.SettingsLiveTest do
 
     assert html =~ "Project #{project.name} saved."
     assert lookup_project!(project.name).warm_paths == []
+  end
+
+  test "editing an existing project sets and clears roadmap_target_branch", %{conn: conn, project: project} do
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html =
+      view
+      |> form("#project-form-#{project.name}", %{
+        name: project.name,
+        source_type: "local",
+        source_location: "/tmp/harness-settings-live",
+        roadmap_path: project.roadmap_path,
+        check_command: "",
+        languages: "elixir",
+        target_branch: "development",
+        roadmap_target_branch: "roadmap-main",
+        concurrency_cap: "",
+        warm_paths: ""
+      })
+      |> render_submit()
+
+    assert html =~ "Project #{project.name} saved."
+    saved = lookup_project!(project.name)
+    assert saved.target_branch == "development"
+    assert saved.roadmap_target_branch == "roadmap-main"
+
+    html =
+      view
+      |> form("#project-form-#{project.name}", %{
+        name: project.name,
+        source_type: "local",
+        source_location: "/tmp/harness-settings-live",
+        roadmap_path: project.roadmap_path,
+        check_command: "",
+        languages: "elixir",
+        target_branch: "development",
+        roadmap_target_branch: "",
+        concurrency_cap: "",
+        warm_paths: ""
+      })
+      |> render_submit()
+
+    assert html =~ "Project #{project.name} saved."
+    cleared = lookup_project!(project.name)
+    assert cleared.target_branch == "development"
+    assert cleared.roadmap_target_branch == nil
   end
 
   test "unregistering a project removes it from the page and registry", %{conn: conn, project: project} do

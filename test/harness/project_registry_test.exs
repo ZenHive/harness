@@ -117,7 +117,7 @@ defmodule Harness.ProjectRegistryTest do
     end
   end
 
-  describe "Dispatch.register_project/8 — JSON-native registration" do
+  describe "Dispatch.register_project/9 — JSON-native registration" do
     test "registers a local-source project and makes it lookup-resolvable" do
       assert {:ok, %{name: "reg-local"}} =
                Dispatch.register_project(
@@ -136,6 +136,7 @@ defmodule Harness.ProjectRegistryTest do
       assert project.concurrency_cap == 2
       assert project.languages == [:typescript]
       assert project.warm_paths == []
+      assert project.roadmap_target_branch == nil
     end
 
     test "registers warm_paths through the optional JSON-native argument" do
@@ -153,6 +154,74 @@ defmodule Harness.ProjectRegistryTest do
 
       assert {:ok, project} = ProjectRegistry.lookup("reg-warm")
       assert project.warm_paths == ["priv/discoveries", "source"]
+    end
+
+    test "registers roadmap_target_branch through the optional JSON-native argument" do
+      assert {:ok, %{name: "reg-roadmap-branch"}} =
+               Dispatch.register_project(
+                 "reg-roadmap-branch",
+                 "local",
+                 "/tmp/reg-roadmap-branch",
+                 "/tmp/reg-roadmap-branch",
+                 [:elixir],
+                 nil,
+                 nil,
+                 [],
+                 "roadmap-main"
+               )
+
+      assert {:ok, project} = ProjectRegistry.lookup("reg-roadmap-branch")
+      assert project.roadmap_target_branch == "roadmap-main"
+    end
+
+    test "omitting roadmap_target_branch leaves it nil so same-repo writes derive from target_branch" do
+      assert {:ok, %{name: "reg-omit-roadmap-branch"}} =
+               Dispatch.register_project(
+                 "reg-omit-roadmap-branch",
+                 "local",
+                 "/tmp/reg-omit-roadmap-branch",
+                 "/tmp/reg-omit-roadmap-branch",
+                 [:elixir]
+               )
+
+      assert {:ok, project} = ProjectRegistry.lookup("reg-omit-roadmap-branch")
+      assert project.roadmap_target_branch == nil
+    end
+
+    test "blank roadmap_target_branch is stored as nil" do
+      assert {:ok, %{name: "reg-blank-roadmap-branch"}} =
+               Dispatch.register_project(
+                 "reg-blank-roadmap-branch",
+                 "local",
+                 "/tmp/reg-blank-roadmap-branch",
+                 "/tmp/reg-blank-roadmap-branch",
+                 [:elixir],
+                 nil,
+                 nil,
+                 [],
+                 "  "
+               )
+
+      assert {:ok, project} = ProjectRegistry.lookup("reg-blank-roadmap-branch")
+      assert project.roadmap_target_branch == nil
+    end
+
+    test "rejects an invalid roadmap_target_branch" do
+      assert {:error, {:invalid_project, {:invalid_roadmap_target_branch, "bad branch"}}} =
+               Dispatch.register_project(
+                 "reg-bad-roadmap-branch",
+                 "local",
+                 "/tmp/reg-bad-roadmap-branch",
+                 "/tmp/reg-bad-roadmap-branch",
+                 [:elixir],
+                 nil,
+                 nil,
+                 [],
+                 "bad branch"
+               )
+
+      assert {:error, {:unknown_project, "reg-bad-roadmap-branch"}} =
+               ProjectRegistry.lookup("reg-bad-roadmap-branch")
     end
 
     test "registers a github-source project with default optional fields" do
@@ -359,6 +428,32 @@ defmodule Harness.ProjectRegistryTest do
       assert :ok = ProjectRegistry.reload_persisted_state()
       assert {:ok, restored} = ProjectRegistry.lookup(name)
       assert restored.warm_paths == warm_paths
+    end
+
+    @tag :integration
+    test "dispatch registration persists roadmap_target_branch and reloads it from Postgres" do
+      name = "dispatch-roadmap-branch-#{System.unique_integer([:positive])}"
+
+      assert {:ok, %{name: ^name}} =
+               Dispatch.register_project(
+                 name,
+                 "local",
+                 "/tmp/#{name}",
+                 "/tmp/#{name}/roadmap/tasks.toml",
+                 [:elixir],
+                 nil,
+                 nil,
+                 [],
+                 "roadmap-main"
+               )
+
+      assert {:ok, project} = ProjectRegistry.lookup(name)
+      assert project.roadmap_target_branch == "roadmap-main"
+
+      assert :ok = ProjectRegistry.reset()
+      assert :ok = ProjectRegistry.reload_persisted_state()
+      assert {:ok, restored} = ProjectRegistry.lookup(name)
+      assert restored.roadmap_target_branch == "roadmap-main"
     end
 
     @tag :integration
