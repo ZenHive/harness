@@ -6,7 +6,6 @@ defmodule Harness.WorktreeTest do
   alias Harness.AgentAdapter.Cursor
   alias Harness.AgentAdapter.Invocation
   alias Harness.GitFixture
-  alias Harness.Project
   alias Harness.ProjectFixture
   alias Harness.Worktree
 
@@ -246,6 +245,34 @@ defmodule Harness.WorktreeTest do
       assert :ok = Worktree.warm(wt, warm_paths: ["_build", "deps"])
       refute File.exists?(Path.join(wt.path, "_build"))
       refute File.exists?(Path.join(wt.path, "deps"))
+    end
+  end
+
+  describe "clone_copy_flag/1" do
+    test "selects Darwin clonefile vs GNU reflink without shelling out" do
+      assert Worktree.clone_copy_flag({:unix, :darwin}) == ["-cR"]
+      assert Worktree.clone_copy_flag({:unix, :linux}) == ["--reflink=auto", "-R"]
+      assert Worktree.clone_copy_flag({:win32, :nt}) == :fallback
+    end
+  end
+
+  describe "clone_copy/3" do
+    test "falls back to File.cp_r when cp rejects the flag, producing an identical tree" do
+      {src, dst} = clone_copy_trees()
+
+      assert :ok = Worktree.clone_copy(src, dst, ["--harness-not-a-cp-flag"])
+
+      assert File.read!(Path.join(dst, "nested/file.txt")) == "payload"
+      assert File.read!(Path.join(dst, "root.txt")) == "root"
+    end
+
+    test "skips cp on an unknown OS and still produces an identical tree" do
+      {src, dst} = clone_copy_trees()
+
+      assert :ok = Worktree.clone_copy(src, dst, :fallback)
+
+      assert File.read!(Path.join(dst, "nested/file.txt")) == "payload"
+      assert File.read!(Path.join(dst, "root.txt")) == "root"
     end
   end
 
@@ -701,6 +728,16 @@ defmodule Harness.WorktreeTest do
     base = GitFixture.tmp_base()
     {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: base)
     {repo, wt}
+  end
+
+  @spec clone_copy_trees() :: {String.t(), String.t()}
+  defp clone_copy_trees do
+    src = GitFixture.tmp_base(name: "clone-src")
+    dst = GitFixture.tmp_base(name: "clone-dst")
+    File.mkdir_p!(Path.join(src, "nested"))
+    File.write!(Path.join(src, "nested/file.txt"), "payload")
+    File.write!(Path.join(src, "root.txt"), "root")
+    {src, dst}
   end
 
   # A worktree off a parent that gitignores `.harness/` — harness's own repo

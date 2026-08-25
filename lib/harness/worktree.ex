@@ -224,9 +224,9 @@ defmodule Harness.Worktree do
   directories (`deps`, `_build`, the dialyzer PLT under `priv/plts`) are absent
   in a new worktree — leaving the implementer to cold-fetch deps and the reviewer
   to cold-compile and cold-build the PLT, minutes of work per run. This copies
-  those directories from the parent checkout (CoW-cloned via `cp -c` where the
-  filesystem supports it, plain copy otherwise) so the agent drops into a warmed
-  tree and only the changed app modules recompile.
+  those directories from the parent checkout (CoW-cloned via `cp -c` on Darwin
+  or `cp --reflink=auto` on Linux, plain copy otherwise) so the agent drops into
+  a warmed tree and only the changed app modules recompile.
 
   Pure mechanical byte-copy — the restored-and-decoupled descendant of the warm
   step the agent-gate rebuild deleted along with `Harness.Verification`. It is a
@@ -291,13 +291,26 @@ defmodule Harness.Worktree do
     end
   end
 
-  # Prefer a copy-on-write clone (`cp -c`, instant + zero extra space on APFS);
-  # fall back to a plain recursive copy where the filesystem or `cp` lacks it
-  # (Linux/CI). Either way the bytes land — CoW is an efficiency detail, not a
-  # correctness requirement.
+  # Prefer a copy-on-write clone (`cp -c` on Darwin / `cp --reflink=auto` on
+  # Linux). `--reflink=auto` degrades to a full copy on filesystems without
+  # reflink rather than failing. Fall back to `File.cp_r` when the OS has no
+  # CoW flag, `cp` rejects the flag, or `System.cmd` raises. Either way the
+  # bytes land — CoW is an efficiency detail, not a correctness requirement.
   @spec clone_copy(String.t(), String.t()) :: :ok | {:error, term()}
-  defp clone_copy(src, dst) do
-    case System.cmd("cp", ["-cR", src, dst], stderr_to_stdout: true) do
+  defp clone_copy(src, dst), do: clone_copy(src, dst, clone_copy_flag(:os.type()))
+
+  @doc false
+  @spec clone_copy_flag(:os.os_type()) :: [String.t()] | :fallback
+  def clone_copy_flag({:unix, :darwin}), do: ["-cR"]
+  def clone_copy_flag({:unix, :linux}), do: ["--reflink=auto", "-R"]
+  def clone_copy_flag(_other), do: :fallback
+
+  @doc false
+  @spec clone_copy(String.t(), String.t(), [String.t()] | :fallback) :: :ok | {:error, term()}
+  def clone_copy(src, dst, :fallback), do: fallback_copy(src, dst)
+
+  def clone_copy(src, dst, flags) when is_list(flags) do
+    case System.cmd("cp", flags ++ [src, dst], stderr_to_stdout: true) do
       {_out, 0} -> :ok
       {_out, _nonzero} -> fallback_copy(src, dst)
     end

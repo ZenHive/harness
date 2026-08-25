@@ -89,13 +89,12 @@ cold compile: `Harness.Worktree.warm/2` already copies `deps/`, `_build/` and
 bytes already land. Reflink turns that existing ~331 MB-per-run byte copy into a
 metadata operation — same result, near-zero time and near-zero space.
 
-**🚨 Blocker: harness cannot produce a reflink on Linux today.**
-`Worktree.clone_copy/2` shells out to `cp -cR` — the *macOS* clonefile flag. GNU
-coreutils rejects `-c` outright, so every Linux warm operation falls through to
-`File.cp_r`, a full byte copy. Measured: `File.cp_r` 0.74 s / 250 MiB written vs
-`cp --reflink=auto -R` 0.12 s / 4 MiB. The fix is an OS branch on the flag
-(`--reflink=auto` on Linux, `-c` on Darwin); until it lands, an XFS `reflink=1`
-volume changes nothing about harness's disk usage.
+**Copy path.** `Worktree.clone_copy/2` selects the CoW flag by OS: `-c` on
+Darwin (APFS clonefile), `--reflink=auto` on Linux (XFS/Btrfs; degrades to a
+full copy on a filesystem without reflink). `File.cp_r` remains the fallback
+when `cp` rejects the flag. An XFS `reflink=1` volume is therefore live for
+warm copies, not inert. Measured: `File.cp_r` 0.74 s / 250 MiB written vs
+`cp --reflink=auto -R` 0.12 s / 4 MiB.
 
 **Constraint: the warm base checkout and the worktrees must live on the same
 filesystem, or the reflink silently degrades to a full copy.** This is the real
@@ -205,9 +204,8 @@ Installed: `git` 2.43, `cargo` 1.98, Postgres 18.6, `claude`
       whose private half never leaves the server, registered on the account and
       revocable alone; the checkouts use `git@` remotes so the lander can push
 - [ ] Verify reflink end-to-end (`filefrag -v` → `shared` extents, `df` delta) —
-      **blocked on the `cp -cR` fix above**; verify with `filefrag`/`df`, never
-      with `du`, which counts blocks per inode and so reports a *successful*
-      reflink at full size
+      verify with `filefrag`/`df`, never with `du`, which counts blocks per inode
+      and so reports a *successful* reflink at full size
 - [x] systemd slices above — and read the effective value from
       `/sys/fs/cgroup/...`, not `systemctl show`: a parent slice at
       `memory.low = 0` clamps the child to nothing while `systemctl show`
