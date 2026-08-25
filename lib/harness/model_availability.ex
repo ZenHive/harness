@@ -452,11 +452,161 @@ defmodule Harness.ModelAvailability do
     if probeable?(agent), do: cached_or_probe(agent), else: {:error, :catalog_unavailable}
   end
 
+  @revalidate_table __MODULE__.Revalidate
+  @revalidate_heir_name __MODULE__.Heir
+
+  @doc false
+  @spec reset_revalidate() :: :ok
+  def reset_revalidate do
+    case :ets.whereis(@revalidate_table) do
+      :undefined ->
+        :ok
+
+      _table ->
+        true = :ets.delete_all_objects(@revalidate_table)
+        :ok
+    end
+  end
+
   @spec cached_or_probe(atom()) :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}
   defp cached_or_probe(agent) do
     case cached_catalog(agent) do
-      {:ok, catalog, true} -> {:ok, catalog}
-      _ -> probe_and_cache(agent)
+      {:ok, catalog, true} ->
+        {:ok, catalog}
+
+      {:ok, catalog, false} ->
+        request_revalidate(agent)
+        {:ok, catalog}
+
+      :miss ->
+        request_revalidate(agent)
+        {:error, :catalog_unavailable}
+    end
+  end
+
+  @spec request_revalidate(atom()) :: :ok
+  defp request_revalidate(agent) do
+    table = revalidate_table()
+    true = :ets.insert(table, {{:pending, agent}, true})
+
+    if :ets.insert_new(table, {:running, true}) do
+      _ = Task.start(fn -> flush_revalidations(table) end)
+      :ok
+    else
+      :ok
+    end
+  end
+
+  @spec flush_revalidations(:ets.tid() | atom()) :: :ok
+  defp flush_revalidations(table) do
+    try do
+      Enum.each(take_pending(table), &probe_and_cache/1)
+    after
+      safe_ets_delete(table, :running)
+    end
+
+    restart_revalidate_if_pending(table)
+  end
+
+  @spec safe_ets_delete(:ets.tid() | atom(), term()) :: true
+  defp safe_ets_delete(table, key) do
+    :ets.delete(table, key)
+  rescue
+    ArgumentError -> true
+  end
+
+  @spec restart_revalidate_if_pending(:ets.tid() | atom()) :: :ok
+  defp restart_revalidate_if_pending(table) do
+    case :ets.match(table, {{:pending, :"$1"}, :_}) do
+      [] ->
+        :ok
+
+      _pending ->
+        if :ets.insert_new(table, {:running, true}) do
+          flush_revalidations(table)
+        else
+          :ok
+        end
+    end
+  end
+
+  @spec take_pending(:ets.tid() | atom()) :: [atom()]
+  defp take_pending(table) do
+    Enum.map(:ets.match(table, {{:pending, :"$1"}, :_}), fn [agent] ->
+      :ets.delete(table, {:pending, agent})
+      agent
+    end)
+  end
+
+  @spec revalidate_table() :: :ets.tid() | atom()
+  defp revalidate_table do
+    case :ets.whereis(@revalidate_table) do
+      :undefined -> create_revalidate_table()
+      table -> table
+    end
+  end
+
+  @spec create_revalidate_table() :: :ets.tid() | atom()
+  defp create_revalidate_table do
+    :ets.new(@revalidate_table, [
+      :named_table,
+      :public,
+      :set,
+      {:heir, revalidate_heir(), :revalidate},
+      write_concurrency: true
+    ])
+  rescue
+    ArgumentError -> @revalidate_table
+  end
+
+  @spec revalidate_heir() :: pid()
+  defp revalidate_heir do
+    case Process.whereis(@revalidate_heir_name) do
+      pid when is_pid(pid) -> pid
+      nil -> spawn_revalidate_heir()
+    end
+  end
+
+  @spec spawn_revalidate_heir() :: pid()
+  defp spawn_revalidate_heir do
+    pid = spawn(&revalidate_heir_loop/0)
+
+    try do
+      Process.register(pid, @revalidate_heir_name)
+      pid
+    rescue
+      ArgumentError ->
+        Process.exit(pid, :kill)
+        Process.whereis(@revalidate_heir_name)
+    end
+  end
+
+  @spec revalidate_heir_loop() :: no_return()
+  defp revalidate_heir_loop do
+    receive do
+      _ -> revalidate_heir_loop()
+    end
+  end
+
+  @spec with_catalog_write((-> :ok)) :: :ok
+  defp with_catalog_write(fun) do
+    table = revalidate_table()
+    acquire_catalog_write(table)
+
+    try do
+      fun.()
+    after
+      :ets.delete(table, :catalog_write)
+    end
+  end
+
+  @spec acquire_catalog_write(:ets.tid() | atom()) :: :ok
+  defp acquire_catalog_write(table) do
+    if :ets.insert_new(table, {:catalog_write, true}) do
+      :ok
+    else
+      Process.sleep(1)
+      acquire_catalog_write(table)
     end
   end
 
@@ -503,14 +653,16 @@ defmodule Harness.ModelAvailability do
 
   @spec store_catalog(atom(), [catalog_entry()]) :: :ok
   defp store_catalog(agent, models) do
-    catalogs =
-      case SettingsStore.fetch(@catalogs_key) do
-        {:ok, map} when is_map(map) -> map
-        _ -> %{}
-      end
+    with_catalog_write(fn ->
+      catalogs =
+        case SettingsStore.fetch(@catalogs_key) do
+          {:ok, map} when is_map(map) -> map
+          _ -> %{}
+        end
 
-    entry = %{fetched_at: DateTime.utc_now(), models: models}
-    SettingsStore.put(@catalogs_key, Map.put(catalogs, agent, entry))
+      entry = %{fetched_at: DateTime.utc_now(), models: models}
+      SettingsStore.put(@catalogs_key, Map.put(catalogs, agent, entry))
+    end)
   end
 
   @spec static_catalog(atom()) :: {:ok, [catalog_entry()]} | {:error, :catalog_unavailable}

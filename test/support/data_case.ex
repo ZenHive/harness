@@ -38,6 +38,9 @@ defmodule Harness.DataCase do
       Sandbox.mode(Harness.Repo, {:shared, self()})
     end
 
+    Harness.SettingsStore.reset_cache()
+    on_exit(fn -> Harness.SettingsStore.reset_cache() end)
+
     :ok
   end
 end

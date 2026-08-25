@@ -14,9 +14,11 @@ defmodule Harness.Test.SettingsStoreMemory do
 
   @behaviour Harness.SettingsStore
 
+  alias Harness.SettingsStore
+
   @table __MODULE__
 
-  @impl Harness.SettingsStore
+  @impl SettingsStore
   @spec fetch(String.t(), keyword()) :: {:ok, term()} | :not_found
   def fetch(key, backend_opts) when is_binary(key) and is_list(backend_opts) do
     case Map.fetch(read(backend_opts), key) do
@@ -25,7 +27,7 @@ defmodule Harness.Test.SettingsStoreMemory do
     end
   end
 
-  @impl Harness.SettingsStore
+  @impl SettingsStore
   @spec put(String.t(), term(), keyword()) :: :ok
   def put(key, value, backend_opts) when is_binary(key) and is_list(backend_opts) do
     ensure_table()
@@ -38,6 +40,7 @@ defmodule Harness.Test.SettingsStoreMemory do
   def reset(backend_opts \\ []) when is_list(backend_opts) do
     ensure_table()
     :ets.delete(@table, scope(backend_opts))
+    SettingsStore.reset_cache()
     :ok
   end
 

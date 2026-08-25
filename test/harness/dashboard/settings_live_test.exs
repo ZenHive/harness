@@ -1,3 +1,27 @@
+defmodule Harness.Dashboard.SettingsLiveTest.CountingStore do
+  @moduledoc false
+  @behaviour Harness.SettingsStore
+
+  alias Harness.Test.SettingsStoreMemory
+
+  @impl Harness.SettingsStore
+  @spec fetch(String.t(), keyword()) :: {:ok, term()} | :not_found
+  def fetch(key, backend_opts) when is_binary(key) and is_list(backend_opts) do
+    case Keyword.get(backend_opts, :owner) do
+      pid when is_pid(pid) -> send(pid, {:settings_fetch, key})
+      _ -> :ok
+    end
+
+    SettingsStoreMemory.fetch(key, Keyword.delete(backend_opts, :owner))
+  end
+
+  @impl Harness.SettingsStore
+  @spec put(String.t(), term(), keyword()) :: :ok
+  def put(key, value, backend_opts) when is_binary(key) and is_list(backend_opts) do
+    SettingsStoreMemory.put(key, value, Keyword.delete(backend_opts, :owner))
+  end
+end
+
 defmodule Harness.Dashboard.SettingsLiveTest do
   @moduledoc """
   `Phoenix.LiveViewTest` coverage for `Harness.Dashboard.SettingsLive` — the
@@ -19,6 +43,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
   alias Harness.Config
   alias Harness.Cron.RoadmapPoller
   alias Harness.Cron.Settings
+  alias Harness.Dashboard.SettingsLiveTest.CountingStore
   alias Harness.Landing.Settings, as: LandingSettings
   alias Harness.ModelAvailability
   alias Harness.ProjectFixture
@@ -48,6 +73,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     Application.put_env(:harness, :model_catalog_probe, fn _agent, _ -> {:error, :catalog_unavailable} end)
 
     SettingsStoreMemory.reset(scope: :test_default)
+    ModelAvailability.reset_revalidate()
     SettingsStore.put(:model_catalog_static, %{})
     SettingsStore.put(:model_catalogs, %{})
 
@@ -418,6 +444,16 @@ defmodule Harness.Dashboard.SettingsLiveTest do
       cursor: [%{id: "composer-operator", label: "Operator", annotations: []}]
     })
 
+    SettingsStore.put(:model_catalogs, %{
+      cursor: %{
+        fetched_at: DateTime.utc_now(),
+        models: [
+          %{id: "composer-operator", label: "Probe duplicate", annotations: []},
+          %{id: "composer-probed", label: "Probed", annotations: []}
+        ]
+      }
+    })
+
     Application.put_env(:harness, :model_catalog_probe, fn
       :cursor, _executables ->
         {:ok,
@@ -761,8 +797,78 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     assert html =~ "none (silent)"
   end
 
+  test "one meta_tick performs a bounded number of harness_settings reads", %{conn: conn} do
+    owner = self()
+    Application.put_env(:harness, :settings_store, {CountingStore, scope: :test_default, owner: owner})
+    SettingsStore.reset_cache()
+
+    {:ok, view, _html} = live(conn, "/harness/settings")
+    _mount_reads = drain_settings_fetches()
+
+    SettingsStore.reset_cache()
+    _ = drain_settings_fetches()
+
+    send(view.pid, :meta_tick)
+    _ = render(view)
+
+    keys = drain_settings_fetches()
+    unique = Enum.uniq(keys)
+
+    assert keys == unique, "duplicate harness_settings reads in one tick: #{inspect(keys -- unique)}"
+
+    assert length(keys) <= 10,
+           "expected <= 10 harness_settings reads per :meta_tick, got #{length(keys)} (#{inspect(keys)})"
+  end
+
+  test "a stale catalog tick does not probe from the LiveView process", %{conn: conn} do
+    parent = self()
+    stale_at = DateTime.shift(DateTime.utc_now(), hour: -2)
+    models = [%{id: "stale-cursor", label: "Stale", annotations: []}]
+    entry = %{fetched_at: stale_at, models: models}
+
+    SettingsStore.put(:model_catalogs, %{
+      cursor: entry,
+      grok: entry,
+      pi: entry,
+      codex: entry,
+      antigravity: entry
+    })
+
+    Application.put_env(:harness, :model_catalog_probe, fn agent, _executables ->
+      send(parent, {:probe, self(), agent})
+
+      receive do
+        :release -> {:error, :catalog_unavailable}
+      after
+        2_000 -> {:error, :catalog_unavailable}
+      end
+    end)
+
+    {:ok, view, html} = live(conn, "/harness/settings")
+    assert html =~ "stale-cursor"
+
+    {tick_us, _ticked} =
+      :timer.tc(fn ->
+        send(view.pid, :meta_tick)
+        render(view)
+      end)
+
+    assert tick_us < 1_000_000
+
+    assert_receive {:probe, probe_pid, _agent}
+    refute probe_pid == view.pid
+  end
+
   defp restore_env(key, nil), do: Application.delete_env(:harness, key)
   defp restore_env(key, value), do: Application.put_env(:harness, key, value)
+
+  defp drain_settings_fetches(acc \\ []) do
+    receive do
+      {:settings_fetch, key} -> drain_settings_fetches([key | acc])
+    after
+      0 -> Enum.reverse(acc)
+    end
+  end
 
   defp lookup_project!(name) do
     case ProjectRegistry.lookup(name) do

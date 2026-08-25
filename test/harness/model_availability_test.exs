@@ -28,6 +28,7 @@ defmodule Harness.ModelAvailabilityTest do
 
     AgentRegistry.reset()
     SettingsStoreMemory.reset()
+    ModelAvailability.reset_revalidate()
     SettingsStore.put(ModelAvailability.blocks_key(), %{})
     SettingsStore.put(:model_catalogs, %{})
     SettingsStore.put(:model_catalog_static, %{})
@@ -351,6 +352,69 @@ defmodule Harness.ModelAvailabilityTest do
     end
   end
 
+  describe "stale-while-revalidate catalog" do
+    test "serves a stale cached catalog without probing in the caller" do
+      parent = self()
+      stale_at = DateTime.shift(DateTime.utc_now(), hour: -2)
+
+      seed_probe_cache(
+        :cursor,
+        [%{id: "stale-cursor", label: "Stale", annotations: []}],
+        stale_at
+      )
+
+      install_catalog_probe(fn agent, _executables ->
+        send(parent, {:probe, self(), agent})
+        {:ok, [%{id: "fresh-cursor", label: "Fresh", annotations: []}]}
+      end)
+
+      assert {:ok, universe} = ModelAvailability.catalog_universe(:cursor)
+      assert Enum.any?(universe, &(&1.id == "stale-cursor"))
+      refute Enum.any?(universe, &(&1.id == "fresh-cursor"))
+
+      assert_receive {:probe, probe_pid, :cursor}
+      refute probe_pid == self()
+    end
+
+    test "a cache miss does not wait for the CLI probe" do
+      parent = self()
+
+      install_catalog_probe(fn agent, _executables ->
+        send(parent, {:probe, self(), agent})
+
+        receive do
+          :release -> {:ok, [%{id: "probed", label: "Probed", annotations: []}]}
+        after
+          2_000 -> {:error, :catalog_unavailable}
+        end
+      end)
+
+      {usec, result} = :timer.tc(fn -> ModelAvailability.catalog_universe(:antigravity) end)
+
+      assert result == {:error, :catalog_unavailable}
+      assert usec < 200_000
+
+      assert_receive {:probe, probe_pid, :antigravity}
+      refute probe_pid == self()
+      send(probe_pid, :release)
+    end
+
+    test "refresh_catalog still probes in the calling process" do
+      parent = self()
+
+      seed_static_catalog(:cursor, [%{id: "operator", label: "Operator", annotations: []}])
+
+      install_catalog_probe(fn agent, _executables ->
+        send(parent, {:probe, self(), agent})
+        {:ok, [%{id: "fresh", label: "Fresh", annotations: []}]}
+      end)
+
+      assert {:ok, %{models: [%{id: "operator"}]}} = ModelAvailability.refresh_catalog("cursor")
+      assert_received {:probe, probe_pid, :cursor}
+      assert probe_pid == self()
+    end
+  end
+
   describe "dispatch gate" do
     test "allows a pinned model absent from the advisory catalog" do
       parent = self()
@@ -483,14 +547,14 @@ defmodule Harness.ModelAvailabilityTest do
     SettingsStore.put(:model_catalog_static, Map.put(current, agent, models))
   end
 
-  defp seed_probe_cache(agent, models) do
+  defp seed_probe_cache(agent, models, fetched_at \\ nil) do
     current =
       case SettingsStore.fetch(:model_catalogs) do
         {:ok, map} when is_map(map) -> map
         _ -> %{}
       end
 
-    entry = %{fetched_at: DateTime.utc_now(), models: models}
+    entry = %{fetched_at: fetched_at || DateTime.utc_now(), models: models}
 
     SettingsStore.put(:model_catalogs, Map.put(current, agent, entry))
   end

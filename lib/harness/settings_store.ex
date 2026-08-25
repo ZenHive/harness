@@ -6,14 +6,17 @@ defmodule Harness.SettingsStore do
   `harness_settings` Postgres table is the **single source of truth**: every
   operator-flippable setting — landing policy/target, cron toggles + schedule,
   agent enablement, reviewer pins, operator config overrides — reads from and
-  writes to that one table. There is no app-env overlay cache and no exs
-  fallback: a value, once set, survives a BEAM restart because the next read
-  comes straight back from Postgres.
+  writes to that one table. A process-local ETS cache sits in front of the
+  backend as write-through memory (the same shape `Harness.Config` uses for its
+  own keys): `put/2` updates the backend and the cache before returning, so the
+  next `fetch/1` sees the write. A BEAM restart empties the cache; the next
+  read refills from Postgres.
 
   Library consumers that mount harness with `repo_enabled: false` get an
   ephemeral no-op store (`fetch` ⇒ `:not_found`, `put` ⇒ `:ok`): settings cannot
   be bootstrapped from the database that isn't there, so they fall back to the
-  in-code defaults (the dashboard surfaces this to the operator).
+  in-code defaults (the dashboard surfaces this to the operator). The cache is
+  not consulted on that path.
   """
 
   @type key :: atom() | String.t()
@@ -22,13 +25,28 @@ defmodule Harness.SettingsStore do
   @callback fetch(String.t(), keyword()) :: {:ok, term()} | :not_found | {:error, term()}
   @callback put(String.t(), term(), keyword()) :: :ok | {:error, term()}
 
+  @cache_table __MODULE__.Cache
+  @heir_name __MODULE__.Heir
+
   @doc "Fetches a persisted setting value by key."
   @spec fetch(key()) :: {:ok, term()} | :not_found | {:error, term()}
-  def fetch(key), do: dispatch_fetch(configured(), normalize_key(key))
+  def fetch(key), do: cached_fetch(configured(), normalize_key(key))
 
   @doc "Persists a setting value by key."
   @spec put(key(), term()) :: :ok | {:error, term()}
-  def put(key, value), do: dispatch_put(configured(), normalize_key(key), value)
+  def put(key, value) do
+    key = normalize_key(key)
+    store = configured()
+
+    case dispatch_put(store, key, value) do
+      :ok ->
+        write_through(store, key, value)
+        :ok
+
+      error ->
+        error
+    end
+  end
 
   @doc """
   Fetches a persisted **map** setting, returning `%{}` when the key is missing or
@@ -62,9 +80,49 @@ defmodule Harness.SettingsStore do
     end
   end
 
-  @spec dispatch_fetch(store(), String.t()) :: {:ok, term()} | :not_found | {:error, term()}
-  defp dispatch_fetch(false, _key), do: :not_found
+  @doc false
+  @spec reset_cache() :: :ok
+  def reset_cache do
+    case :ets.whereis(@cache_table) do
+      :undefined ->
+        :ok
 
+      _table ->
+        true = :ets.delete_all_objects(@cache_table)
+        :ok
+    end
+  end
+
+  @spec cached_fetch(store(), String.t()) :: {:ok, term()} | :not_found | {:error, term()}
+  defp cached_fetch(false, _key), do: :not_found
+
+  defp cached_fetch(store, key) do
+    case cache_lookup(store, key) do
+      {:ok, result} -> result
+      :miss -> remember(store, key, dispatch_fetch(store, key))
+    end
+  end
+
+  @spec remember(store(), String.t(), {:ok, term()} | :not_found | {:error, term()}) ::
+          {:ok, term()} | :not_found | {:error, term()}
+  defp remember(_store, _key, {:error, _} = error), do: error
+
+  defp remember(store, key, result) do
+    case cache_lookup(store, key) do
+      {:ok, cached} ->
+        cached
+
+      :miss ->
+        cache_insert(store, key, result)
+        result
+    end
+  end
+
+  @spec write_through(store(), String.t(), term()) :: :ok
+  defp write_through(false, _key, _value), do: :ok
+  defp write_through(store, key, value), do: cache_insert(store, key, {:ok, value})
+
+  @spec dispatch_fetch(store(), String.t()) :: {:ok, term()} | :not_found | {:error, term()}
   defp dispatch_fetch(store, key) do
     {module, backend_opts} = normalize_store(store)
     module.fetch(key, backend_opts)
@@ -77,6 +135,78 @@ defmodule Harness.SettingsStore do
     {module, backend_opts} = normalize_store(store)
     module.put(key, value, backend_opts)
   end
+
+  @spec cache_lookup(store(), String.t()) :: {:ok, {:ok, term()} | :not_found} | :miss
+  defp cache_lookup(store, key) do
+    case :ets.lookup(cache_table(), {cache_fingerprint(store), key}) do
+      [{_slot, result}] -> {:ok, result}
+      [] -> :miss
+    end
+  end
+
+  @spec cache_insert(store(), String.t(), {:ok, term()} | :not_found) :: :ok
+  defp cache_insert(store, key, result) do
+    true = :ets.insert(cache_table(), {{cache_fingerprint(store), key}, result})
+    :ok
+  end
+
+  @spec cache_table() :: :ets.tid() | atom()
+  defp cache_table do
+    case :ets.whereis(@cache_table) do
+      :undefined -> create_cache_table()
+      table -> table
+    end
+  end
+
+  @spec create_cache_table() :: :ets.tid() | atom()
+  defp create_cache_table do
+    :ets.new(@cache_table, [
+      :named_table,
+      :public,
+      :set,
+      {:heir, table_heir(), :settings_cache},
+      read_concurrency: true,
+      write_concurrency: true
+    ])
+  rescue
+    ArgumentError -> @cache_table
+  end
+
+  @spec table_heir() :: pid()
+  defp table_heir do
+    case Process.whereis(@heir_name) do
+      pid when is_pid(pid) -> pid
+      nil -> spawn_table_heir()
+    end
+  end
+
+  @spec spawn_table_heir() :: pid()
+  defp spawn_table_heir do
+    pid = spawn(&heir_loop/0)
+
+    try do
+      Process.register(pid, @heir_name)
+      pid
+    rescue
+      ArgumentError ->
+        Process.exit(pid, :kill)
+        Process.whereis(@heir_name)
+    end
+  end
+
+  @spec heir_loop() :: no_return()
+  defp heir_loop do
+    receive do
+      _ -> heir_loop()
+    end
+  end
+
+  @spec cache_fingerprint(store()) :: term()
+  defp cache_fingerprint({module, opts}) when is_atom(module) and is_list(opts) do
+    {module, Keyword.take(opts, [:scope, :repo])}
+  end
+
+  defp cache_fingerprint(module) when is_atom(module), do: {module, []}
 
   @spec normalize_store(store()) :: {module(), keyword()}
   defp normalize_store({module, opts}) when is_atom(module) and is_list(opts), do: {module, opts}

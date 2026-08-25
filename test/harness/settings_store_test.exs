@@ -1,9 +1,39 @@
+defmodule Harness.SettingsStoreTest.CountingStore do
+  @moduledoc false
+  @behaviour Harness.SettingsStore
+
+  alias Harness.Test.SettingsStoreMemory
+
+  @impl Harness.SettingsStore
+  @spec fetch(String.t(), keyword()) :: {:ok, term()} | :not_found
+  def fetch(key, backend_opts) when is_binary(key) and is_list(backend_opts) do
+    count(backend_opts, {:fetch, key})
+    SettingsStoreMemory.fetch(key, Keyword.delete(backend_opts, :owner))
+  end
+
+  @impl Harness.SettingsStore
+  @spec put(String.t(), term(), keyword()) :: :ok
+  def put(key, value, backend_opts) when is_binary(key) and is_list(backend_opts) do
+    count(backend_opts, {:put, key})
+    SettingsStoreMemory.put(key, value, Keyword.delete(backend_opts, :owner))
+  end
+
+  @spec count(keyword(), term()) :: term()
+  defp count(backend_opts, message) do
+    case Keyword.get(backend_opts, :owner) do
+      pid when is_pid(pid) -> send(pid, message)
+      _ -> :ok
+    end
+  end
+end
+
 defmodule Harness.SettingsStoreTest do
   # async: false because tests mutate global repo/settings application env.
   use ExUnit.Case, async: false
 
   alias Harness.SettingsStore
   alias Harness.SettingsStore.Schema.Setting
+  alias Harness.SettingsStoreTest.CountingStore
   alias Harness.Test.SettingsStoreMemory
 
   setup do
@@ -47,6 +77,20 @@ defmodule Harness.SettingsStoreTest do
       assert :not_found = SettingsStore.fetch(:agent)
       assert :not_found = SettingsStore.fetch("agent")
     end
+
+    test "does not serve a cached value written while a real backend was configured" do
+      scope = unique_scope("ephemeral-isolation")
+      Application.put_env(:harness, :settings_store, {SettingsStoreMemory, scope: scope})
+      on_exit(fn -> SettingsStoreMemory.reset(scope: scope) end)
+
+      assert :ok = SettingsStore.put(:agent, %{disabled: [:pi]})
+      assert {:ok, %{disabled: [:pi]}} = SettingsStore.fetch(:agent)
+
+      Application.put_env(:harness, :settings_store, false)
+      assert :not_found = SettingsStore.fetch(:agent)
+      assert :ok = SettingsStore.put(:agent, %{disabled: [:codex]})
+      assert :not_found = SettingsStore.fetch(:agent)
+    end
   end
 
   describe "round-trip through a backend" do
@@ -73,6 +117,34 @@ defmodule Harness.SettingsStoreTest do
     end
   end
 
+  describe "write-through cache" do
+    test "put is visible to the very next fetch without a second backend read" do
+      scope = unique_scope("write-through")
+      owner = self()
+      Application.put_env(:harness, :settings_store, {CountingStore, scope: scope, owner: owner})
+      on_exit(fn -> SettingsStoreMemory.reset(scope: scope) end)
+
+      record = %{disabled: [:cursor]}
+      assert :ok = SettingsStore.put(:agent, record)
+      assert [{:put, "agent"}] = drain_backend()
+
+      assert {:ok, ^record} = SettingsStore.fetch(:agent)
+      assert [] = drain_backend()
+    end
+
+    test "repeated fetches of the same key hit the backend once" do
+      scope = unique_scope("read-coalesce")
+      owner = self()
+      Application.put_env(:harness, :settings_store, {CountingStore, scope: scope, owner: owner})
+      on_exit(fn -> SettingsStoreMemory.reset(scope: scope) end)
+
+      assert :not_found = SettingsStore.fetch(:landing)
+      assert :not_found = SettingsStore.fetch(:landing)
+      assert :not_found = SettingsStore.fetch("landing")
+      assert [{:fetch, "landing"}] = drain_backend()
+    end
+  end
+
   test "Setting changeset accepts key and payload attrs" do
     attrs = %{key: "cron", payload: :erlang.term_to_binary(%{master_enabled: false})}
 
@@ -80,6 +152,15 @@ defmodule Harness.SettingsStoreTest do
   end
 
   defp unique_scope(label), do: :"settings_store_#{label}_#{System.unique_integer([:positive])}"
+
+  defp drain_backend(acc \\ []) do
+    receive do
+      {:fetch, _} = message -> drain_backend([message | acc])
+      {:put, _} = message -> drain_backend([message | acc])
+    after
+      0 -> Enum.reverse(acc)
+    end
+  end
 
   defp restore_env(prior) do
     Enum.each(prior, fn
