@@ -25,11 +25,13 @@ defmodule Harness.ProjectRegistry.OptionalFields do
     tooling_baseline_overrides: :invalid_tooling_baseline_overrides
   }
 
+  @doc false
   @spec fetch(map()) :: {:ok, map()} | {:error, {:invalid_project, term()}}
   def fetch(entry) when is_map(entry) do
     Enum.reduce_while(@fields, {:ok, %{}}, &fetch_one(entry, &1, &2))
   end
 
+  @doc false
   @spec validate(Project.t()) :: :ok | {:error, {:invalid_project, term()}}
   def validate(%Project{} = project) do
     case fetch(Map.from_struct(project)) do
