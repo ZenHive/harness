@@ -325,7 +325,7 @@
 | Task 393 | ✅ | 🎁 **core-loop** · 🐛 Fence .harness/review.json to the reviewer that wrote it — a killed reviewer's stale approve can settle the run :done [D:3/B:9/U:8 → Eff:2.83] 🎯 |
 | Task 396 | ✅ | 🎁 **contract** · Create the harness_agent_adapter package — move the AgentAdapter subsystem into its own repo [D:5/B:6/U:5 → Eff:1.1] 📋 |
 | Task 397 | ✅ | 🎁 **contract** · harness consumes harness_agent_adapter as a dependency — delete the in-repo AgentAdapter subsystem [D:5/B:5/U:4 → Eff:0.9] ⚠️ |
-| Task 398 | ⬜ | 🎁 **agent-gate** · Injected agent rules must never be visible in a tracked file while an agent runs the project's checks [D:4/B:7/U:8 → Eff:1.88] 🚀 |
+| Task 398 | 🔄 | 🎁 **agent-gate** · Injected agent rules must never be visible in a tracked file while an agent runs the project's checks [D:4/B:7/U:8 → Eff:1.88] 🚀 |
 | Task 399 | ⬜ | 🎁 **core-loop** · Agent-initiated question channel — implementer parks the run with .harness/question.json, orchestrator answers via steer/resume [D:5/B:6/U:5 → Eff:1.1] 📋 |
 | Task 400 | ✅ | 🎁 **autolanding** · Self-land must not mutate the running harness node's own checkout — Git.TargetSync needs a self-host guard [D:4/B:7/U:7 → Eff:1.75] 🚀 |
 | Task 401 | ✅ | 🎁 **audit-hygiene** · mix ci is red on main: one ex_dna clone and four dialyzer warnings, all pre-dating the 397 extraction [D:4/B:7/U:6 → Eff:1.62] 🚀 |
