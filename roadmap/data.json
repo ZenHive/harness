@@ -17477,7 +17477,7 @@
       "id": "383",
       "phase": 23,
       "bundle": "resilience",
-      "status": "in_progress",
+      "status": "done",
       "title": "Delivery commit exclusion missed .harness/agent-rules.md — harness's own scaffolding rode in a deliverable",
       "scores": {
         "d": 3,
@@ -17501,10 +17501,17 @@
         "lib/harness/worktree.ex",
         "test/harness/worktree_test.exs"
       ],
+      "shipped_in": "0cc1f16b993a3d5ba9e810df0aca8343ce3a3dcd",
       "body": "Observed on bourse run run-1786333517477-27a62f4d (task 552, delivery commit 5acb63c, 2026-08-10): the delivery commit contains .harness/agent-rules.md — harness's own dispatch-time prompt file (\"You are being driven by harness…\"). The workflow contract says .harness/ is excluded from delivery commits so runtime scaffolding never rides in a deliverable; the exclusion evidently misses this file (or the file is written at a moment the staging exclusion does not cover). The consumer repo had no .gitignore entry for .harness/, so the file landed tracked on main and was removed by the orchestrator (bourse commit 1b84d7f, which also added .harness/ to that repo's .gitignore — a consumer-side mitigation, not the fix).\n\nFind where the delivery staging computes its exclusion set and why agent-rules.md escaped it; pin the fix with a test that stages a run worktree containing .harness/agent-rules.md and asserts the delivery commit is free of any .harness/ path.\n",
       "created_at": "2026-08-10",
       "started_at": "2026-08-26",
+      "done_at": "2026-08-26",
       "scored_at": "2026-08-10",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1787719696500-bf09c0f1, 0cc1f16b993a3d5ba9e810df0aca8343ce3a3dcd).",
+      "delivered_by": "codex",
+      "verified": true,
+      "verified_by": "cursor",
+      "verification_ref": "harness-run:run-1787719696500-bf09c0f1",
       "cross_repo": []
     },
     {
