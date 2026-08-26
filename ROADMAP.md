@@ -9,7 +9,7 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (11 of 27 done · 1 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (11 of 27 done · 2 in progress)
 
 **Last shipped:** Task 358 — Bound KPI dashboard fleet-wide aggregate reads on run settlement, Task 361 — Add direct coverage for Harness.Store.EtsScope create/lookup and owner-exit table ownership, Task 389 — Expose roadmap_target_branch on the operator registration surfaces, Task 403 — Make the loopback posture true: Origin/Host guard on /harness/mcp + source-URL validation before git clone, Task 404 — Take the uncached SettingsStore reads and the synchronous CLI catalog probes off the 5s settings tick, Task 405 — Audit discovery filing writes into the operator's live checkout and is never committed, Task 413 — Surface an in-flight audit signal on the fleet count strip, not just the ops panel on 2026-08-25
 
@@ -357,7 +357,7 @@
 | Task 378 `[P]` | ✅ | 🎁 **roadmap-durability** · Durable roadmap writes ignore roadmap_path and push tasks.toml into the source repo [D:4/B:7/U:7 → Eff:1.75] 🚀 |
 | Task 379 | ⬜ | 🎁 **roadmap-writeback** · 🚀 **v0_16** · 🐛 Durable roadmap writeback silently produced no commit — dispatch-start and post-land transitions both lost [D:4/B:7/U:7 → Eff:1.75] 🚀 |
 | Task 380 | ⬜ | 🎁 **audit-perf** · 🚀 **v0_16** · Fetch each project target once per landed-sha reconciliation pass [D:3/B:5/U:4 → Eff:1.5] 🚀 |
-| Task 381 | ⬜ | 🎁 **audit-perf** · 🚀 **v0_16** · Make capped dashboard transcript append linear in incoming chunk size [D:2/B:4/U:3 → Eff:1.75] 🚀 |
+| Task 381 | 🔄 | 🎁 **audit-perf** · 🚀 **v0_16** · Make capped dashboard transcript append linear in incoming chunk size [D:2/B:4/U:3 → Eff:1.75] 🚀 |
 | Task 382 | ⬜ | 🎁 **audit-perf** · 🚀 **v0_16** · Remove the per-lookup Postgres landing-settings round trip from ProjectRegistry [D:3/B:5/U:4 → Eff:1.5] 🚀 |
 | Task 383 | ⬜ | 🎁 **resilience** · 🐛 Delivery commit exclusion missed .harness/agent-rules.md — harness's own scaffolding rode in a deliverable [D:3/B:6/U:5 → Eff:1.83] 🚀 |
 | Task 384 | ✅ | 🎁 **deferred** · Migrate anubis_mcp 1.x -> 2.0.0 (Application callback removal, transport/supervision rewrite) [D:5/B:3/U:2 → Eff:0.5] ⚠️ |
