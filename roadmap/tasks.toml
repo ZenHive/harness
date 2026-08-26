@@ -12632,7 +12632,7 @@ shipped_in = "2fdff16aae954921095a8e076bd708cb0dd832a1"
 id = "411"
 phase = 22
 bundle = "agent-gate"
-status = "pending"
+status = "in_progress"
 title = "run_records read path discards a whole row when one persisted atom is absent from the reading node"
 scores = { d = 3, b = 6, u = 5 }
 markers = ["bug"]
@@ -12663,6 +12663,7 @@ Note for whoever picks this up: a diagnostic session on 2026-08-25 minted `:prog
 OBSERVED 2026-08-26, the same defect with total blast radius: after a cold node restart every one of the 19 rows in `projects` was discarded at boot — `Harness.ProjectRegistry.Persistence.decode_term/1` (`lib/harness/project_registry/persistence.ex:236-242`) calls `:erlang.binary_to_term(payload, [:safe])`, and the restore runs during application start before `Harness.Project` is loaded, so the atom `Elixir.Harness.Project` does not yet exist and `:safe` raises `ArgumentError` on every row. The registry came up empty, `dispatch-task` answered `{:error, {:unknown_project, "harness"}}`, and all dispatch was dead until `reload_persisted_state/0` was called by hand once the atom happened to exist. Under `iex -S mix` modules load lazily; a release in `:embedded` mode would not show it — which is exactly the code-loading race criterion 7 already names, now proven to silently disable the whole node rather than skew a rollup. There are four `binary_to_term(_, [:safe])` decode sites in total: `result_store/postgres.ex:759`, `settings_store/postgres.ex:69`, `project_registry/persistence.ex:236` and `result_store/dead_letter.ex:285`. Fix the class, not the two instances originally filed.
 """
 created_at = "2026-08-25"
+started_at = "2026-08-26"
 scored_at = "2026-08-25"
 
 [[task]]
