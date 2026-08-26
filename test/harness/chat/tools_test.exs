@@ -6,6 +6,7 @@ defmodule Harness.Chat.ToolsTest do
   alias Harness.AgentAdapter.Codex
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.Chat.Tools
+  alias Harness.ProjectRegistry
   alias Harness.ResultStore
   alias Harness.ResultStore.Memory, as: MemoryStore
   alias Harness.ResultStoreContract
@@ -14,7 +15,7 @@ defmodule Harness.Chat.ToolsTest do
     registry = Tools.build()
 
     assert map_size(registry) > 0
-    assert %{module: Harness.ProjectRegistry, function: :list} = registry["project_registry-list"]
+    assert %{module: ProjectRegistry, function: :list} = registry["project_registry-list"]
   end
 
   test "schemas/1 returns backend-ready tool maps" do
@@ -171,6 +172,44 @@ defmodule Harness.Chat.ToolsTest do
     # the dispatcher — we don't silently coerce garbage into an empty filter set.
     assert {:error, {:dispatch_failed, _msg}} =
              Tools.dispatch(registry, "result_store-list_run_records", %{"filters" => "not json"})
+  end
+
+  test "dispatch-register_project accepts languages as a JSON array" do
+    ProjectRegistry.reset()
+    registry = Tools.build()
+    name = "mcp-lang-array-#{System.unique_integer([:positive])}"
+    path = "/tmp/#{name}"
+
+    assert {:ok, {:ok, %{name: ^name}}} =
+             Tools.dispatch(registry, "dispatch-register_project", %{
+               "name" => name,
+               "source_type" => "local",
+               "source_location" => path,
+               "roadmap_path" => path,
+               "languages" => ["elixir"]
+             })
+
+    assert {:ok, project} = ProjectRegistry.lookup(name)
+    assert project.languages == [:elixir]
+  end
+
+  test "dispatch-register_project decodes a JSON-string-encoded languages list" do
+    ProjectRegistry.reset()
+    registry = Tools.build()
+    name = "mcp-lang-string-#{System.unique_integer([:positive])}"
+    path = "/tmp/#{name}"
+
+    assert {:ok, {:ok, %{name: ^name}}} =
+             Tools.dispatch(registry, "dispatch-register_project", %{
+               "name" => name,
+               "source_type" => "local",
+               "source_location" => path,
+               "roadmap_path" => path,
+               "languages" => ~s(["elixir"])
+             })
+
+    assert {:ok, project} = ProjectRegistry.lookup(name)
+    assert project.languages == [:elixir]
   end
 
   # mark_* `opts` are required keyword lists with no schema default. The
@@ -473,7 +512,13 @@ defmodule Harness.Chat.ToolsTest do
   defp minimal_required_args("dispatch-reland"), do: %{"run_id" => "missing-run"}
 
   defp minimal_required_args("dispatch-register_project"),
-    do: %{"name" => "sweep-project", "source_dir" => File.cwd!(), "roadmap_path" => "roadmap/tasks.toml"}
+    do: %{
+      "name" => "sweep-project",
+      "source_type" => "local",
+      "source_location" => File.cwd!(),
+      "roadmap_path" => "roadmap/tasks.toml",
+      "languages" => ["elixir"]
+    }
 
   defp minimal_required_args("dispatch-bundle"), do: %{"project_name" => "harness", "bundle" => "chat-orchestrator"}
 

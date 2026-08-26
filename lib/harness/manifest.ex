@@ -184,7 +184,8 @@ defmodule Harness.Manifest do
       kind: details[:kind],
       required: MapSet.member?(required, str_key),
       default: Map.get(details, :default),
-      description: Map.get(details, :description)
+      description: Map.get(details, :description),
+      schema: Map.get(details, :schema)
     }
   end
 

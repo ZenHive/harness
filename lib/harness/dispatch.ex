@@ -913,7 +913,10 @@ defmodule Harness.Dispatch do
       languages: [
         kind: :value,
         description:
-          "Required non-empty list of target-language atoms for provider selection and injected agent rules. :mixed is not accepted."
+          "Required non-empty list of target-language atoms for provider selection and injected agent rules. :mixed is not accepted.",
+        # Pin independently of @spec conversion so a nonempty_list/union spec
+        # cannot ship a typeless property that MCP clients stringify (bugs.md #3).
+        schema: [String.t()]
       ],
       check_command: [
         kind: :value,

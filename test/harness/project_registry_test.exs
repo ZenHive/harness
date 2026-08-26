@@ -274,6 +274,31 @@ defmodule Harness.ProjectRegistryTest do
       assert project.languages == [:elixir, :rust]
     end
 
+    test "decodes a JSON-string-encoded languages list (MCP stringify leftover)" do
+      assert {:ok, %{name: "reg-json-encoded-lang"}} =
+               Dispatch.register_project(
+                 "reg-json-encoded-lang",
+                 "local",
+                 "/tmp/reg-json-encoded-lang",
+                 "/tmp/reg-json-encoded-lang",
+                 ~s(["elixir"])
+               )
+
+      assert {:ok, project} = ProjectRegistry.lookup("reg-json-encoded-lang")
+      assert project.languages == [:elixir]
+    end
+
+    test "still rejects a bare language string" do
+      assert {:error, {:invalid_project, {:invalid_languages, "elixir"}}} =
+               Dispatch.register_project(
+                 "reg-bare-lang",
+                 "local",
+                 "/tmp/reg-bare-lang",
+                 "/tmp/reg-bare-lang",
+                 "elixir"
+               )
+    end
+
     test "surfaces a duplicate registration as an error" do
       assert {:ok, _} = Dispatch.register_project("dup", "local", "/tmp/dup", "/tmp/dup", [:elixir])
 

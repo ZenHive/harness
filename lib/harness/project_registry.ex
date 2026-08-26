@@ -514,6 +514,16 @@ defmodule Harness.ProjectRegistry do
   end
 
   defp validate_languages([]), do: {:error, {:invalid_project, {:empty, :languages}}}
+
+  # Belt-and-braces for MCP clients that stringify a list argument when the
+  # schema is typeless. A bare language string is still rejected.
+  defp validate_languages(encoded) when is_binary(encoded) do
+    case Jason.decode(encoded) do
+      {:ok, decoded} when is_list(decoded) -> validate_languages(decoded)
+      _other -> {:error, {:invalid_project, {:invalid_languages, encoded}}}
+    end
+  end
+
   defp validate_languages(other), do: {:error, {:invalid_project, {:invalid_languages, other}}}
 
   @spec normalize_language(term(), {:ok, [atom()]}) :: {:cont, {:ok, [atom()]}} | {:halt, {:error, term()}}

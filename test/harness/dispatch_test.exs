@@ -1223,6 +1223,9 @@ defmodule Harness.DispatchTest do
       refute Map.has_key?(props, :language)
       assert Map.has_key?(props, :warm_paths)
       assert props.warm_paths["type"] == "array"
+      assert props.warm_paths["items"] == %{"type" => "string"}
+      assert props.languages["type"] == "array"
+      assert props.languages["items"] == %{"type" => "string"}
       assert Map.has_key?(props, :roadmap_target_branch)
 
       # check_command, concurrency_cap, warm_paths, and roadmap_target_branch default;

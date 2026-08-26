@@ -129,10 +129,10 @@ defmodule Harness.Chat.Tools do
   defp coerce_arg(entry, key, value) do
     details = param_details(entry, key)
 
-    if boolean_param?(details) do
-      coerce_boolean(value)
-    else
-      value
+    cond do
+      boolean_param?(details) -> coerce_boolean(value)
+      array_param?(details) -> coerce_json_array(value)
+      true -> value
     end
   end
 
@@ -147,20 +147,40 @@ defmodule Harness.Chat.Tools do
 
   @spec atom_param?(map()) :: boolean()
   defp atom_param?(details) when is_map(details) do
-    schema = Map.get(details, :schema, %{})
-    schema_type = if is_map(schema), do: Map.get(schema, "type", Map.get(schema, :type))
     desc = Map.get(details, :description, "")
-
-    schema_type in ["string", :string] and Regex.match?(~r/\batom\b/i, desc)
+    schema_type(details) in ["string", :string] and Regex.match?(~r/\batom\b/i, desc)
   end
 
   @spec boolean_param?(map()) :: boolean()
   defp boolean_param?(details) when is_map(details) do
-    schema = Map.get(details, :schema, %{})
-    schema_type = if is_map(schema), do: Map.get(schema, "type", Map.get(schema, :type))
-
-    schema_type in ["boolean", :boolean] or is_boolean(Map.get(details, :default))
+    schema_type(details) in ["boolean", :boolean] or is_boolean(Map.get(details, :default))
   end
+
+  @spec array_param?(map()) :: boolean()
+  defp array_param?(details) when is_map(details) do
+    schema_type(details) in ["array", :array]
+  end
+
+  @spec schema_type(map()) :: term()
+  defp schema_type(details) when is_map(details) do
+    schema = Map.get(details, :schema, %{})
+    if is_map(schema), do: Map.get(schema, "type", Map.get(schema, :type))
+  end
+
+  # Decode a JSON-string-encoded list before Schema.validate/2. Typed array
+  # params would otherwise reject the leftover stringified form that MCP
+  # clients emit when a schema is (or was) typeless.
+  @spec coerce_json_array(term()) :: term()
+  defp coerce_json_array(value) when is_list(value), do: value
+
+  defp coerce_json_array(value) when is_binary(value) do
+    case Jason.decode(value) do
+      {:ok, decoded} when is_list(decoded) -> decoded
+      _other -> value
+    end
+  end
+
+  defp coerce_json_array(value), do: value
 
   @spec coerce_boolean(term()) :: term()
   defp coerce_boolean(value) when is_boolean(value), do: value

@@ -53,6 +53,15 @@ defmodule Harness.Dashboard.MCPServerTest do
            ) do
         assert Enum.any?(tools, &(&1["name"] == name))
       end
+
+      register = Enum.find(tools, &(&1["name"] == "dispatch-register_project"))
+      assert %{"inputSchema" => register_schema} = register
+      languages = register_schema["properties"]["languages"]
+      assert languages["type"] == "array"
+      assert languages["items"] == %{"type" => "string"}
+      warm_paths = register_schema["properties"]["warm_paths"]
+      assert warm_paths["type"] == "array"
+      assert warm_paths["items"] == %{"type" => "string"}
     end
   end
 
@@ -82,6 +91,27 @@ defmodule Harness.Dashboard.MCPServerTest do
 
       assert {:ok, ["ok", %{"name" => "mcp-lookup", "source" => ["local", "/tmp/harness-mcp-lookup"]}]} =
                Jason.decode(text)
+    end
+
+    test "dispatch-register_project accepts languages as a JSON array", %{frame: frame} do
+      name = "mcp-register-lang-#{System.unique_integer([:positive])}"
+      path = "/tmp/#{name}"
+
+      request =
+        call_request("dispatch-register_project", %{
+          "name" => name,
+          "source_type" => "local",
+          "source_location" => path,
+          "roadmap_path" => path,
+          "languages" => ["elixir"]
+        })
+
+      assert {:reply, %{"content" => [%{"text" => text}], "isError" => false}, ^frame} =
+               MCPServer.handle_request(request, frame)
+
+      assert {:ok, ["ok", %{"name" => ^name}]} = Jason.decode(text)
+      assert {:ok, project} = ProjectRegistry.lookup(name)
+      assert project.languages == [:elixir]
     end
 
     test "returns JSON-RPC :invalid_params error for an unknown tool", %{frame: frame} do

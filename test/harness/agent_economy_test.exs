@@ -144,5 +144,48 @@ defmodule Harness.AgentEconomyTest do
       assert missing == [],
              "exchange_data params must declare source: hints. Missing in: #{Enum.join(missing, ", ")}"
     end
+
+    test "expressible MCP params do not ship typeless" do
+      # Task 259's sweep only asserted scalar/atom round-trips, so a typeless
+      # list property (dispatch-register_project languages) never failed the
+      # suite. Fail here when any MCP-exposed param whose spec is expressible
+      # as JSON Schema (including nonempty_list/list/[T]) ships without a type.
+      mcp_names = MapSet.new(Enum.map(Harness.Manifest.mcp_tools(), & &1.name))
+
+      unexpected =
+        Harness.Manifest.modules()
+        |> Descripex.typeless_params()
+        |> Enum.filter(fn entry ->
+          MapSet.member?(mcp_names, mcp_tool_name(entry)) and not inexpressible_spec?(entry.spec_type)
+        end)
+
+      assert unexpected == [],
+             "MCP params with expressible types shipped typeless: #{inspect(unexpected)}"
+    end
+  end
+
+  @spec mcp_tool_name(map()) :: String.t()
+  defp mcp_tool_name(%{module: module, function: function}) do
+    prefix = module |> Module.split() |> List.last() |> Macro.underscore()
+    prefix <> "-" <> Atom.to_string(function)
+  end
+
+  @spec inexpressible_spec?(String.t() | nil) :: boolean()
+  defp inexpressible_spec?(nil), do: true
+
+  defp inexpressible_spec?(spec) when is_binary(spec) do
+    cond do
+      list_form_spec?(spec) -> false
+      spec in ["keyword()", "store()", "term()", "any()", "selector()"] -> true
+      String.starts_with?(spec, "Harness.") -> true
+      true -> false
+    end
+  end
+
+  @spec list_form_spec?(String.t()) :: boolean()
+  defp list_form_spec?(spec) do
+    String.starts_with?(spec, "[") or
+      String.starts_with?(spec, "list(") or
+      String.starts_with?(spec, "nonempty_list(")
   end
 end
