@@ -11593,8 +11593,8 @@ out_of_scope = ["Changing the 30-second roadmap tick", "KPI aggregate bounding, 
 files_to_modify = ["lib/harness/dashboard/live.ex", "lib/harness/result_store.ex"]
 touches = ["lib/harness/dashboard/live.ex", "lib/harness/result_store/"]
 domains = ["git", "phoenix", "ecto"]
-assignee = "codex"
-model = "gpt-5.6-sol"
+assignee = "cursor"
+model = "cursor-grok-4.6-high"
 body = """
 The dashboard reconciles unlanded run-history rows on mount and each roadmap tick. The current path calls ResultStore.reconcile_landed_sha/4 per row, which reaches fetch_target/2 and performs a real git fetch each time. Change the reconciliation pass so target-ref retrieval is shared only within one project/pass, while row-level landed-sha decisions and failure visibility remain unchanged. This is the former H2 part of Task 358, split because it has a separate git/dashboard seam and verification surface.
 """
@@ -11643,8 +11643,8 @@ out_of_scope = ["Changing project registration semantics", "Caching unrelated st
 files_to_modify = ["lib/harness/project_registry.ex", "lib/harness/landing/settings.ex"]
 touches = ["lib/harness/project_registry.ex", "lib/harness/landing/settings.ex", "test/harness/project_registry_test.exs"]
 domains = ["otp", "ecto"]
-assignee = "codex"
-model = "gpt-5.6-sol"
+assignee = "grok"
+model = "grok-4.6"
 body = """
 ProjectRegistry.lookup/1 overlays landing settings with a fresh single-project Postgres read on each call, including dashboard task-detail hot paths, while list/0 already batches the overlay. Give lookup the same bounded read behavior or keep the rarely-changing overrides in registry state with explicit invalidation on writes. Preserve the persisted source of truth and current lookup/list results. This is the former M3 part of Task 358, split because it changes registry/cache coherence rather than dashboard rendering.
 """
@@ -11653,6 +11653,7 @@ scored_at = "2026-08-07"
 
 [[task]]
 id = "383"
+touches = ["lib/harness/worktree.ex", "test/harness/worktree_test.exs"]
 phase = 23
 bundle = "resilience"
 status = "pending"
@@ -11696,6 +11697,7 @@ done_at = "2026-08-13"
 
 [[task]]
 id = "385"
+touches = ["lib/harness/worktree.ex", "lib/harness/agent_adapter/", "test/harness/worktree_test.exs"]
 phase = 22
 bundle = "core-loop"
 status = "pending"
@@ -11721,6 +11723,7 @@ scored_at = "2026-08-14"
 
 [[task]]
 id = "386"
+touches = ["lib/harness/lander.ex", "test/harness/lander_test.exs"]
 phase = 22
 bundle = "core-loop"
 status = "pending"
@@ -11874,7 +11877,7 @@ scores = { d = 5, b = 9, u = 8 }
 markers = ["bug"]
 acceptance_criteria = ["Every termination path kills the whole descendant process tree of the agent, not only the immediate OS pid: the AgentAdapter terminate/1 default, OSProcess.kill/1, reviewer timeout and rotation, dispatch-cancel, hold with interrupt, and idle/lifetime/total timeout expiry", "Termination escalates rather than going straight to SIGKILL: tree SIGTERM, then a bounded grace window, then tree SIGKILL. The grace window is an operator-visible configuration fact with a documented default; agent CLIs flush their transcript tail on SIGTERM, so the ordering is load-bearing", "A caller that tears down or REUSES a worktree waits for tree quiescence first: after a kill returns, no descendant of the agent pid is still alive before the worktree is torn down or a replacement reviewer is spawned into it", "Harness.Run.MemoryGuard.kill_tree/1 stops being the sole owner of tree-kill: the implementation lives on the shared process-lifecycle surface and MemoryGuard consumes it, so a future termination path cannot silently regress to single-pid kill", "Tests spawn an agent stand-in that forks a long-lived grandchild and assert, per termination path, that the grandchild is gone; that SIGTERM precedes SIGKILL; and that quiescence holds before worktree teardown and before a rotation reviewer is spawned", "OSProcess's moduledoc no longer documents orphaning as accepted behavior with the boot-time Worktree.Sweeper as the backstop"]
 out_of_scope = ["Adding termination fields to Outcome or Result — kind (:exited / {:timed_out, :idle|:total} / {:reflex_halted,_} / {:error,_}) and the advisory exit_status already carry these facts orthogonally", "Parsing agent output to infer that a run is stuck", "Changing timeout durations or the watchdog policy", "Windows process-tree support", "Removing the boot-time Worktree.Sweeper — it stays as a backstop for crashed nodes"]
-touches = ["lib/harness/agent_adapter/os_process.ex", "lib/harness/run/memory_guard.ex", "lib/harness/run/actions/control.ex", "lib/harness/run/actions/reviewing.ex", "test/harness/"]
+touches = ["lib/harness/agent_adapter/os_process.ex", "lib/harness/run/memory_guard.ex", "lib/harness/run/actions/control.ex", "lib/harness/run/actions/reviewing.ex", "test/harness/agent_adapter/", "test/harness/run/"]
 domains = ["run-lifecycle", "otp"]
 assignee = "codex"
 model = "gpt-5.6-sol"
@@ -12877,6 +12880,7 @@ shipped_in = "b1f31b4"
 
 [[task]]
 id = "417"
+touches = ["lib/harness/worktree.ex", "test/harness/worktree_test.exs"]
 phase = 23
 bundle = "resilience"
 status = "pending"
