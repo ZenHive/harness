@@ -643,6 +643,23 @@ defmodule Harness.WorktreeTest do
       refute files =~ ".harness"
     end
 
+    test "reports :no_changes on a zero-fix reviewer run when the repo does not gitignore .harness/" do
+      # The reviewer that fixed nothing leaves ONLY `.harness/review.json` behind.
+      # `git rm --cached` returns it to untracked, so `git status --porcelain`
+      # still prints `?? .harness/` while the index is empty — probing status
+      # instead of the index made `git commit` fatal with "nothing added to
+      # commit but untracked files present", surfacing as a mechanical
+      # {:git_failed, _} / review_stuck on every clean review (aave_sim runs
+      # run-1787728977672-dfb84f7d and run-1787728980236-ae0c6b7e).
+      {repo, wt} = create_worktree()
+      sha_before = GitFixture.git!(repo, ["rev-parse", wt.branch])
+      write_review_artifact(wt)
+
+      assert {:ok, :no_changes} = Worktree.commit(wt, "harness: reviewer fixes")
+
+      assert GitFixture.git!(repo, ["rev-parse", wt.branch]) == sha_before
+    end
+
     test "excludes every .harness file including the dispatch-time agent rules" do
       {repo, wt} = create_worktree()
       File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")

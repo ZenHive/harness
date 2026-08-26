@@ -95,9 +95,16 @@ defmodule Harness.Worktree do
   @roadmap_paths ["roadmap/tasks.toml", "roadmap/data.json", "ROADMAP.md", "CHANGELOG.md"]
   @reset_paths @roadmap_paths
 
-  # Status/diff measurement excludes the reset family (HEAD is kept). Never-deliver
+  # Index/diff measurement excludes the reset family (HEAD is kept). Never-deliver
   # paths are intentionally *not* excluded: a staged deletion of an already-committed
   # leak must remain visible so `commit/2` actually records it.
+  #
+  # The emptiness probe reads the INDEX (`git diff --cached HEAD`), never the
+  # worktree status: `git rm --cached` returns a never-committed `.harness/` back
+  # to untracked, and `git status --porcelain` still lists it as `??`. A target
+  # repo that does not gitignore `.harness/` would then look dirty with an empty
+  # index, and `git commit` fatals "nothing added to commit but untracked files
+  # present" — a mechanical `{:git_failed, …}` on every zero-fix reviewer run.
   @stage_exclude Enum.map(@reset_paths, &":(exclude)#{&1}")
 
   # Ignored-but-load-bearing files the parent checkout carries that the verification
@@ -514,8 +521,8 @@ defmodule Harness.Worktree do
     with :ok <- prepare_for_staging(path),
          :ok <- reconcile_head_to_branch(path, branch),
          {:ok, _staged} <- stage_worktree(path),
-         {:ok, status} <- Git.run(["status", "--porcelain", "--"] ++ @stage_exclude, path) do
-      if String.trim(status) == "" do
+         {:ok, staged} <- Git.run(["diff", "--cached", "--name-only", "HEAD", "--"] ++ @stage_exclude, path) do
+      if String.trim(staged) == "" do
         {:ok, :no_changes}
       else
         commit_staged(path, message)
