@@ -526,33 +526,59 @@ defmodule Harness.Dashboard.Live do
         ) :: [StatusView.run_entry()]
   def reconcile_history_landed(history_all, projects, roadmap, store \\ ResultStore.configured()) do
     projects_by_name = Map.new(projects, &{&1.name, &1})
+    fetched_by_name = ResultStore.prefetch_targets(projects_for_pass(history_all, projects_by_name))
 
-    Enum.map(history_all, &reconcile_history_entry(&1, projects_by_name, roadmap, store))
+    Enum.map(history_all, &reconcile_history_entry(&1, fetched_by_name, roadmap, store))
+  end
+
+  @spec projects_for_pass([StatusView.run_entry()], %{optional(String.t()) => Project.t()}) :: [Project.t()]
+  defp projects_for_pass(history_all, projects_by_name) do
+    history_all
+    |> Enum.flat_map(&candidate_project_name/1)
+    |> Enum.uniq()
+    |> Enum.flat_map(&project_if_registered(&1, projects_by_name))
+  end
+
+  @spec candidate_project_name(StatusView.run_entry()) :: [String.t()]
+  defp candidate_project_name(%{status: %Status{landed_sha: nil, state: state, project_name: name}})
+       when state in [:done, :failed] and is_binary(name) do
+    [name]
+  end
+
+  defp candidate_project_name(_entry), do: []
+
+  @spec project_if_registered(String.t(), %{optional(String.t()) => Project.t()}) :: [Project.t()]
+  defp project_if_registered(name, projects_by_name) do
+    case Map.get(projects_by_name, name) do
+      %Project{} = project -> [project]
+      _missing -> []
+    end
   end
 
   @spec reconcile_history_entry(
           StatusView.run_entry(),
-          %{optional(String.t()) => Project.t()},
+          %{optional(String.t()) => ResultStore.fetch_target_result()},
           RoadmapSummary.summaries(),
           ResultStore.store()
         ) :: StatusView.run_entry()
   defp reconcile_history_entry(
          %{status: %Status{landed_sha: nil, state: state} = status} = entry,
-         projects_by_name,
+         fetched_by_name,
          roadmap,
          store
        )
        when state in [:done, :failed] do
-    project = Map.get(projects_by_name, status.project_name)
     shipped_in = RoadmapSummary.landed_sha(roadmap, status.project_name, status.task_id)
 
-    case ResultStore.reconcile_landed_sha(status.run_id, shipped_in, project, store) do
-      {:ok, sha} -> %{entry | status: %{status | landed_sha: sha}}
-      :unchanged -> entry
+    with {:fetched, _repo, _ref} = fetched <- Map.get(fetched_by_name, status.project_name),
+         {:ok, sha} <- ResultStore.reconcile_landed_sha(status.run_id, shipped_in, fetched, store) do
+      %{entry | status: %{status | landed_sha: sha}}
+    else
+      _not_proven -> entry
     end
   end
 
-  defp reconcile_history_entry(entry, _projects_by_name, _roadmap, _store), do: entry
+  defp reconcile_history_entry(entry, _fetched_by_name, _roadmap, _store), do: entry
 
   @spec maybe_mark_history_landed(Socket.t(), Op.t()) :: Socket.t()
   defp maybe_mark_history_landed(socket, %Op{kind: :land, stage: :landed, run_id: run_id, sha: sha})

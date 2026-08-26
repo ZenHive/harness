@@ -596,6 +596,141 @@ defmodule Harness.Dashboard.LiveTest do
       refute Live.landed_entry?(reconciled)
       assert reconciled.status.landed_sha == nil
     end
+
+    test "fetches each project target once across multiple unlanded rows" do
+      %{project: project, sha: sha, store: store} = landed_history_project("live-fetch-once")
+      project_name = project.name
+
+      entries =
+        Enum.map(["r-a", "r-b", "r-c"], fn run_id ->
+          :ok =
+            ResultStore.record_run(log_record(run_id, project_name: project_name, task_id: run_id), store)
+
+          run_entry(run_id,
+            project_name: project_name,
+            task_id: run_id,
+            state: :done,
+            bucket: :green,
+            review_verdict: :approve
+          )
+        end)
+
+      roadmap = %{
+        project_name => %{
+          open: 0,
+          done: 3,
+          total: 3,
+          landed: Map.new(entries, &{&1.status.task_id, sha}),
+          blocked: MapSet.new()
+        }
+      }
+
+      {count, log} =
+        count_target_fetches(fn ->
+          send(self(), {:reconciled, Live.reconcile_history_landed(entries, [project], roadmap, store)})
+        end)
+
+      assert_received {:reconciled, reconciled}
+      assert count == 1
+      assert log =~ "fetching origin/main for landed_sha reconcile"
+      assert Enum.map(reconciled, & &1.status.landed_sha) == [sha, sha, sha]
+    end
+
+    test "resolves rows for different projects against their own fetched target" do
+      %{project: project_a, sha: sha_a, store: store} = landed_history_project("live-fetch-a")
+      %{project: project_b, sha: sha_b} = landed_history_project("live-fetch-b")
+
+      entry_a = history_run(store, "run-a", project_a.name, "10", :done)
+      entry_b = history_run(store, "run-b", project_b.name, "11", :done)
+
+      roadmap = %{
+        project_a.name => %{open: 0, done: 1, total: 1, landed: %{"10" => sha_a}, blocked: MapSet.new()},
+        project_b.name => %{open: 0, done: 1, total: 1, landed: %{"11" => sha_b}, blocked: MapSet.new()}
+      }
+
+      {count, _log} =
+        count_target_fetches(fn ->
+          send(
+            self(),
+            {:reconciled, Live.reconcile_history_landed([entry_a, entry_b], [project_a, project_b], roadmap, store)}
+          )
+        end)
+
+      assert_received {:reconciled, [reconciled_a, reconciled_b]}
+      assert count == 2
+      assert reconciled_a.status.landed_sha == sha_a
+      assert reconciled_b.status.landed_sha == sha_b
+      refute sha_a == sha_b
+    end
+
+    test "a fetch failure leaves that project's rows unchanged and does not reuse another project's ref" do
+      %{project: project_a, repo: repo_a, sha: sha_a, store: store} = landed_history_project("live-fetch-fail-a")
+      %{project: project_b, sha: sha_b} = landed_history_project("live-fetch-fail-b")
+
+      GitFixture.git!(repo_a, ["remote", "set-url", "origin", "/nonexistent-#{System.unique_integer([:positive])}"])
+
+      entry_a1 = history_run(store, "run-a1", project_a.name, "20", :done)
+      entry_a2 = history_run(store, "run-a2", project_a.name, "21", :failed)
+      entry_b = history_run(store, "run-b", project_b.name, "22", :done)
+
+      roadmap = %{
+        project_a.name => %{
+          open: 0,
+          done: 2,
+          total: 2,
+          landed: %{"20" => sha_a, "21" => sha_a},
+          blocked: MapSet.new()
+        },
+        project_b.name => %{open: 0, done: 1, total: 1, landed: %{"22" => sha_b}, blocked: MapSet.new()}
+      }
+
+      {count, log} =
+        count_target_fetches(fn ->
+          send(
+            self(),
+            {:reconciled,
+             Live.reconcile_history_landed(
+               [entry_a1, entry_a2, entry_b],
+               [project_a, project_b],
+               roadmap,
+               store
+             )}
+          )
+        end)
+
+      assert_received {:reconciled, [reconciled_a1, reconciled_a2, reconciled_b]}
+      assert count == 2
+      assert log =~ "fetch origin/main failed for landed_sha reconcile"
+      assert reconciled_a1.status.landed_sha == nil
+      assert reconciled_a2.status.landed_sha == nil
+      assert reconciled_b.status.landed_sha == sha_b
+      refute reconciled_b.status.landed_sha == sha_a
+    end
+
+    test "skips the target fetch when every history row is already landed" do
+      %{project: project, sha: sha, store: store} = landed_history_project("live-fetch-skip")
+
+      entry =
+        run_entry("already-landed",
+          project_name: project.name,
+          task_id: "30",
+          state: :done,
+          bucket: :green,
+          review_verdict: :approve,
+          landed_sha: sha
+        )
+
+      roadmap = %{project.name => %{open: 0, done: 1, total: 1, landed: %{"30" => sha}, blocked: MapSet.new()}}
+
+      {count, _log} =
+        count_target_fetches(fn ->
+          send(self(), {:reconciled, Live.reconcile_history_landed([entry], [project], roadmap, store)})
+        end)
+
+      assert_received {:reconciled, [reconciled]}
+      assert count == 0
+      assert reconciled.status.landed_sha == sha
+    end
   end
 
   describe "handle_event(\"select_project\", ...)" do
@@ -1313,6 +1448,55 @@ defmodule Harness.Dashboard.LiveTest do
 
   defp unique_run_id(prefix) do
     "#{prefix}-#{System.unique_integer([:positive, :monotonic])}"
+  end
+
+  @target_fetch_log "harness result store: fetching origin/"
+
+  defp history_run(store, run_id, project_name, task_id, state) do
+    verdict = if state == :done, do: :approve
+
+    :ok =
+      ResultStore.record_run(
+        log_record(run_id, project_name: project_name, task_id: task_id, state: state, verdict: verdict),
+        store
+      )
+
+    run_entry(run_id,
+      project_name: project_name,
+      task_id: task_id,
+      state: state,
+      bucket: if(state == :done, do: :green, else: :red),
+      review_verdict: verdict
+    )
+  end
+
+  defp landed_history_project(prefix) do
+    %{repo: repo} = GitFixture.init_with_origin()
+    project_name = "#{prefix}-#{System.unique_integer([:positive])}"
+
+    project = %Project{
+      name: project_name,
+      source: {:local, repo},
+      roadmap_path: repo,
+      languages: [:elixir],
+      target_branch: "main"
+    }
+
+    store = {Memory, scope: {:live_reconcile, self(), System.unique_integer([:positive])}}
+    on_exit(fn -> Memory.reset(elem(store, 1)) end)
+
+    File.write!(Path.join(repo, "#{prefix}.txt"), "#{prefix}\n")
+    GitFixture.git!(repo, ["add", "."])
+    GitFixture.git!(repo, ["commit", "-q", "-m", prefix])
+    sha = repo |> GitFixture.git!(["rev-parse", "HEAD"]) |> String.trim()
+    GitFixture.git!(repo, ["push", "-q", "origin", "main"])
+
+    %{project: project, repo: repo, sha: sha, store: store}
+  end
+
+  defp count_target_fetches(fun) do
+    log = ExUnit.CaptureLog.capture_log([level: :debug], fun)
+    {length(String.split(log, @target_fetch_log)) - 1, log}
   end
 
   defp log_record(run_id, opts) do

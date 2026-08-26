@@ -341,6 +341,83 @@ defmodule Harness.ResultStore.MemoryTest do
       assert :unchanged = ResultStore.reconcile_landed_sha(run_id, sha, project, store)
       assert {:ok, [%{landed_sha: nil}]} = ResultStore.list_run_records(store, run_id: run_id)
     end
+
+    test "prefetch_targets fetches each named project once", %{store: store} do
+      %{repo: repo} = GitFixture.init_with_origin()
+      project = local_project(repo)
+      sha = commit_and_push(repo, "prefetch.txt", "landed\n")
+      run_id = "prefetch-once"
+
+      assert :ok = ResultStore.record_run(ResultStoreContract.log_record(run_id: run_id), store)
+
+      log =
+        ExUnit.CaptureLog.capture_log([level: :debug], fn ->
+          targets = ResultStore.prefetch_targets([project, project])
+          send(self(), {:targets, targets})
+        end)
+
+      assert_received {:targets, targets}
+      assert map_size(targets) == 1
+      assert target_fetch_count(log) == 1
+      assert {:fetched, ^repo, "refs/remotes/origin/main"} = Map.fetch!(targets, project.name)
+      assert {:ok, ^sha} = ResultStore.reconcile_landed_sha(run_id, sha, Map.fetch!(targets, project.name), store)
+    end
+
+    test "reconcile_landed_sha uses a pre-fetched target without fetching again", %{store: store} do
+      %{repo: repo} = GitFixture.init_with_origin()
+      project = local_project(repo)
+      sha = commit_and_push(repo, "prefetched.txt", "landed\n")
+      run_id = "reconcile-prefetched"
+
+      assert :ok = ResultStore.record_run(ResultStoreContract.log_record(run_id: run_id), store)
+      fetched = ResultStore.fetch_target_ref(project)
+      GitFixture.git!(repo, ["remote", "set-url", "origin", "/gone-#{System.unique_integer([:positive])}"])
+
+      log =
+        ExUnit.CaptureLog.capture_log([level: :debug], fn ->
+          send(self(), {:result, ResultStore.reconcile_landed_sha(run_id, sha, fetched, store)})
+        end)
+
+      assert_received {:result, {:ok, ^sha}}
+      assert target_fetch_count(log) == 0
+    end
+
+    test "fetch_target_ref logs a fetch failure and does not return another project's ref" do
+      %{repo: good_repo} = GitFixture.init_with_origin()
+      %{repo: bad_repo} = GitFixture.init_with_origin()
+      good = local_project(good_repo, "good")
+      bad = local_project(bad_repo, "bad")
+      GitFixture.git!(bad_repo, ["remote", "set-url", "origin", "/gone-#{System.unique_integer([:positive])}"])
+
+      log =
+        ExUnit.CaptureLog.capture_log([level: :debug], fn ->
+          send(self(), {:targets, ResultStore.prefetch_targets([bad, good])})
+        end)
+
+      assert_received {:targets, targets}
+      assert target_fetch_count(log) == 2
+      assert log =~ "fetch origin/main failed for landed_sha reconcile"
+      assert {:error, {:git_failed, _args, _status, _output}} = Map.fetch!(targets, "bad")
+      assert {:fetched, ^good_repo, "refs/remotes/origin/main"} = Map.fetch!(targets, "good")
+    end
+
+    test "fetch_target_ref skips github sources without a git fetch" do
+      project = %Project{
+        name: "gh",
+        source: {:github, "https://github.com/example/demo.git"},
+        roadmap_path: "/tmp",
+        languages: [:elixir],
+        target_branch: "main"
+      }
+
+      log =
+        ExUnit.CaptureLog.capture_log([level: :debug], fn ->
+          send(self(), {:result, ResultStore.fetch_target_ref(project)})
+        end)
+
+      assert_received {:result, {:error, :github_source}}
+      assert target_fetch_count(log) == 0
+    end
   end
 
   test "repo_enabled false selects ephemeral memory when no explicit override" do
@@ -373,9 +450,15 @@ defmodule Harness.ResultStore.MemoryTest do
     Map.update!(facts, :per_run, &Enum.sort_by(&1, fn row -> row.run_id end))
   end
 
+  @target_fetch_log "harness result store: fetching origin/"
+
+  @spec target_fetch_count(String.t()) :: non_neg_integer()
+  defp target_fetch_count(log), do: length(String.split(log, @target_fetch_log)) - 1
+
   @spec local_project(String.t()) :: Project.t()
-  defp local_project(repo) do
-    %Project{name: "reconcile", source: {:local, repo}, roadmap_path: repo, languages: [:elixir], target_branch: "main"}
+  @spec local_project(String.t(), String.t()) :: Project.t()
+  defp local_project(repo, name \\ "reconcile") do
+    %Project{name: name, source: {:local, repo}, roadmap_path: repo, languages: [:elixir], target_branch: "main"}
   end
 
   @spec commit_and_push(String.t(), String.t(), String.t()) :: String.t()

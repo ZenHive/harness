@@ -51,6 +51,12 @@ defmodule Harness.ResultStore do
   @typedoc "Exact-match filters supported by `list_run_records/2`."
   @type filters :: keyword()
 
+  @typedoc false
+  @type fetched_target :: {:fetched, String.t(), String.t()}
+
+  @typedoc false
+  @type fetch_target_result :: fetched_target() | {:error, term()}
+
   # MCP/chat dispatch omits the `store` param (or sends JSON null) so
   # `Harness.Chat.Tools` drops the trailing arity and `configured/0` runs via
   # the function's `\\ configured()` default head — not via this sentinel.
@@ -334,16 +340,42 @@ defmodule Harness.ResultStore do
   end
 
   @doc false
-  @spec reconcile_landed_sha(String.t(), String.t() | nil, Project.t() | nil, store()) ::
+  @spec prefetch_targets([Project.t()]) :: %{optional(String.t()) => fetch_target_result()}
+  def prefetch_targets(projects) when is_list(projects) do
+    Map.new(Enum.uniq_by(projects, & &1.name), &{&1.name, fetch_target_ref(&1)})
+  end
+
+  @doc false
+  @spec fetch_target_ref(Project.t() | nil) :: fetch_target_result()
+  def fetch_target_ref(%Project{} = project) do
+    with {:ok, repo} <- Project.local_repo_path(project),
+         {:ok, target} <- reconcile_target(project),
+         :ok <- fetch_target(repo, target) do
+      {:fetched, repo, remote_ref(target)}
+    else
+      {:error, _reason} = error -> error
+      {:skipped, reason} -> {:error, reason}
+      :error -> {:error, :unavailable}
+    end
+  end
+
+  def fetch_target_ref(_project), do: {:error, :no_project}
+
+  @doc false
+  @spec reconcile_landed_sha(String.t(), String.t() | nil, Project.t() | fetched_target() | nil, store()) ::
           {:ok, String.t()} | :unchanged
   def reconcile_landed_sha(run_id, shipped_in, project, store \\ configured())
 
   def reconcile_landed_sha(run_id, shipped_in, %Project{} = project, store) when is_binary(run_id) do
-    with {:ok, repo} <- Project.local_repo_path(project),
-         {:ok, target} <- reconcile_target(project),
-         target_ref = remote_ref(target),
-         :ok <- fetch_target(repo, target),
-         {:ok, sha} <- landed_candidate(repo, target_ref, run_id, shipped_in),
+    case fetch_target_ref(project) do
+      {:fetched, _repo, _ref} = fetched -> reconcile_landed_sha(run_id, shipped_in, fetched, store)
+      {:error, _reason} -> :unchanged
+    end
+  end
+
+  def reconcile_landed_sha(run_id, shipped_in, {:fetched, repo, target_ref}, store)
+      when is_binary(run_id) and is_binary(repo) and is_binary(target_ref) do
+    with {:ok, sha} <- landed_candidate(repo, target_ref, run_id, shipped_in),
          :ok <- mark_reconciled_landed(run_id, sha, store) do
       {:ok, sha}
     else
@@ -565,13 +597,21 @@ defmodule Harness.ResultStore do
 
   @spec fetch_target(String.t(), String.t()) :: :ok | {:error, Git.error()}
   defp fetch_target(repo, target) do
+    Logger.debug("harness result store: fetching origin/#{target} for landed_sha reconcile")
     ref = remote_ref(target)
     branch_ref = "refs/heads/" <> target
 
     case Git.run(["fetch", "origin", "+#{branch_ref}:#{ref}"], repo) do
       {:ok, _output} -> :ok
-      {:error, _reason} = error -> error
+      {:error, reason} = error -> log_fetch_failure(target, reason, error)
     end
+  end
+
+  @spec log_fetch_failure(String.t(), Git.error(), {:error, Git.error()}) :: {:error, Git.error()}
+  defp log_fetch_failure(target, reason, error) do
+    Logger.warning("harness result store: fetch origin/#{target} failed for landed_sha reconcile: #{inspect(reason)}")
+
+    error
   end
 
   @spec landed_candidate(String.t(), String.t(), String.t(), String.t() | nil) :: {:ok, String.t()} | :error
