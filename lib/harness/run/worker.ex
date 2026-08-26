@@ -7,7 +7,7 @@ defmodule Harness.Run.Worker do
   `perform/1` *monitors* — never *links* — the run gen_statem (`run_once/4` via
   `Process.monitor/1`), and the run drives its agents in `async_nolink` tasks
   with no BEAM link back to this worker. So when a settling run tears its agent
-  down (`OSProcess.kill/1` = `System.cmd("kill", ...)` + `Port.close/1`), the
+  down (`OSProcess.kill/1` = tree SIGTERM/SIGKILL + `Port.close/1`), the
   `:killed` blast radius cannot propagate an EXIT into this worker process: a
   settled `:failed` result returns `{:cancel, reason}` and a pre-settle
   gen_statem crash returns `{:run_crashed, reason}` → `{:cancel}` — both terminal,

@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Oban 2.24: crontab plugin is `Oban.Cron`.** Every `Oban.Plugins.Cron` entry point is now a `defdelegate` shim; harness aliases and the Oban instance plugin pin the new module. Phoenix 1.8.13 and quackdb 0.5.20 locked alongside.
+
+- **`harness_agent_adapter` is a path pin at `vendor/harness_agent_adapter` (Task 392).** Tree-scoped terminate had to land in `OSProcess` inside the extracted package; the vendor checkout is the pin until that change is published upstream and `mix.exs` returns to the ZenHive git dependency.
+
 ### Fixed
+
+- **Agent termination kills the whole descendant tree, not just the Port pid (Task 392).** `Harness.AgentAdapter.OSProcess.kill/1` and `kill_tree/1` SIGTERM the captured tree, wait a bounded grace window (`config :harness_agent_adapter, :run, terminate_grace_ms`, default 1s), then SIGKILL remaining descendants and wait for quiescence. MemoryGuard, reviewer timeout/rotation, cancel, hold-interrupt, and lifetime expiry all share that helper, so a replacement reviewer is not spawned into a worktree still held by the previous reviewer's `mix test`.
+
+- **Durable roadmap writeback observes origin via ancestor check, not push exit 0 (Task 379).** After `git push`, `Roadmap.Durable` fetches the remote-tracking ref and requires the local commit to be an ancestor of `origin/<target>`. A discarded or unverified push is a warning/`{:error, {:roadmap_push_unverified, ...}}`, not a silent `{:ok}` that left dispatch-start and post-land transitions uncommitted.
+
+- **Landed-sha reconciliation fetches each project target once per pass (Task 380).** `ResultStore.prefetch_targets/1` keys the fetch by project name, and dashboard history reuse that snapshot instead of `git fetch` per run row.
+
+- **`ProjectRegistry.lookup/1` overlays landing settings from a registry-held snapshot (Task 382).** Repeated lookups no longer round-trip Postgres for the `harness_settings[:landing]` row. `Landing.Settings.set/4` refreshes the snapshot; a store reset or backend swap replaces it so leftover overrides cannot leak into later lookups.
 
 - **`dispatch-register_project` advertises `languages` as a typed JSON array (Task 414).** MCP clients can send the language list as an array instead of stringifying it; the dispatch boundary also decodes the legacy JSON-string form while continuing to reject a bare language string.
 

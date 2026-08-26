@@ -19254,6 +19254,60 @@
       "started_at": "2026-08-26",
       "scored_at": "2026-08-26",
       "cross_repo": []
+    },
+    {
+      "id": "418",
+      "phase": 22,
+      "bundle": "contract",
+      "status": "pending",
+      "title": "Publish Task 392 tree-kill in harness_agent_adapter and restore the git dependency pin",
+      "scores": {
+        "d": 4,
+        "b": 7,
+        "u": 7
+      },
+      "eff": 1.75,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "grok",
+      "model": "grok-4.6",
+      "acceptance_criteria": [
+        "ZenHive/harness_agent_adapter on main contains the Task 392 OSProcess.kill_tree/1 behaviour: SIGTERM the captured descendant tree, bounded terminate_grace_ms, SIGKILL remainder, wait for quiescence; its own mix ci is green including the grandchild-quiescence tests",
+        "harness mix.exs takes {:harness_agent_adapter, git: \"https://github.com/ZenHive/harness_agent_adapter.git\"} pinned at that SHA (or a tag), not path: \"vendor/harness_agent_adapter\"",
+        "vendor/harness_agent_adapter is deleted from the harness tree; mix deps.get + mix check.dispatch compile against the git pin; Harness.AgentAdapter.OSProcess.kill_tree/1 is still the shared terminate surface used by MemoryGuard, cancel, hold-interrupt, reviewer timeout/rotation, and lifetime expiry",
+        "CLAUDE.md, AGENTS.md, skills/harness-driver/SKILL.md, and CHANGELOG describe the package as a git dependency again, not a vendor path pin"
+      ],
+      "out_of_scope": [
+        "Changing tree-kill semantics, grace defaults, or MemoryGuard RSS sampling",
+        "Publishing the package to hex.pm",
+        "Re-extracting or renaming the Harness.AgentAdapter.* namespace"
+      ],
+      "files_to_modify": [
+        "mix.exs",
+        "mix.lock",
+        "CLAUDE.md",
+        "skills/harness-driver/SKILL.md",
+        "CHANGELOG.md"
+      ],
+      "touches": [
+        "mix.exs",
+        "mix.lock",
+        "vendor/harness_agent_adapter",
+        "CLAUDE.md",
+        "AGENTS.md",
+        "skills/harness-driver/SKILL.md",
+        "CHANGELOG.md"
+      ],
+      "domains": [
+        "run-lifecycle",
+        "otp"
+      ],
+      "body": "Task 392 had to change Harness.AgentAdapter.OSProcess, which after Task 397 lives in the extracted package. The implementer vendored the whole package at vendor/harness_agent_adapter and switched mix.exs from the ZenHive git pin to a path dep so the tree-kill could land inside this repo. That unblocks terminate-the-tree, but it forks the extracted package: later adapter work in ZenHive/harness_agent_adapter will not reach this node, and later adapter work here will not reach other consumers (Personas OS).\n\nThe Task 397 contract is the git dependency. Restore it: land the OSProcess tree-kill (and the grandchild-quiescence tests) on harness_agent_adapter main, then point harness mix.exs back at that SHA and delete the vendor copy. Do not re-implement tree-kill in harness lib/ — the shared lifecycle surface stays in the package.\n\nObserved 2026-08-26 on the post-merge audit of 2af446e. CLAUDE.md / AGENTS.md / the driver skill still said \"git dependency\" after the vendor pin landed; the audit rewrote those to match the path pin so they stop lying, and this task is what makes the original wording true again.\n",
+      "created_at": "2026-08-26",
+      "scored_at": "2026-08-26",
+      "cross_repo": []
     }
   ]
 }

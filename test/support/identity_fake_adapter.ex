@@ -3,7 +3,7 @@ defmodule Harness.Test.IdentityFakeAdapter do
 
   # Drop-in FakeAdapter that echoes run identity into verdict JSON argv so
   # test doubles satisfy Task 393's identity fence without editing the
-  # harness_agent_adapter git dependency.
+  # vendored harness_agent_adapter package.
 
   use Harness.AgentAdapter
 
