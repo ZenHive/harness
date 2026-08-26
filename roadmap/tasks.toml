@@ -11731,7 +11731,7 @@ done_at = "2026-08-13"
 id = "385"
 phase = 22
 bundle = "core-loop"
-status = "in_progress"
+status = "done"
 title = "Strip the harness-injected ephemeral AGENTS.md header before committing the delivery"
 scores = { d = 3, b = 7, u = 6 }
 markers = ["bug"]
@@ -11750,9 +11750,16 @@ SECOND OCCURRENCE, different repo and adapter (folded in from the duplicate Task
 
 Worth checking during diagnosis, as a hypothesis and not a confirmed root cause: Harness.AgentAdapter documents the AGENTS.md channel as Codex's (@codex_agents_rel), while the observed leak came from a cursor run — so either the per-adapter channel mapping does not hold at runtime, or the cross-family reviewer (codex) wrote into the worktree before the delivery commit was taken. Confirm before building on it.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1787719696500-bf09c0f1, 0cc1f16b993a3d5ba9e810df0aca8343ce3a3dcd)."
+delivered_by = "codex"
+verified = true
+verified_by = "cursor"
+verification_ref = "harness-run:run-1787719696500-bf09c0f1"
 created_at = "2026-08-14"
 started_at = "2026-08-26"
 scored_at = "2026-08-14"
+done_at = "2026-08-26"
+shipped_in = "0cc1f16b993a3d5ba9e810df0aca8343ce3a3dcd"
 
 [[task]]
 id = "386"

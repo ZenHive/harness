@@ -17572,7 +17572,7 @@
       "id": "385",
       "phase": 22,
       "bundle": "core-loop",
-      "status": "in_progress",
+      "status": "done",
       "title": "Strip the harness-injected ephemeral AGENTS.md header before committing the delivery",
       "scores": {
         "d": 3,
@@ -17609,10 +17609,17 @@
         "git",
         "run-lifecycle"
       ],
+      "shipped_in": "0cc1f16b993a3d5ba9e810df0aca8343ce3a3dcd",
       "body": "Harness prepends an ephemeral agent-rules block to the target project's AGENTS.md when dispatching ('harness-injected: canonical agent rules — ephemeral, do not commit'). That block leaked into a landed delivery commit: trading_dashboard run run-1786673501096-c9939b07 (task 68) landed commit 2132b41 whose AGENTS.md diff is exactly the 32-line injected header — despite the reviewer explicitly noting AGENTS.md was 'excluded from this delivery'. The parallel run for task 58 saw the same stale-AGENTS.md red in mix check.dispatch; the orchestrator had to strip the header manually on the landed base (trading_dashboard commit 'AGENTS.md regen: strip harness-injected ephemeral header leaked by task 68 delivery').\n\nThe commit step must guarantee the injected content never rides in a delivery: restore/revert the injected block before git add (the same way .harness/ and roadmap files are excluded), so downstream sync-agents-md --check and cross-family reviewers do not chase phantom AGENTS.md drift. Evidence: trading_dashboard commits 2132b41 (leak) and the follow-up regen commit; reviewer reports of runs run-1786673501096-c9939b07 and run-1786673495073-4130d146 both document the mechanism.\n\nSECOND OCCURRENCE, different repo and adapter (folded in from the duplicate Task 390, 2026-08-21): onchain_aave commit cfb58b1 — agent delivery for its task 50, run run-1787296526753-07002de8, adapter cursor — added the same 32-line block to that repo's tracked AGENTS.md and reached origin/main. It surfaced only afterwards, when the consuming repo's own mix ci failed its AGENTS.md-freshness gate; a repo without such a gate would never notice. Task 36 closed with the criterion \"Existing AGENTS.md in the target repo (if any) is not modified by the harness-injected block ending up in the run's delivery commit\" — that criterion is violated again, so the fix must explain why the earlier one did not cover this path.\n\nWorth checking during diagnosis, as a hypothesis and not a confirmed root cause: Harness.AgentAdapter documents the AGENTS.md channel as Codex's (@codex_agents_rel), while the observed leak came from a cursor run — so either the per-adapter channel mapping does not hold at runtime, or the cross-family reviewer (codex) wrote into the worktree before the delivery commit was taken. Confirm before building on it.\n",
       "created_at": "2026-08-14",
       "started_at": "2026-08-26",
+      "done_at": "2026-08-26",
       "scored_at": "2026-08-14",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1787719696500-bf09c0f1, 0cc1f16b993a3d5ba9e810df0aca8343ce3a3dcd).",
+      "delivered_by": "codex",
+      "verified": true,
+      "verified_by": "cursor",
+      "verification_ref": "harness-run:run-1787719696500-bf09c0f1",
       "cross_repo": []
     },
     {
