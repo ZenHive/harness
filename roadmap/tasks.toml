@@ -11516,7 +11516,7 @@ id = "379"
 phase = 23
 bundle = "roadmap-writeback"
 milestone = "v0_16"
-status = "in_progress"
+status = "done"
 title = "Durable roadmap writeback silently produced no commit — dispatch-start and post-land transitions both lost"
 scores = { d = 4, b = 7, u = 7 }
 markers = ["bug"]
@@ -11577,9 +11577,16 @@ the mark_landed writeback and the success log of one landing while its neighbor
 succeeds — consistent with the landing job dying between ff-push and writeback.
 Operator repaired by hand (trading_dashboard commit 7319255).
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1787719562924-0b8569c4, 1dc9c2de02a64e1630bf632f30246170f69b90d8)."
+delivered_by = "codex"
+verified = true
+verified_by = "cursor"
+verification_ref = "harness-run:run-1787719562924-0b8569c4"
 created_at = "2026-08-05"
 started_at = "2026-08-26"
 scored_at = "2026-08-07"
+done_at = "2026-08-26"
+shipped_in = "1dc9c2de02a64e1630bf632f30246170f69b90d8"
 
 [[task]]
 id = "380"
