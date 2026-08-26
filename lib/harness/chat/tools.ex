@@ -232,15 +232,21 @@ defmodule Harness.Chat.Tools do
     end
   end
 
+  @spec keyword_list_param?(map()) :: boolean()
+  defp keyword_list_param?(details) do
+    is_list(Map.get(details, :default)) or
+      String.starts_with?(Map.get(details, :description, ""), "Keyword list")
+  end
+
   @spec decode_param(term(), map()) :: term()
-  # A keyword-list param (signalled by a list default, e.g. `opts: [default: []]`)
+  # A keyword-list param (signalled by a list default or its declared description)
   # arrives from JSON as an object/map. Decode it to a keyword list so the target
   # function's `Keyword.get/3` does not crash with "no function clause matching".
   # Top-level keys are atomized (only known atoms; unknowns dropped for forward
   # compat, same contract as ResultStore.Postgres.apply_filters for filters).
   # This clause must precede the generic map clause.
-  defp decode_param(value, %{kind: :value, default: default}) when is_map(value) and is_list(default) do
-    to_atom_kwlist(value)
+  defp decode_param(value, %{kind: :value} = details) when is_map(value) do
+    if keyword_list_param?(details), do: to_atom_kwlist(value), else: atomize_keys(value)
   end
 
   # The same object/keyword param can also arrive JSON-encoded as a *string*
@@ -275,7 +281,6 @@ defmodule Harness.Chat.Tools do
     ArgumentError -> value
   end
 
-  defp decode_param(value, %{kind: :value}) when is_map(value), do: atomize_keys(value)
   defp decode_param(value, _details), do: value
 
   @spec safe_apply(entry(), [term()]) :: {:ok, term()} | {:error, term()}

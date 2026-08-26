@@ -312,48 +312,59 @@ defmodule Harness.Roadmap do
     end
   end
 
-  api(:mark_landed, """
-  Writes the outcome of a successful autonomous land back to rmap.
+  api(
+    :mark_landed,
+    """
+    Writes the outcome of a successful autonomous land back to rmap.
 
-  Transitions the task to `done` with `verified=true` and the landed commit SHA
-  as `shipped_in`, via `rmap status <id> done --verified --verified-by
-  <reviewer> --verification-ref harness-run:<run-id> --shipped-in <sha>`
-  (plus `--delivered-by` / `--implemented` when supplied). This is the
-  merge-train lander's writeback step; the implementer dispatched the work, the
-  verification stack graded it green post-integration, so `verified` is honest.
+    Transitions the task to `done` with `verified=true` and the landed commit SHA
+    as `shipped_in`, via `rmap status <id> done --verified --verified-by
+    <reviewer> --verification-ref harness-run:<run-id> --shipped-in <sha>`
+    (plus `--delivered-by` / `--implemented` when supplied). This is the
+    merge-train lander's writeback step; the implementer dispatched the work, the
+    verification stack graded it green post-integration, so `verified` is honest.
 
-  Options:
+    Options:
 
-    * `:project` — a `%Harness.Project{}`. The transition is pushed durably in
-      the Git repository containing `roadmap_path` when its roadmap branch is
-      explicit or safely derived (see "Durability" below); otherwise this
-      supplies the local-write root.
-    * `:root` — the project root holding `roadmap/tasks.toml`. Required unless
-      `:project` is given (then `project.roadmap_path` is used).
-    * `:sha` — the landed commit SHA recorded as `shipped_in` (required).
-    * `:verified_by` — independent reviewer identity for `--verified-by` (required).
-    * `:verification_ref` — durable evidence pointer for `--verification-ref` (optional).
-    * `:delivered_by` — agent string for `--delivered-by` (optional).
-    * `:implemented` — what shipped, for `--implemented` (optional).
-    * `:task_fingerprint` — dispatch-time stable task hash. When supplied,
-      writeback first verifies that the id still names the same task.
-    * `:rmap_bin` — override the `rmap` binary name/path (intended for tests).
+      * `:project` — a `%Harness.Project{}`. The transition is pushed durably in
+        the Git repository containing `roadmap_path` when its roadmap branch is
+        explicit or safely derived (see "Durability" below); otherwise this
+        supplies the local-write root.
+      * `:root` — the project root holding `roadmap/tasks.toml`. Required unless
+        `:project` is given (then `project.roadmap_path` is used).
+      * `:sha` — the landed commit SHA recorded as `shipped_in` (required).
+      * `:verified_by` — independent reviewer identity for `--verified-by` (required).
+      * `:verification_ref` — durable evidence pointer for `--verification-ref` (optional).
+      * `:delivered_by` — agent string for `--delivered-by` (optional).
+      * `:implemented` — what shipped, for `--implemented` (optional).
+      * `:task_fingerprint` — dispatch-time stable task hash. When supplied,
+        writeback first verifies that the id still names the same task.
+      * `:rmap_bin` — override the `rmap` binary name/path (intended for tests).
 
-  Returns `{:ok, output}` or `{:error, {status, output, args}}`.
+    Returns `{:ok, output}` or `{:error, {status, output, args}}`.
 
-  ## Durability
+    ## Durability
 
-  The Git repository containing `project.roadmap_path` owns durable roadmap
-  commits. `project.roadmap_target_branch` names its branch explicitly; when
-  roadmap and source are the same repository, `project.target_branch` is the
-  backward-compatible default. If the repository or branch cannot be resolved
-  without guessing, the transition falls back to a plain local rmap write.
-  A successful fallback keeps the existing `{:ok, output}` result because the
-  local rmap mutation succeeded, but it is not durable until the operator
-  commits and pushes that checkout.
+    The Git repository containing `project.roadmap_path` owns durable roadmap
+    commits. `project.roadmap_target_branch` names its branch explicitly; when
+    roadmap and source are the same repository, `project.target_branch` is the
+    backward-compatible default. If the repository or branch cannot be resolved
+    without guessing, the transition falls back to a plain local rmap write.
+    A successful fallback keeps the existing `{:ok, output}` result because the
+    local rmap mutation succeeded, but it is not durable until the operator
+    commits and pushes that checkout.
 
-  > Depends on rmap's `--shipped-in` status flag (rmap roadmap Task 33).
-  """)
+    > Depends on rmap's `--shipped-in` status flag (rmap roadmap Task 33).
+    """,
+    params: [
+      item_or_id: [kind: :value, description: "Roadmap task ID string."],
+      opts: [
+        kind: :value,
+        description:
+          "Keyword list. `:project`, `:root`, `:sha`, `:verified_by`, `:verification_ref`, `:delivered_by`, `:implemented`, `:task_fingerprint`, and `:rmap_bin` are documented above."
+      ]
+    ]
+  )
 
   @spec mark_landed(Item.t() | String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def mark_landed(item_or_id, opts) do
@@ -369,30 +380,40 @@ defmodule Harness.Roadmap do
     mutate(item_or_id, status_args, "done (shipped #{short_sha(sha)})", opts)
   end
 
-  api(:mark_blocked, """
-  Routes a task to `blocked` with a structured reason — the lander's terminal sink.
+  api(
+    :mark_blocked,
+    """
+    Routes a task to `blocked` with a structured reason — the lander's terminal sink.
 
-  Transitions the task to `blocked` via `rmap status <id> blocked --reason "<reason>"`.
-  When the merge-train exhausts its landing-attempt cap (a post-merge-red or
-  conflict that a fresh re-dispatch could not resolve), the task is parked
-  `blocked` so `rmap next` skips it and a human/orchestrator can read *why*
-  without opening `tasks.toml`. Without a sink the loop would silently retry
-  forever — this is the honest dead end.
+    Transitions the task to `blocked` via `rmap status <id> blocked --reason "<reason>"`.
+    When the merge-train exhausts its landing-attempt cap (a post-merge-red or
+    conflict that a fresh re-dispatch could not resolve), the task is parked
+    `blocked` so `rmap next` skips it and a human/orchestrator can read *why*
+    without opening `tasks.toml`. Without a sink the loop would silently retry
+    forever — this is the honest dead end.
 
-  Options:
+    Options:
 
-    * `:project` — a `%Harness.Project{}`; supplies both the roadmap durability
-      configuration and the local-write root (see `mark_landed/2` § Durability).
-    * `:root` — the project root holding `roadmap/tasks.toml`. Required unless
-      `:project` is given.
-    * `:reason` — the structured blocked reason (required; rmap mandates a
-      reason on `blocked` transitions, auto-cleared when the task leaves blocked).
-    * `:rmap_bin` — override the `rmap` binary name/path (intended for tests).
+      * `:project` — a `%Harness.Project{}`; supplies both the roadmap durability
+        configuration and the local-write root (see `mark_landed/2` § Durability).
+      * `:root` — the project root holding `roadmap/tasks.toml`. Required unless
+        `:project` is given.
+      * `:reason` — the structured blocked reason (required; rmap mandates a
+        reason on `blocked` transitions, auto-cleared when the task leaves blocked).
+      * `:rmap_bin` — override the `rmap` binary name/path (intended for tests).
 
-  Returns `{:ok, output}` or `{:error, {status, output, args}}`.
+    Returns `{:ok, output}` or `{:error, {status, output, args}}`.
 
-  > Depends on rmap's `--reason` status flag + `blocked_reason` field.
-  """)
+    > Depends on rmap's `--reason` status flag + `blocked_reason` field.
+    """,
+    params: [
+      item_or_id: [kind: :value, description: "Roadmap task ID string."],
+      opts: [
+        kind: :value,
+        description: "Keyword list. `:project`, `:root`, `:reason`, and `:rmap_bin` are documented above."
+      ]
+    ]
+  )
 
   @spec mark_blocked(Item.t() | String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def mark_blocked(item_or_id, opts) do
@@ -400,44 +421,64 @@ defmodule Harness.Roadmap do
     mutate(item_or_id, ["blocked", "--reason", reason], "blocked", opts)
   end
 
-  api(:mark_in_progress, """
-  Transitions a dispatched task to `in_progress` (best-effort) so `rmap ready` / `next`
-  no longer return it for re-dispatch.
+  api(
+    :mark_in_progress,
+    """
+    Transitions a dispatched task to `in_progress` (best-effort) so `rmap ready` / `next`
+    no longer return it for re-dispatch.
 
-  Owned by the run lifecycle (Harness.Run.Worker), not the poller. Called on run
-  start; a writeback failure logs but does not fail the run. A green-but-unlanded
-  run (landing_policy :manual) stays `in_progress` — this stops the "completed green
-  re-dispatched every tick" loop. Terminal run failure reverts to `pending` (not
-  `blocked`; blocked is the lander's sink only).
+    Owned by the run lifecycle (Harness.Run.Worker), not the poller. Called on run
+    start; a writeback failure logs but does not fail the run. A green-but-unlanded
+    run (landing_policy :manual) stays `in_progress` — this stops the "completed green
+    re-dispatched every tick" loop. Terminal run failure reverts to `pending` (not
+    `blocked`; blocked is the lander's sink only).
 
-  Options:
+    Options:
 
-    * `:project` — a `%Harness.Project{}`; supplies both the roadmap durability
-      configuration and the local-write root (see `mark_landed/2` § Durability).
-    * `:root` — the project root holding `roadmap/tasks.toml`. Required unless
-      `:project` is given.
-    * `:rmap_bin` — override the `rmap` binary name/path (intended for tests).
+      * `:project` — a `%Harness.Project{}`; supplies both the roadmap durability
+        configuration and the local-write root (see `mark_landed/2` § Durability).
+      * `:root` — the project root holding `roadmap/tasks.toml`. Required unless
+        `:project` is given.
+      * `:rmap_bin` — override the `rmap` binary name/path (intended for tests).
 
-  Returns `{:ok, output}` or `{:error, {status, output, args}}`.
-  """)
+    Returns `{:ok, output}` or `{:error, {status, output, args}}`.
+    """,
+    params: [
+      item_or_id: [kind: :value, description: "Roadmap task ID string."],
+      opts: [
+        kind: :value,
+        description: "Keyword list. `:project`, `:root`, and `:rmap_bin` are documented above."
+      ]
+    ]
+  )
 
   @spec mark_in_progress(Item.t() | String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def mark_in_progress(item_or_id, opts) do
     mutate(item_or_id, ["in_progress"], "in_progress", opts)
   end
 
-  api(:mark_pending, """
-  Reverts a task to `pending` after a terminal run failure (red after repairs
-  exhausted, or run crash) so a later poller tick can retry it.
+  api(
+    :mark_pending,
+    """
+    Reverts a task to `pending` after a terminal run failure (red after repairs
+    exhausted, or run crash) so a later poller tick can retry it.
 
-  Only for ordinary run failures — lander terminal exhaustion uses `mark_blocked`.
+    Only for ordinary run failures — lander terminal exhaustion uses `mark_blocked`.
 
-  Options: `:project` (durability configuration and local-write root; see
-  `mark_landed/2` § Durability), `:root` (required unless `:project` is given),
-  `:rmap_bin` (for tests).
+    Options: `:project` (durability configuration and local-write root; see
+    `mark_landed/2` § Durability), `:root` (required unless `:project` is given),
+    `:rmap_bin` (for tests).
 
-  Returns `{:ok, output}` or `{:error, {status, output, args}}`.
-  """)
+    Returns `{:ok, output}` or `{:error, {status, output, args}}`.
+    """,
+    params: [
+      item_or_id: [kind: :value, description: "Roadmap task ID string."],
+      opts: [
+        kind: :value,
+        description: "Keyword list. `:project`, `:root`, and `:rmap_bin` are documented above."
+      ]
+    ]
+  )
 
   @spec mark_pending(Item.t() | String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def mark_pending(item_or_id, opts) do

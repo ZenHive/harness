@@ -184,6 +184,34 @@ defmodule Harness.Dashboard.MCPServerTest do
       assert text =~ "Schema validation failed"
       assert text =~ "#/key"
     end
+
+    test "calls every roadmap mark tool with its declared arguments", %{frame: frame} do
+      root = Path.join(System.tmp_dir!(), "harness-mcp-roadmap-mark-#{System.unique_integer([:positive])}")
+      File.mkdir_p!(root)
+      rmap = Path.join(root, "rmap-stub")
+      File.write!(rmap, "#!/bin/sh\nprintf 'marked %s' \"$*\"\n")
+      File.chmod!(rmap, 0o755)
+
+      project = ProjectFixture.from_repo(root, name: "mcp-roadmap-mark", roadmap_path: root)
+      assert :ok = ProjectRegistry.register(project)
+
+      calls = [
+        {"roadmap-mark_landed", %{"root" => root, "rmap_bin" => rmap, "sha" => "abc123", "verified_by" => "reviewer"}},
+        {"roadmap-mark_blocked", %{"root" => root, "rmap_bin" => rmap, "reason" => "operator intervention"}},
+        {"roadmap-mark_in_progress", %{"root" => root, "rmap_bin" => rmap}},
+        {"roadmap-mark_pending", %{"root" => root, "rmap_bin" => rmap}}
+      ]
+
+      for {name, opts} <- calls do
+        request = call_request(name, %{"item_or_id" => "391", "opts" => opts})
+
+        assert {:reply, %{"content" => [%{"text" => text}], "isError" => false}, ^frame} =
+                 MCPServer.handle_request(request, frame)
+
+        assert {:ok, ["ok", output]} = Jason.decode(text)
+        assert output =~ "marked status 391"
+      end
+    end
   end
 
   describe "non-tool methods (anubis catch-all fallthrough)" do
