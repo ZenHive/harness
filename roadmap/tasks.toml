@@ -12040,7 +12040,7 @@ shipped_in = "6596acda67fd37d11d68c1baff6010520c17ce93"
 id = "398"
 phase = 22
 bundle = "agent-gate"
-status = "pending"
+status = "done"
 title = "Injected agent rules must never be visible in a tracked file while an agent runs the project's checks"
 scores = { d = 4, b = 7, u = 8 }
 acceptance_criteria = ["No harness-injected rule content is present in any tracked, repo-owned file at any point where an agent could run the project's check command. The codex/pi channel currently prepends a marker block to the repo's tracked AGENTS.md (RulesInjection.install_codex_rules/1) and only restores it on the delivery-commit path, so implementer, reviewer and audit agents all see a modified AGENTS.md while they run checks", "The invariant holds for the AUDIT run specifically: Harness.Audit builds its invocation with rule_content (lib/harness/audit.ex:377) and nothing in the audit path calls cleanup_injected_rules/1 — today the only call site is lib/harness/worktree.ex:810. The audit agent runs the project's clean-build/check itself, so harness cannot sequence a strip-then-check; the injection must not be observable in the first place", "A regression test proves it with a project fixture that owns a tracked AGENTS.md plus a freshness check comparing AGENTS.md against CLAUDE.md: the check passes while a codex-channel agent is running. A test asserting only that cleanup restores the file afterwards does not satisfy this criterion — the failure happens mid-run, not after", "The rule content still reaches codex and pi agents; this is a change of delivery channel or location, not a removal of rule injection. The six adapters still pass Harness.AgentAdapter.ConformanceCase unchanged", "The existing run records whose approved_then_found_red was produced by this bug are corrected in Postgres, with the correcting statement and its selection predicate recorded in the task's implemented note. As of 2026-08-23 every populated approved_then_found_red in run_records — 16 of 16, all project bourse, dates 2026-08-14 through 2026-08-22 — carries an AGENTS.md STALE cold_check tail. Records with an independent real failure (two also cite priv/authority/deribit/contract-baselines.json SHA-256 mismatches) keep their fact; only the AGENTS.md-only ones are cleared", "mix check.dispatch green plus focused tests for the rule-injection and audit paths"]
@@ -12068,9 +12068,16 @@ The cost is not just noise. A peer orchestrator session read this ledger, saw th
 
 Suggested direction, not binding: do not deliver rules by modifying a tracked file at all. When the repo owns an AGENTS.md, route that run's rule content through the prompt-preamble channel instead of merging into the file. Alternatives worth weighing are a nested AGENTS.md at a path the CLI reads but the repo does not track, or an untracked overlay. Whatever is chosen must satisfy criterion 3 — the check has to pass DURING the run, because the agent decides when to run it.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1787704683213-a4ccfb36, f407fa3a5e4d93818ffc532a72b169d258ac5ad4)."
+delivered_by = "codex"
+verified = true
+verified_by = "cursor"
+verification_ref = "harness-run:run-1787704683213-a4ccfb36"
 created_at = "2026-08-23"
 started_at = "2026-08-26"
 scored_at = "2026-08-23"
+done_at = "2026-08-26"
+shipped_in = "f407fa3a5e4d93818ffc532a72b169d258ac5ad4"
 
 [[task]]
 id = "399"
