@@ -754,3 +754,41 @@ From the core loop onward, harness is developed *with* harness whenever the work
   - *Scaffolding that reshapes harness's own runtime* (supervision tree, dep stack, Endpoint) **while the run lifecycle itself is in flux**. A new phase that only adds features on stable surfaces does **not** earn a hand-build window.
   - *Net-new visual identity with no spec* — exploratory look-and-feel / motion / brand work where distinctiveness is the goal and no design source-of-truth exists yet (the `frontend-design` skill's territory). **Incremental UI/LiveView/heex/CSS work against an existing design system or a frontend-design doc is normal dispatch** — the old blanket "hand-build all UI" rule is retired; an in-repo design spec gives the agent something to build against, so the reviewer AI gates it like any other task.
 - **Multi-project autonomy (46/48/51):** dogfooding extends to N registered projects, each with its own `check_command` + `roadmap_path`; with cron enabled it runs unattended.
+
+### 🚨 The running node goes STALE — refresh it before every wave (self-host hygiene)
+
+**This is an orchestrator/operator responsibility, NOT a harness feature.** Do not
+propose a `Harness.SelfHost.staleness/0`, a dispatch precondition, or a dashboard
+staleness strip — harness would be guarding state about its own OS process that the
+driving AI can simply check. Adjudicated 2026-08-26; cite, don't re-derive.
+
+Under dogfooding the node's source tree *is* the repo, so **two independent axes drift**:
+
+| Axis | Cause | Symptom |
+|---|---|---|
+| **A — checkout behind `origin`** | `Git.TargetSync` self-host skip (never merges into the running node's own tree) | node runs code that no longer matches `origin/<target>` |
+| **B — BEAM behind checkout** | `.beam` files recompiled on disk (tests, `precommit`) but never reloaded into the live node | landed fix is **inert** in the node while it keeps dispatching |
+
+Axis B is the dangerous one: observed 2026-08-25, task 398's `AgentDriver` fix had
+landed and was on disk, but `Harness.AgentDriver` was **not loaded** in the node — so
+every dispatch from that node would have reproduced the exact bug just fixed.
+
+**Pre-wave sequence — all three, in order, before dispatching:**
+
+1. `git fetch origin <target> && git rebase origin/<target>` — axis A. `recompile()` cannot do this.
+2. Confirm `Harness.Run.Supervisor.list_runs()` is `[]`. A second purge kills processes still
+   executing old code; hot-loading under a live run's `gen_statem` is a real hazard, not a nit.
+3. `import IEx.Helpers; recompile()` via `mcp__tidewave__project_eval` — axis B. Works in this
+   node (`Mix.Project.get() == Harness.MixProject`); returns `:noop` when nothing changed.
+
+**Where `recompile()` is NOT enough — ask the operator for a real restart.** It swaps module
+code while the supervision tree keeps running with its old state: changed `init/1`, child specs,
+supervision topology, `config/*.exs` / Application env, Oban queue config, and Endpoint options
+are **not** picked up. Rule of thumb: function-body changes → `recompile()`; anything that
+reshapes the tree or the config → restart. **Never boot or restart the node yourself** — the
+operator starts it (see § Commands).
+
+**Verifying liveness (the probe that actually answers "is it live?"):** compare each module's
+loaded md5 against the on-disk `.beam` — `:code.get_object_code(m)` → `:beam_lib.md5/1` vs
+`m.module_info(:md5)`. `:code.get_object_code/1` alone reads only the disk and proves nothing
+about the running node.
