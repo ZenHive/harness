@@ -205,8 +205,9 @@ defmodule Harness.Lander do
       with {:ok, integrated_tip} <- integrate(worktree, target, base_sha, request),
            {:ok, tip} <- rewrite_colliding_roadmap_task_ids(worktree, base_sha, integrated_tip),
            {:ok, pushed} <- push(repo, tip, target) do
-        # The delivery push is the point of no return. Persist its roadmap
-        # outcome before any unrelated best-effort post-land side effect can die.
+        # Delivery push is the point of no return. Task 379 /
+        # run-1786522856472-c6cebe49 lost mark_landed and the "landed task" log
+        # because sync/audit/prune ran first and the job died before writeback.
         writeback(project, request, pushed)
         sync_local_target(repo, target, project, request)
         enqueue_audit(project, request, base_sha)

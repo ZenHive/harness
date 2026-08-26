@@ -290,6 +290,17 @@ defmodule Harness.LanderTest do
       assert sha(ctx.origin, "refs/heads/main") == ctx.branch_tip
     end
 
+    test "roadmap writeback failure names transition, task, run, and Durable reason", ctx do
+      log =
+        capture_log(fn ->
+          assert {:landed, landed} = Lander.land(ctx.request)
+          assert landed == ctx.branch_tip
+        end)
+
+      assert log =~ "harness roadmap writeback failed: transition=done task_id=1 run_id=run-x"
+      assert log =~ "reason="
+    end
+
     test "broadcasts started + settled(:landed) on the dashboard ops feed (task 243)", ctx do
       :ok = OpsFeed.subscribe()
 

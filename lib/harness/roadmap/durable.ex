@@ -17,7 +17,9 @@ defmodule Harness.Roadmap.Durable do
     2. applies the rmap mutation against a fresh **detached** worktree at the
        freshly-fetched `origin/<target>` tip (rmap auto-renders `tasks.toml`,
        `data.json`, and `ROADMAP.md` on success),
-    3. commits the roadmap change and fast-forward-pushes it to the target,
+    3. commits the roadmap change, fast-forward-pushes it, and **observes**
+       that the commit is on `origin/<target>` (ancestor of the remote tip —
+       push exit 0 is not trusted; Task 379 / run-1785889534260-fc424f54),
     4. on a non-ff push (a concurrent writer landed first) re-fetches, replays
        the mutation on the new tip, and retries — **never** `--force`,
     5. fast-forwards the operator's *local* target to the pushed commit
@@ -141,7 +143,8 @@ defmodule Harness.Roadmap.Durable do
       :retry ->
         {:retry, output}
 
-      {:error, _reason} = error ->
+      {:error, reason} = error ->
+        Logger.warning("harness roadmap durable: commit did not land on #{target}: #{inspect(reason)}")
         error
     end
   end
@@ -216,36 +219,44 @@ defmodule Harness.Roadmap.Durable do
 
   # ff-only push of the roadmap commit to the remote target; a non-ff rejection
   # (a concurrent writer landed first) routes to `:retry`, never `--force`.
+  # Push exit 0 is not the landed signal: observe that `expected` is an ancestor
+  # of origin/<target> (exact tip match would false-fail a concurrent writer).
   @spec push(String.t(), String.t()) :: :ok | :retry | {:error, error()}
   defp push(path, target) do
-    with {:ok, head} <- Git.run(["rev-parse", "HEAD"], path),
-         {:ok, _output} <- Git.run(["push", "origin", "HEAD:refs/heads/" <> target], path) do
-      verify_remote_tip(path, target, String.trim(head))
-    else
-      {:error, {:git_failed, ["push" | _args], status, output}} ->
-        if Git.non_fast_forward?(path, "HEAD", target, status, output),
-          do: :retry,
-          else: {:error, {:roadmap_push_failed, output}}
+    case Git.run(["rev-parse", "HEAD"], path) do
+      {:ok, head} ->
+        do_push(path, target, String.trim(head))
 
       {:error, reason} ->
-        {:error, {:roadmap_push_unverified, target, reason}}
+        {:error, {:roadmap_push_failed, inspect(reason)}}
     end
   end
 
+  @spec do_push(String.t(), String.t(), String.t()) :: :ok | :retry | {:error, error()}
+  defp do_push(path, target, expected) do
+    case Git.run(["push", "origin", "HEAD:refs/heads/" <> target], path) do
+      {:ok, _output} ->
+        verify_remote_tip(path, target, expected)
+
+      {:error, {:git_failed, _args, status, output}} ->
+        if Git.non_fast_forward?(path, "HEAD", target, status, output),
+          do: :retry,
+          else: {:error, {:roadmap_push_failed, output}}
+    end
+  end
+
+  # `+` force-updates the *local* remote-tracking ref so we read origin's tip,
+  # not a stale cache. It is not a force-push of the target branch.
   @spec verify_remote_tip(String.t(), String.t(), String.t()) :: :ok | {:error, error()}
   defp verify_remote_tip(path, target, expected) do
-    ref = "refs/heads/" <> target
+    remote_ref = "refs/remotes/origin/" <> target
+    refspec = "+refs/heads/#{target}:#{remote_ref}"
 
-    case Git.run(["ls-remote", "--exit-code", "origin", ref], path) do
-      {:ok, output} ->
-        case String.split(output, ~r/\s+/, trim: true) do
-          [^expected, ^ref] -> :ok
-          [actual, ^ref] -> {:error, {:roadmap_push_unverified, target, {:tip_mismatch, expected, actual}}}
-          _ -> {:error, {:roadmap_push_unverified, target, {:unexpected_ls_remote, output}}}
-        end
-
-      {:error, reason} ->
-        {:error, {:roadmap_push_unverified, target, reason}}
+    with {:ok, _fetched} <- Git.run(["fetch", "origin", refspec], path),
+         {:ok, _ok} <- Git.run(["merge-base", "--is-ancestor", expected, remote_ref], path) do
+      :ok
+    else
+      {:error, reason} -> {:error, {:roadmap_push_unverified, target, reason}}
     end
   end
 

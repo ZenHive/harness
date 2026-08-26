@@ -1,6 +1,8 @@
 defmodule Harness.Roadmap.DurableTest do
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias Harness.GitFixture
   alias Harness.Project
   alias Harness.Roadmap
@@ -165,7 +167,7 @@ defmodule Harness.Roadmap.DurableTest do
                  verified_by: "codex",
                  verification_ref: "harness-run:run-durable",
                  implemented:
-                   "Root cause: post-push work ran before durable roadmap writeback, so a landing job exit lost it."
+                   "run-1785889534260-fc424f54: Durable trusted git-push exit 0 without observing origin, so a push that did not land looked identical to success; callers logged without run_id. run-1786522856472-c6cebe49: lander ran sync/audit/prune before mark_landed, so a job death after delivery push lost the done writeback and success log."
                )
 
       assert origin_tip(ctx.repo) != in_progress_tip
@@ -181,6 +183,23 @@ defmodule Harness.Roadmap.DurableTest do
       assert local_tip(ctx.repo) == local_head
       assert File.read!(Path.join(ctx.repo, "scratch.txt")) == "dirty operator edit\n"
       refute origin_log(ctx.repo) =~ "operator unpushed work"
+    end
+
+    test "a push origin does not retain is an error, not a silent ok", ctx do
+      hook = Path.join(ctx.origin, "hooks/post-receive")
+      File.write!(hook, "#!/bin/sh\ngit update-ref -d refs/heads/main\n")
+      File.chmod!(hook, 0o755)
+
+      log =
+        capture_log(fn ->
+          assert {:error, {:roadmap_push_unverified, "main", _reason}} =
+                   Roadmap.mark_in_progress("2", project: ctx.project)
+        end)
+
+      assert log =~ "harness roadmap durable: commit did not land on main"
+      {heads, 0} = System.cmd("git", ["-C", ctx.repo, "ls-remote", "--heads", "origin", "main"], stderr_to_stdout: true)
+      refute heads =~ "in_progress"
+      assert String.trim(heads) == ""
     end
 
     test "interleaved transitions both land — neither clobbers the other's edit", ctx do
