@@ -789,6 +789,27 @@ reshapes the tree or the config → restart. **Never boot or restart the node yo
 operator starts it (see § Commands).
 
 **Verifying liveness (the probe that actually answers "is it live?"):** compare each module's
-loaded md5 against the on-disk `.beam` — `:code.get_object_code(m)` → `:beam_lib.md5/1` vs
-`m.module_info(:md5)`. `:code.get_object_code/1` alone reads only the disk and proves nothing
-about the running node.
+loaded md5 against the on-disk `.beam`. `:code.get_object_code/1` alone reads only the disk and
+proves nothing about the running node — but the comparison has one sharp edge that makes the
+probe lie in the alarming direction, so copy this shape rather than rewriting it:
+
+```elixir
+# :beam_lib.md5/1 returns {:ok, {Module, MD5}} — matching {:ok, md5} binds the TUPLE,
+# which never equals module_info(:md5), so every module reads STALE. Observed 2026-08-26:
+# a broken probe reported all 240 modules stale on a freshly booted node.
+:harness
+|> Application.spec(:modules)
+|> Enum.filter(fn m ->
+  with true <- Code.ensure_loaded?(m),
+       {^m, bin, _} <- :code.get_object_code(m),
+       {:ok, {^m, disk_md5}} <- :beam_lib.md5(bin) do
+    disk_md5 != m.module_info(:md5)
+  else
+    _ -> false
+  end
+end)
+```
+
+A non-empty result is axis-B staleness; `[]` means the node's image matches disk. Confirm a
+scary reading against a second signal (node uptime, `.beam` mtime vs source mtime) before
+asking the operator for a restart — detectors fail toward the alarming verdict.
