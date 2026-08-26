@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **`dispatch-register_project` advertises `languages` as a typed JSON array (Task 414).** MCP clients can send the language list as an array instead of stringifying it; the dispatch boundary also decodes the legacy JSON-string form while continuing to reject a bare language string.
+
 - **Agent rules no longer modify tracked `AGENTS.md` files during checks (Task 398).** Codex/Pi rule delivery is rerouted through the invocation prompt, while adapters with native rule channels keep their existing behavior. All harness-owned agent launches now pass through the shared policy wrapper.
 
 - **Capped dashboard transcript appends are linear in the incoming chunk size (Task 381).** The raw transcript tail remains chunked until a parse, render, or snapshot boundary, avoiding repeated concatenation of the retained 200 KiB buffer while preserving its existing byte cap and output semantics.
