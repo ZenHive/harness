@@ -12786,7 +12786,7 @@ shipped_in = "86c0e76fc17ba9c780a145022ac9722b9790c532"
 id = "415"
 phase = 22
 bundle = "agent-gate"
-status = "in_progress"
+status = "done"
 title = "Close the last AgentAdapter.Driver bypass and make the single-entry-point invariant a test"
 scores = { d = 4, b = 7, u = 7 }
 markers = ["bug"]
@@ -12836,6 +12836,13 @@ one-shot scan found zero remaining instances today, so this is a lock against
 recurrence and not a known hole — say so plainly in the implemented note rather than
 claiming a bug was fixed.
 """
+implemented = "Landed by cursor via merge-train; reviewer-approved (run run-1787709923963-5488ff7d, f2f86303b24d4c1dda67ca239ee5a00e620498e5)."
+delivered_by = "cursor"
+verified = true
+verified_by = "grok"
+verification_ref = "harness-run:run-1787709923963-5488ff7d"
 created_at = "2026-08-26"
 started_at = "2026-08-26"
 scored_at = "2026-08-26"
+done_at = "2026-08-26"
+shipped_in = "f2f86303b24d4c1dda67ca239ee5a00e620498e5"

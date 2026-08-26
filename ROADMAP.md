@@ -332,7 +332,7 @@
 | Task 402 | ✅ | 🎁 **audit-hygiene** · Activate the registered ExSlop Credo checks instead of discarding them from the explicit enabled list [D:1/B:4/U:3 → Eff:3.5] 🎯 |
 | Task 410 | ✅ | 🎁 **agent-gate** · 🐛 Worktree CoW clone passes the macOS-only `cp -c` flag, so every Linux warm copy silently degrades to a full byte copy [D:3/B:7/U:7 → Eff:2.33] 🎯 |
 | Task 411 | 🔄 | 🎁 **agent-gate** · 🐛 run_records read path discards a whole row when one persisted atom is absent from the reading node [D:3/B:6/U:5 → Eff:1.83] 🚀 |
-| Task 415 | 🔄 | 🎁 **agent-gate** · 🐛 Close the last AgentAdapter.Driver bypass and make the single-entry-point invariant a test [D:4/B:7/U:7 → Eff:1.75] 🚀 |
+| Task 415 | ✅ | 🎁 **agent-gate** · 🐛 Close the last AgentAdapter.Driver bypass and make the single-entry-point invariant a test [D:4/B:7/U:7 → Eff:1.75] 🚀 |
 <!-- TASKS:END -->
 
 ---
