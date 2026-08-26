@@ -47,8 +47,8 @@ defmodule Harness.Lander.Resolver do
 
   alias Harness.Agent.Settings
   alias Harness.AgentAdapter
-  alias Harness.AgentAdapter.Driver
   alias Harness.AgentAdapter.Invocation
+  alias Harness.AgentDriver, as: Driver
   alias Harness.AgentRegistry
   alias Harness.AgentRules
   alias Harness.Config

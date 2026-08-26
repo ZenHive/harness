@@ -4,10 +4,10 @@ defmodule Harness.Run.Actions.Worktree do
   import Harness.Run.Actions.Timeouts, only: [implementer_idle_timeout: 1]
 
   alias Harness.AgentAdapter
-  alias Harness.AgentAdapter.Driver
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentAdapter.Run, as: AgentRun
+  alias Harness.AgentDriver, as: Driver
   alias Harness.AgentRules
   alias Harness.Config
   alias Harness.Git

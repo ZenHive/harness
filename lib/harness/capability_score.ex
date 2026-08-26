@@ -12,9 +12,9 @@ defmodule Harness.CapabilityScore do
   Active routing never reads or writes legacy composite score cells.
   """
 
-  alias Harness.AgentAdapter.Driver
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
+  alias Harness.AgentDriver, as: Driver
   alias Harness.AgentKPI
   alias Harness.AgentRegistry
   alias Harness.AgentRules

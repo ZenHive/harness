@@ -59,9 +59,9 @@ defmodule Harness.Cron.Orchestrator do
   a throwaway scratch cwd, and reads the artifact it wrote.
   """
 
-  alias Harness.AgentAdapter.Driver
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
+  alias Harness.AgentDriver, as: Driver
   alias Harness.AgentRegistry
   alias Harness.AgentRules
   alias Harness.Artifact

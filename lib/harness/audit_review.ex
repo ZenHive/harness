@@ -49,9 +49,9 @@ defmodule Harness.AuditReview do
 
   use Descripex, namespace: "/audit_review"
 
-  alias Harness.AgentAdapter.Driver
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
+  alias Harness.AgentDriver, as: Driver
   alias Harness.AgentRegistry
   alias Harness.AgentRules
 
