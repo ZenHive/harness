@@ -26,8 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `test/support/`.
 - **Standalone config namespace.** The package reads its own
   `config :harness_agent_adapter, :run` key (`total_timeout:`,
-  `idle_timeout:`, `progress_timeout:`) instead of the host application's
-  `config :harness, :run` — no configuration coupling to the `harness` repo
-  it was extracted from.
+  `idle_timeout:`, `progress_timeout:`, `terminate_grace_ms:`) instead of the
+  host application's `config :harness, :run` — no configuration coupling to the
+  `harness` repo it was extracted from.
+- **Tree-scoped terminate.** `OSProcess.kill/1` and `kill_tree/1` send SIGTERM
+  to the adapter pid and every descendant, wait `terminate_grace_ms` (default
+  1,000 ms), SIGKILL survivors, and return only once the captured tree is
+  quiescent. `c:Harness.AgentAdapter.terminate/1` delegates here, so every
+  Driver timeout and host-orchestrator teardown shares one implementation.
 
 No release has been cut yet.

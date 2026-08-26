@@ -51,9 +51,9 @@ defmodule Harness.AgentAdapter.Testing.ProcessFixture do
   retry budget.
 
   Polls every 25ms for `tries` attempts (default 40, i.e. a one-second budget).
-  Reaping is asynchronous — the kernel may still be tearing the process down
-  after `c:Harness.AgentAdapter.terminate/1` has returned — so an assertion on
-  process death has to poll rather than read once.
+  `OSProcess.kill/1` waits for tree quiescence before returning; this helper
+  still polls so an assertion on a pid that is racing kernel accounting cannot
+  flake on a single `kill -0`.
   """
   @spec await_dead(non_neg_integer(), non_neg_integer()) :: :ok
   def await_dead(os_pid, tries \\ 40)
@@ -71,7 +71,9 @@ defmodule Harness.AgentAdapter.Testing.ProcessFixture do
 
   @spec alive?(non_neg_integer()) :: boolean()
   defp alive?(os_pid) do
-    {_output, code} = System.cmd("kill", ["-0", Integer.to_string(os_pid)], stderr_to_stdout: true)
+    {_output, code} =
+      System.cmd("kill", ["-0", Integer.to_string(os_pid)], stderr_to_stdout: true)
+
     code == 0
   end
 

@@ -31,7 +31,6 @@ defmodule Harness.Run.MemoryGuard do
   """
 
   alias Harness.AgentAdapter.OSProcess
-  alias Harness.Run.HostMemory
 
   @typep ps_row :: {non_neg_integer(), non_neg_integer()}
 
@@ -59,9 +58,7 @@ defmodule Harness.Run.MemoryGuard do
   performs graceful escalation and waits for tree quiescence.
   """
   @spec kill_tree(non_neg_integer() | nil) :: :ok
-  def kill_tree(nil), do: :ok
-
-  def kill_tree(os_pid) when is_integer(os_pid), do: OSProcess.kill_tree(os_pid)
+  def kill_tree(os_pid), do: OSProcess.kill_tree(os_pid)
 
   @doc """
   Total resident memory (KiB) summed across every process in the host table —
@@ -82,7 +79,33 @@ defmodule Harness.Run.MemoryGuard do
   (admit) rather than deadlock dispatch.
   """
   @spec host_total_kb() :: non_neg_integer()
-  def host_total_kb, do: HostMemory.total_kb()
+  def host_total_kb do
+    case :os.type() do
+      {:unix, :darwin} -> sysctl_memsize_kb()
+      {:unix, _other} -> meminfo_total_kb()
+      _other -> 0
+    end
+  end
+
+  @spec sysctl_memsize_kb() :: non_neg_integer()
+  defp sysctl_memsize_kb do
+    with {out, 0} <- System.cmd("sysctl", ["-n", "hw.memsize"], stderr_to_stdout: true),
+         {bytes, _rest} <- Integer.parse(String.trim(out)) do
+      div(bytes, 1024)
+    else
+      _other -> 0
+    end
+  end
+
+  @spec meminfo_total_kb() :: non_neg_integer()
+  defp meminfo_total_kb do
+    with {:ok, contents} <- File.read("/proc/meminfo"),
+         [_line, kb] <- Regex.run(~r/MemTotal:\s+(\d+)/, contents) do
+      String.to_integer(kb)
+    else
+      _other -> 0
+    end
+  end
 
   # Process table: pid => {ppid, rss_kb}. Empty map if `ps` is unavailable.
   @spec ps_table() :: %{non_neg_integer() => ps_row()}

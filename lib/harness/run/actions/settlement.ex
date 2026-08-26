@@ -16,6 +16,7 @@ defmodule Harness.Run.Actions.Settlement do
   alias Harness.Oban, as: HarnessOban
   alias Harness.Project
   alias Harness.ResultStore
+  alias Harness.Run.Actions.Control
   alias Harness.Run.LogRecord
   alias Harness.Run.Result
   alias Harness.Run.Review
@@ -82,6 +83,9 @@ defmodule Harness.Run.Actions.Settlement do
   def crash_settle(_data, state, _reason) when state in [:done, :failed], do: :ok
 
   def crash_settle(data, state, reason) do
+    Control.terminate_agent(data)
+    Control.terminate_recovery(data)
+    Control.terminate_reviewer(data)
     crash_reason = {:run_crashed, normalize_crash_reason(state, reason)}
     result = build_crash_result(data, crash_reason)
     data = stamp_state_entry(:failed, %{data | result: result, reason: crash_reason})

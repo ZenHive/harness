@@ -83,7 +83,8 @@ defmodule Harness.ConfigTest do
       assert [
                total_timeout: 1_800_000,
                idle_timeout: 300_000,
-               progress_timeout: 300_000
+               progress_timeout: 300_000,
+               terminate_grace_ms: 1_000
              ] = Application.fetch_env!(:harness_agent_adapter, :run)
 
       harness_run = Application.get_env(:harness, :run, [])

@@ -90,12 +90,15 @@ is a multi-model front end, not "the Composer agent."
 config :harness_agent_adapter, :run,
   total_timeout: 1_800_000,
   idle_timeout: 300_000,
-  progress_timeout: 300_000
+  progress_timeout: 300_000,
+  terminate_grace_ms: 1_000
 ```
 
-All three keys are optional; see `Harness.AgentAdapter.Driver`'s moduledoc
+All keys are optional; see `Harness.AgentAdapter.Driver`'s moduledoc
 for the shipped defaults and what each deadline guards (total-run budget,
-idle-output window, no-mechanical-progress window). Per-call `opts` passed to
+idle-output window, no-mechanical-progress window). `:terminate_grace_ms`
+is the SIGTERM-to-SIGKILL window `OSProcess.kill_tree/1` waits so agent
+CLIs can flush their transcript tail. Per-call `opts` passed to
 `Driver.run/3` override the application config.
 
 ## Public API

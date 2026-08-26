@@ -32,7 +32,8 @@ defmodule Harness.AgentAdapter.Driver do
       config :harness_agent_adapter, :run,
         total_timeout: 1_800_000,
         idle_timeout: 300_000,
-        progress_timeout: 300_000
+        progress_timeout: 300_000,
+        terminate_grace_ms: 1_000
 
     * `:total_timeout` — total-run budget in milliseconds. Default `1_800_000`
       (30 minutes).
@@ -42,6 +43,9 @@ defmodule Harness.AgentAdapter.Driver do
       `300_000` (5 minutes). Also read by
       `Harness.AgentAdapter.Watchdog.new/3` when the caller passes no
       `:progress_timeout` option.
+    * `:terminate_grace_ms` — SIGTERM-to-SIGKILL grace window for
+      `Harness.AgentAdapter.OSProcess.kill_tree/1`. Default `1_000`. Agent CLIs
+      flush their transcript tail on SIGTERM, so the ordering is load-bearing.
 
   Every key is optional. Per-call timeout options override the config, which in
   turn overrides the defaults.
@@ -83,7 +87,9 @@ defmodule Harness.AgentAdapter.Driver do
     WithClauseError
   ]
 
-  api(:run, "Spawn the adapter for an invocation and drive it to completion under total + idle deadlines.",
+  api(
+    :run,
+    "Spawn the adapter for an invocation and drive it to completion under total + idle deadlines.",
     params: [
       adapter: [
         kind: :value,
@@ -185,7 +191,14 @@ defmodule Harness.AgentAdapter.Driver do
     end
   end
 
-  @spec receive_next(module(), Run.t(), Watchdog.t(), iodata(), (iodata() -> any()) | nil, non_neg_integer()) ::
+  @spec receive_next(
+          module(),
+          Run.t(),
+          Watchdog.t(),
+          iodata(),
+          (iodata() -> any()) | nil,
+          non_neg_integer()
+        ) ::
           Outcome.t()
   defp receive_next(adapter, run, watchdog, acc, on_output, wait) do
     receive do
@@ -256,9 +269,12 @@ defmodule Harness.AgentAdapter.Driver do
     config = Application.get_env(:harness_agent_adapter, :run, [])
 
     {
-      Keyword.get(opts, :total_timeout) || Keyword.get(config, :total_timeout, @default_total_timeout),
-      Keyword.get(opts, :idle_timeout) || Keyword.get(config, :idle_timeout, @default_idle_timeout),
-      Keyword.get(opts, :progress_timeout) || Keyword.get(config, :progress_timeout, @default_progress_timeout)
+      Keyword.get(opts, :total_timeout) ||
+        Keyword.get(config, :total_timeout, @default_total_timeout),
+      Keyword.get(opts, :idle_timeout) ||
+        Keyword.get(config, :idle_timeout, @default_idle_timeout),
+      Keyword.get(opts, :progress_timeout) ||
+        Keyword.get(config, :progress_timeout, @default_progress_timeout)
     }
   end
 end

@@ -8,9 +8,9 @@ defmodule Harness.Run.Actions.Control do
 
   @type data :: map()
   @type handler_result :: term()
-  # Aborts an in-flight run: kills the current step task, SIGKILLs the agent if
-  # one is running, and settles `failed`. `from` is the caller awaiting a cancel
-  # reply, or `nil` for a timeout-triggered abort.
+  # Aborts an in-flight run: kills the current step task, quiesces the agent's
+  # process tree if one is running, and settles `failed`. `from` is the caller
+  # awaiting a cancel reply, or `nil` for a timeout-triggered abort.
   @doc false
   @spec do_hold(data(), :graceful | :interrupt, [:gen_statem.action()]) :: handler_result()
   def do_hold(data, mode, extra_actions \\ []) do
@@ -92,8 +92,8 @@ defmodule Harness.Run.Actions.Control do
   @doc false
   @spec do_cancel(data(), Result.reason(), :gen_statem.from() | nil) :: handler_result()
   def do_cancel(data, reason, from) do
-    # Terminate-then-cancel: the adapter SIGKILLs the captured os_pid while its
-    # Port is still open, before cancel_task tears down the Port owner (Task 201).
+    # Terminate-then-cancel: the adapter quiesces the captured process tree while
+    # its Port is still open, before cancel_task tears down the Port owner (Task 201).
     terminate_agent(data)
     terminate_recovery(data)
     terminate_reviewer(data)
@@ -119,7 +119,7 @@ defmodule Harness.Run.Actions.Control do
   # The lifetime timer is the last-resort deadline: it fires regardless of
   # whether `{:run_handle, _}` has arrived, so a hung adapter
   # `build_command`/`invoke` cannot wedge the run forever. Trade-off: with
-  # `agent_run: nil` there is nothing to SIGKILL directly — killing the driver
+  # `agent_run: nil` there is nothing to terminate directly — killing the driver
   # task closes its port and a just-spawned OS process whose pid we never
   # received may leak. The boot-time `Harness.Worktree.Sweeper` reaps its
   # working directory across restarts. A deferred cancel caller (a real
@@ -127,8 +127,8 @@ defmodule Harness.Run.Actions.Control do
   @doc false
   @spec force_settle_lifetime(data()) :: handler_result()
   def force_settle_lifetime(data) do
-    # Terminate-then-cancel (Task 201): reap the captured os_pid before the Port
-    # owner is torn down.
+    # Terminate-then-cancel (Task 201): quiesce the captured process tree before
+    # the Port owner is torn down.
     terminate_agent(data)
     terminate_recovery(data)
     terminate_reviewer(data)
@@ -155,14 +155,14 @@ defmodule Harness.Run.Actions.Control do
   # for another cause before the cancel could be honoured.
   #
   # The agent may still be alive — a driver-task crash leaves its OS process
-  # running with nothing left to idle-time it out — so SIGKILL it here. A
-  # crashed step must never orphan an agent (and its API quota).
+  # running with nothing left to idle-time it out — so terminate its tree here.
+  # A crashed step must never orphan an agent (and its API quota).
   # `terminate_agent/1` is a no-op when no agent spawned and idempotent when it
   # already exited.
   @doc false
   @spec fail(data(), Result.reason()) :: handler_result()
   def fail(data, reason) do
-    # Terminate-then-cancel (Task 201): SIGKILL the captured os_pid before
+    # Terminate-then-cancel (Task 201): quiesce the captured process tree before
     # cancel_task closes the Port owner.
     terminate_agent(data)
     terminate_recovery(data)
@@ -224,8 +224,7 @@ defmodule Harness.Run.Actions.Control do
     if rss_kb > threshold, do: {role, os_pid, rss_kb}
   end
 
-  # Force-kills the runaway process tree (the descendant grandchild a plain
-  # adapter.terminate/1 would orphan) BEFORE the adapter teardown closes its
+  # Force-kills the runaway process tree BEFORE the adapter teardown closes its
   # Port — while the port is open the os_pid still names this run's tree
   # (mirrors the OSProcess.kill ordering note) — then settles :failed.
   @doc false

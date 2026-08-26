@@ -5,17 +5,14 @@ defmodule Harness.AgentAdapter.OSProcessTest do
   alias Harness.AgentAdapter.Run
   alias Harness.ProcessFixture
 
-  setup do
-    previous = Application.get_env(:harness_agent_adapter, :run)
-    Application.put_env(:harness_agent_adapter, :run, terminate_grace_ms: 50)
+  @grace_ms 50
 
-    on_exit(fn ->
-      if previous do
-        Application.put_env(:harness_agent_adapter, :run, previous)
-      else
-        Application.delete_env(:harness_agent_adapter, :run)
-      end
-    end)
+  setup do
+    previous = Application.get_env(:harness_agent_adapter, :run, [])
+    Application.put_env(:harness_agent_adapter, :run, Keyword.put(previous, :terminate_grace_ms, @grace_ms))
+
+    on_exit(fn -> Application.put_env(:harness_agent_adapter, :run, previous) end)
+    :ok
   end
 
   test "default adapter termination gracefully escalates and quiesces the descendant tree" do
@@ -46,13 +43,19 @@ defmodule Harness.AgentAdapter.OSProcessTest do
     descendants = await_descendants(root, 2)
 
     run = %Run{ref: make_ref(), adapter: __MODULE__, port: port, os_pid: root, started_at: 0}
+    started = System.monotonic_time(:millisecond)
     assert OSProcess.kill(run) == :ok
+    elapsed = System.monotonic_time(:millisecond) - started
+
+    # TERM-trapping processes survive SIGTERM, so the grace window must elapse
+    # before SIGKILL. Immediate SIGKILL would return in a handful of ms.
+    assert elapsed >= @grace_ms - 10
 
     assert File.read!(log) =~ "root-term"
     assert File.read!(log) =~ "child-term"
     assert File.read!(log) =~ "leaf-term"
-    assert ProcessFixture.await_dead(root) == :ok
-    for pid <- descendants, do: assert(ProcessFixture.await_dead(pid) == :ok)
+    refute_os_alive(root)
+    for pid <- descendants, do: refute_os_alive(pid)
   end
 
   test "tree termination is idempotent for nil and dead pids" do
@@ -91,5 +94,10 @@ defmodule Harness.AgentAdapter.OSProcessTest do
       0 -> false
       parent -> descendant?(parent, root, table)
     end
+  end
+
+  defp refute_os_alive(pid) do
+    {_output, code} = System.cmd("kill", ["-0", Integer.to_string(pid)], stderr_to_stdout: true)
+    assert code != 0, "expected pid #{pid} to be dead once kill/1 returned"
   end
 end
