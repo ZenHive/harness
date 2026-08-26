@@ -2,7 +2,7 @@ defmodule Harness.GitFixture do
   @moduledoc false
 
   # Test scaffolding for the worktree suite: spins up throwaway git repositories
-  # and isolated worktree roots in the system tmp dir, each registered for
+  # and isolated worktree roots under the suite tmp root, each registered for
   # `on_exit` cleanup. `File.rm_rf/1` here deletes only these tmp fixtures —
   # test scaffolding cleaning up after itself, never a real target repo.
 
@@ -48,6 +48,12 @@ defmodule Harness.GitFixture do
     end
   end
 
+  @spec cleanup_suite_root(String.t(), map()) :: :ok
+  def cleanup_suite_root(root, _suite_result) do
+    _ = File.rm_rf(root)
+    :ok
+  end
+
   # `git init --bare` creates the directory itself, so this cannot go through
   # `git!/2` (whose `-C <repo>` requires an existing directory).
   @spec init_bare(String.t()) :: String.t()
@@ -71,6 +77,7 @@ defmodule Harness.GitFixture do
     # failure mode ("nothing to commit, working tree clean" because the prior
     # run's README.md was already committed at the same path).
     suffix = "#{System.unique_integer([:positive])}-#{System.os_time(:nanosecond)}"
-    Path.join(System.tmp_dir!(), "harness-#{name}-#{suffix}")
+    root = Application.fetch_env!(:harness, :test_fixture_root)
+    Path.join(root, "harness-#{name}-#{suffix}")
   end
 end

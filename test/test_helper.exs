@@ -1,5 +1,14 @@
+alias Harness.GitFixture
 alias Harness.ResultStore.Memory
 alias Harness.Test.SettingsStoreMemory
+
+fixture_root =
+  Path.join(
+    System.tmp_dir!(),
+    "harness-test-fixtures-#{System.pid()}-#{System.os_time(:nanosecond)}"
+  )
+
+Application.put_env(:harness, :test_fixture_root, fixture_root)
 
 # The default test result store is shared by the suite; start from an empty
 # in-memory scope so stale records from prior runs cannot poison history reads.
@@ -27,6 +36,7 @@ end
   )
 
 ExUnit.start()
+ExUnit.after_suite(&GitFixture.cleanup_suite_root(fixture_root, &1))
 
 # Integration tests drive real external agent CLIs (e.g. `claude`) — slow,
 # networked, and not present in every environment. Excluded by default; run them
