@@ -358,7 +358,7 @@ defmodule Harness.ResultStore.MemoryTest do
 
       assert_received {:targets, targets}
       assert map_size(targets) == 1
-      assert target_fetch_count(log) == 1
+      assert target_fetch_count(log, project.name) == 1
       assert {:fetched, ^repo, "refs/remotes/origin/main"} = Map.fetch!(targets, project.name)
       assert {:ok, ^sha} = ResultStore.reconcile_landed_sha(run_id, sha, Map.fetch!(targets, project.name), store)
     end
@@ -379,14 +379,15 @@ defmodule Harness.ResultStore.MemoryTest do
         end)
 
       assert_received {:result, {:ok, ^sha}}
-      assert target_fetch_count(log) == 0
+      assert target_fetch_count(log, project.name) == 0
     end
 
     test "fetch_target_ref logs a fetch failure and does not return another project's ref" do
       %{repo: good_repo} = GitFixture.init_with_origin()
       %{repo: bad_repo} = GitFixture.init_with_origin()
-      good = local_project(good_repo, "good")
-      bad = local_project(bad_repo, "bad")
+      suffix = System.unique_integer([:positive])
+      good = local_project(good_repo, "good-#{suffix}")
+      bad = local_project(bad_repo, "bad-#{suffix}")
       GitFixture.git!(bad_repo, ["remote", "set-url", "origin", "/gone-#{System.unique_integer([:positive])}"])
 
       log =
@@ -395,15 +396,16 @@ defmodule Harness.ResultStore.MemoryTest do
         end)
 
       assert_received {:targets, targets}
-      assert target_fetch_count(log) == 2
-      assert log =~ "fetch origin/main failed for landed_sha reconcile"
-      assert {:error, {:git_failed, _args, _status, _output}} = Map.fetch!(targets, "bad")
-      assert {:fetched, ^good_repo, "refs/remotes/origin/main"} = Map.fetch!(targets, "good")
+      assert target_fetch_count(log, bad.name) == 1
+      assert target_fetch_count(log, good.name) == 1
+      assert log =~ "fetch origin/main failed for landed_sha reconcile of #{bad.name}"
+      assert {:error, {:git_failed, _args, _status, _output}} = Map.fetch!(targets, bad.name)
+      assert {:fetched, ^good_repo, "refs/remotes/origin/main"} = Map.fetch!(targets, good.name)
     end
 
     test "fetch_target_ref skips github sources without a git fetch" do
       project = %Project{
-        name: "gh",
+        name: "gh-#{System.unique_integer([:positive])}",
         source: {:github, "https://github.com/example/demo.git"},
         roadmap_path: "/tmp",
         languages: [:elixir],
@@ -416,7 +418,7 @@ defmodule Harness.ResultStore.MemoryTest do
         end)
 
       assert_received {:result, {:error, :github_source}}
-      assert target_fetch_count(log) == 0
+      assert target_fetch_count(log, project.name) == 0
     end
   end
 
@@ -452,12 +454,21 @@ defmodule Harness.ResultStore.MemoryTest do
 
   @target_fetch_log "harness result store: fetching origin/"
 
-  @spec target_fetch_count(String.t()) :: non_neg_integer()
-  defp target_fetch_count(log), do: length(String.split(log, @target_fetch_log)) - 1
+  @spec target_fetch_count(String.t(), String.t()) :: non_neg_integer()
+  defp target_fetch_count(log, project_name) do
+    log
+    |> String.split("\n")
+    |> Enum.count(&target_fetch_line?(&1, project_name))
+  end
+
+  @spec target_fetch_line?(String.t(), String.t()) :: boolean()
+  defp target_fetch_line?(line, project_name) do
+    String.contains?(line, @target_fetch_log) and String.contains?(line, "of #{project_name}")
+  end
 
   @spec local_project(String.t()) :: Project.t()
   @spec local_project(String.t(), String.t()) :: Project.t()
-  defp local_project(repo, name \\ "reconcile") do
+  defp local_project(repo, name \\ "reconcile-#{System.unique_integer([:positive])}") do
     %Project{name: name, source: {:local, repo}, roadmap_path: repo, languages: [:elixir], target_branch: "main"}
   end
 

@@ -350,7 +350,7 @@ defmodule Harness.ResultStore do
   def fetch_target_ref(%Project{} = project) do
     with {:ok, repo} <- Project.local_repo_path(project),
          {:ok, target} <- reconcile_target(project),
-         :ok <- fetch_target(repo, target) do
+         :ok <- fetch_target(repo, target, project.name) do
       {:fetched, repo, remote_ref(target)}
     else
       {:error, _reason} = error -> error
@@ -595,21 +595,24 @@ defmodule Harness.ResultStore do
   defp reconcile_target(%Project{target_branch: target}) when is_binary(target) and target != "", do: {:ok, target}
   defp reconcile_target(%Project{}), do: :error
 
-  @spec fetch_target(String.t(), String.t()) :: :ok | {:error, Git.error()}
-  defp fetch_target(repo, target) do
-    Logger.debug("harness result store: fetching origin/#{target} for landed_sha reconcile")
+  @spec fetch_target(String.t(), String.t(), String.t()) :: :ok | {:error, Git.error()}
+  defp fetch_target(repo, target, project_name) do
+    Logger.debug("harness result store: fetching origin/#{target} for landed_sha reconcile of #{project_name}")
+
     ref = remote_ref(target)
     branch_ref = "refs/heads/" <> target
 
     case Git.run(["fetch", "origin", "+#{branch_ref}:#{ref}"], repo) do
       {:ok, _output} -> :ok
-      {:error, reason} = error -> log_fetch_failure(target, reason, error)
+      {:error, reason} = error -> log_fetch_failure(project_name, target, reason, error)
     end
   end
 
-  @spec log_fetch_failure(String.t(), Git.error(), {:error, Git.error()}) :: {:error, Git.error()}
-  defp log_fetch_failure(target, reason, error) do
-    Logger.warning("harness result store: fetch origin/#{target} failed for landed_sha reconcile: #{inspect(reason)}")
+  @spec log_fetch_failure(String.t(), String.t(), Git.error(), {:error, Git.error()}) :: {:error, Git.error()}
+  defp log_fetch_failure(project_name, target, reason, error) do
+    Logger.warning(
+      "harness result store: fetch origin/#{target} failed for landed_sha reconcile of #{project_name}: #{inspect(reason)}"
+    )
 
     error
   end

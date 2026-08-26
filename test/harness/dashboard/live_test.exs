@@ -626,13 +626,16 @@ defmodule Harness.Dashboard.LiveTest do
       }
 
       {count, log} =
-        count_target_fetches(fn ->
-          send(self(), {:reconciled, Live.reconcile_history_landed(entries, [project], roadmap, store)})
-        end)
+        count_target_fetches(
+          fn ->
+            send(self(), {:reconciled, Live.reconcile_history_landed(entries, [project], roadmap, store)})
+          end,
+          project.name
+        )
 
       assert_received {:reconciled, reconciled}
       assert count == 1
-      assert log =~ "fetching origin/main for landed_sha reconcile"
+      assert log =~ "fetching origin/main for landed_sha reconcile of #{project.name}"
       assert Enum.map(reconciled, & &1.status.landed_sha) == [sha, sha, sha]
     end
 
@@ -648,16 +651,14 @@ defmodule Harness.Dashboard.LiveTest do
         project_b.name => %{open: 0, done: 1, total: 1, landed: %{"11" => sha_b}, blocked: MapSet.new()}
       }
 
-      {count, _log} =
-        count_target_fetches(fn ->
-          send(
-            self(),
-            {:reconciled, Live.reconcile_history_landed([entry_a, entry_b], [project_a, project_b], roadmap, store)}
-          )
+      {log, reconciled} =
+        with_target_fetch_log(fn ->
+          Live.reconcile_history_landed([entry_a, entry_b], [project_a, project_b], roadmap, store)
         end)
 
-      assert_received {:reconciled, [reconciled_a, reconciled_b]}
-      assert count == 2
+      assert [reconciled_a, reconciled_b] = reconciled
+      assert target_fetch_count(log, project_a.name) == 1
+      assert target_fetch_count(log, project_b.name) == 1
       assert reconciled_a.status.landed_sha == sha_a
       assert reconciled_b.status.landed_sha == sha_b
       refute sha_a == sha_b
@@ -684,23 +685,20 @@ defmodule Harness.Dashboard.LiveTest do
         project_b.name => %{open: 0, done: 1, total: 1, landed: %{"22" => sha_b}, blocked: MapSet.new()}
       }
 
-      {count, log} =
-        count_target_fetches(fn ->
-          send(
-            self(),
-            {:reconciled,
-             Live.reconcile_history_landed(
-               [entry_a1, entry_a2, entry_b],
-               [project_a, project_b],
-               roadmap,
-               store
-             )}
+      {log, reconciled} =
+        with_target_fetch_log(fn ->
+          Live.reconcile_history_landed(
+            [entry_a1, entry_a2, entry_b],
+            [project_a, project_b],
+            roadmap,
+            store
           )
         end)
 
-      assert_received {:reconciled, [reconciled_a1, reconciled_a2, reconciled_b]}
-      assert count == 2
-      assert log =~ "fetch origin/main failed for landed_sha reconcile"
+      assert [reconciled_a1, reconciled_a2, reconciled_b] = reconciled
+      assert target_fetch_count(log, project_a.name) == 1
+      assert target_fetch_count(log, project_b.name) == 1
+      assert log =~ "fetch origin/main failed for landed_sha reconcile of #{project_a.name}"
       assert reconciled_a1.status.landed_sha == nil
       assert reconciled_a2.status.landed_sha == nil
       assert reconciled_b.status.landed_sha == sha_b
@@ -723,9 +721,12 @@ defmodule Harness.Dashboard.LiveTest do
       roadmap = %{project.name => %{open: 0, done: 1, total: 1, landed: %{"30" => sha}, blocked: MapSet.new()}}
 
       {count, _log} =
-        count_target_fetches(fn ->
-          send(self(), {:reconciled, Live.reconcile_history_landed([entry], [project], roadmap, store)})
-        end)
+        count_target_fetches(
+          fn ->
+            send(self(), {:reconciled, Live.reconcile_history_landed([entry], [project], roadmap, store)})
+          end,
+          project.name
+        )
 
       assert_received {:reconciled, [reconciled]}
       assert count == 0
@@ -1494,9 +1495,24 @@ defmodule Harness.Dashboard.LiveTest do
     %{project: project, repo: repo, sha: sha, store: store}
   end
 
-  defp count_target_fetches(fun) do
-    log = ExUnit.CaptureLog.capture_log([level: :debug], fun)
-    {length(String.split(log, @target_fetch_log)) - 1, log}
+  defp count_target_fetches(fun, project_name) do
+    {log, _result} = with_target_fetch_log(fun)
+    {target_fetch_count(log, project_name), log}
+  end
+
+  defp with_target_fetch_log(fun) do
+    {result, log} = ExUnit.CaptureLog.with_log([level: :debug], fun)
+    {log, result}
+  end
+
+  defp target_fetch_count(log, project_name) do
+    log
+    |> String.split("\n")
+    |> Enum.count(&target_fetch_line?(&1, project_name))
+  end
+
+  defp target_fetch_line?(line, project_name) do
+    String.contains?(line, @target_fetch_log) and String.contains?(line, "of #{project_name}")
   end
 
   defp log_record(run_id, opts) do
