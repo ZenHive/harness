@@ -9,7 +9,7 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (13 of 27 done · 1 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (13 of 27 done · 2 in progress)
 
 **Last shipped:** Task 381 — Make capped dashboard transcript append linear in incoming chunk size, Task 391 — Four `roadmap-mark_*` MCP tools expose zero parameters — declare their params, then guard the class on 2026-08-26
 
@@ -368,5 +368,5 @@
 | Task 404 | ✅ | 🎁 **audit-perf** · 🚀 **v0_16** · Take the uncached SettingsStore reads and the synchronous CLI catalog probes off the 5s settings tick [D:3/B:5/U:5 → Eff:1.67] 🚀 |
 | Task 405 | ✅ | 🎁 **roadmap-writeback** · 🚀 **v0_16** · 🐛 Audit discovery filing writes into the operator's live checkout and is never committed [D:3/B:7/U:6 → Eff:2.17] 🎯 |
 | Task 413 | ✅ | 🎁 **witness-legibility** · Surface an in-flight audit signal on the fleet count strip, not just the ops panel [D:4/B:7/U:6 → Eff:1.62] 🚀 |
-| Task 414 | ⬜ | 🎁 **config-surface** · 🐛 Give dispatch-register_project a typed languages schema so MCP clients can send a JSON array [D:3/B:7/U:6 → Eff:2.17] 🎯 |
+| Task 414 | 🔄 | 🎁 **config-surface** · 🐛 Give dispatch-register_project a typed languages schema so MCP clients can send a JSON array [D:3/B:7/U:6 → Eff:2.17] 🎯 |
 <!-- TASKS:END -->

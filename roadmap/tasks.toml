@@ -12746,7 +12746,7 @@ shipped_in = "83006b23fcd8ce3442404f188468daf7e1ed522c"
 id = "414"
 phase = 23
 bundle = "config-surface"
-status = "pending"
+status = "in_progress"
 title = "Give dispatch-register_project a typed languages schema so MCP clients can send a JSON array"
 scores = { d = 3, b = 7, u = 6 }
 markers = ["bug"]
@@ -12765,6 +12765,7 @@ Task 389 extended this same tool to register_project/9 without closing the hole.
 Evidence: bugs.md #3; lib/harness/dispatch.ex register_project/9 @spec; ProjectRegistry.validate_languages/1.
 """
 created_at = "2026-08-25"
+started_at = "2026-08-26"
 scored_at = "2026-08-25"
 
 [[task]]
