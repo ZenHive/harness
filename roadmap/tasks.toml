@@ -11598,8 +11598,8 @@ out_of_scope = ["Changing transcript parsing or presentation", "Changing the ret
 files_to_modify = ["lib/harness/dashboard/transcript.ex"]
 touches = ["lib/harness/dashboard/transcript.ex", "test/harness/dashboard/transcript_test.exs"]
 domains = ["phoenix"]
-assignee = "codex"
-model = "gpt-5.6-sol"
+assignee = "cursor"
+model = "cursor-grok-4.6-high"
 body = """
 Harness.Dashboard.Transcript.append/3 currently evaluates buffer <> chunk for each port chunk, copying the retained buffer repeatedly up to the 200 KiB cap for every connected viewer. Preserve the public behavior and cap while making incremental accumulation linear in the new chunk size, materializing only at the existing parse/render boundary. This is the former M2 part of Task 358, split because it is an isolated data-structure change.
 """
