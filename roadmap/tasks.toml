@@ -12772,7 +12772,7 @@ scored_at = "2026-08-25"
 id = "415"
 phase = 22
 bundle = "agent-gate"
-status = "pending"
+status = "in_progress"
 title = "Close the last AgentAdapter.Driver bypass and make the single-entry-point invariant a test"
 scores = { d = 4, b = 7, u = 7 }
 markers = ["bug"]
@@ -12823,4 +12823,5 @@ recurrence and not a known hole — say so plainly in the implemented note rathe
 claiming a bug was fixed.
 """
 created_at = "2026-08-26"
+started_at = "2026-08-26"
 scored_at = "2026-08-26"

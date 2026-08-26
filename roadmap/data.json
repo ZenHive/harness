@@ -19061,7 +19061,7 @@
       "id": "415",
       "phase": 22,
       "bundle": "agent-gate",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Close the last AgentAdapter.Driver bypass and make the single-entry-point invariant a test",
       "scores": {
         "d": 4,
@@ -19098,6 +19098,7 @@
       ],
       "body": "Task 398 rerouted Codex/Pi rule delivery to the prompt preamble so harness never\nmodifies a repo's tracked AGENTS.md mid-run, and funnelled every production\ninvocation through Harness.AgentDriver.run/3 (the only caller of\nHarness.AgentAdapter.Driver.run/3 in lib/). One path was left outside that funnel\nand the reviewer of run-1787704683213-a4ccfb36 recorded it as a concern:\nlib/harness/manifest.ex:38 still lists Harness.AgentAdapter.Driver in\n@driver_surface, so the MCP/chat tool generated from its api(:run, ...) annotation\ninvokes the raw driver. A Codex or Pi invocation through that tool still merges\nharness rules into the tracked AGENTS.md — the exact defect 398 closed everywhere\nelse. test/harness/worktree/isolation_integration_test.exs also aliases the raw\nDriver; decide whether that tripwire should exercise the production path or stays\na deliberate negative control, and say which in the implemented note.\n\nOPEN DECISION the implementer must resolve and justify — the orchestrator has not\npicked one, and it changes a public MCP contract:\n(1) Put Harness.AgentDriver in @driver_surface instead, giving it its own api()\n    annotation. Renames the generated tool from driver-run to agent_driver-run,\n    which is a breaking change for any MCP client that calls it by name.\n(2) Keep the exported name stable and make the exported module delegate into\n    AgentDriver, so the tool name is unchanged and the rule-delivery policy still\n    applies.\n(3) Move the reroute down into the harness_agent_adapter package's Driver so no\n    harness-side wrapper is needed. This is a git-dependency change and widens\n    the blast radius to every consumer of that package.\nName the choice and why the rejected ones were rejected.\n\nScope this as the class invariant, not as a one-line Manifest edit: the reason\nthis hole existed is that nothing prevents a new call site from reaching the raw\ndriver. Whatever option is chosen must be backed by a check that fails when a\nfuture module bypasses the funnel.\n\nFOLDED IN from the reviewer of run-1787704688388-3cceb58b (task 391), because it lands\nin the same test file and is the same kind of manifest-wide assertion: task 391 locked\nthe empty-param-schema class inside Harness.Roadmap only. Another api/2 on an\nargument-taking function elsewhere in Manifest.modules() would still compile, document,\nadvertise an empty MCP schema, and fail at call time the same way. That reviewer's\none-shot scan found zero remaining instances today, so this is a lock against\nrecurrence and not a known hole — say so plainly in the implemented note rather than\nclaiming a bug was fixed.\n",
       "created_at": "2026-08-26",
+      "started_at": "2026-08-26",
       "scored_at": "2026-08-26",
       "cross_repo": []
     }
