@@ -12762,3 +12762,51 @@ Evidence: bugs.md #3; lib/harness/dispatch.ex register_project/9 @spec; ProjectR
 """
 created_at = "2026-08-25"
 scored_at = "2026-08-25"
+
+[[task]]
+id = "415"
+phase = 22
+bundle = "agent-gate"
+status = "pending"
+title = "Close the last AgentAdapter.Driver bypass and make the single-entry-point invariant a test"
+scores = { d = 4, b = 7, u = 7 }
+markers = ["bug"]
+acceptance_criteria = ["No harness-owned path — production code, the MCP/chat tool surface generated from Harness.Manifest, or a driver script — can invoke an adapter without passing through the rule-delivery policy. A Codex/Pi invocation started from the MCP surface leaves a tracked AGENTS.md byte-identical for the whole run", "A test enforces the invariant as a class, not as a fixed list: it fails when any module other than the designated entry point calls Harness.AgentAdapter.Driver.run/2,3. Asserting only that today's known call sites are correct does not satisfy this", "The chosen option from the open decision above is named in the implemented note together with why the other two were rejected; if the MCP tool name changes, the rename is stated explicitly as a client-visible contract change", "The disposition of test/harness/worktree/isolation_integration_test.exs's direct Driver alias is decided and recorded — either rewired through the entry point or documented in the test as a deliberate negative control", "The six adapters still pass Harness.AgentAdapter.Testing.ConformanceCase unchanged, and mix check.dispatch is green with focused tests for the manifest and rule-delivery paths"]
+out_of_scope = ["Changing what the injected rules say, or which languages get which guidance", "Revisiting the prompt-preamble reroute itself — Task 398 settled that mechanism", "The approved_then_found_red data correction, which Task 398 already shipped as a migration"]
+touches = ["lib/harness/manifest.ex", "lib/harness/agent_driver.ex", "test/harness/manifest_test.exs", "test/harness/agent_driver_test.exs"]
+assignee = "cursor"
+model = "cursor-grok-4.6-high"
+body = """
+Task 398 rerouted Codex/Pi rule delivery to the prompt preamble so harness never
+modifies a repo's tracked AGENTS.md mid-run, and funnelled every production
+invocation through Harness.AgentDriver.run/3 (the only caller of
+Harness.AgentAdapter.Driver.run/3 in lib/). One path was left outside that funnel
+and the reviewer of run-1787704683213-a4ccfb36 recorded it as a concern:
+lib/harness/manifest.ex:38 still lists Harness.AgentAdapter.Driver in
+@driver_surface, so the MCP/chat tool generated from its api(:run, ...) annotation
+invokes the raw driver. A Codex or Pi invocation through that tool still merges
+harness rules into the tracked AGENTS.md — the exact defect 398 closed everywhere
+else. test/harness/worktree/isolation_integration_test.exs also aliases the raw
+Driver; decide whether that tripwire should exercise the production path or stays
+a deliberate negative control, and say which in the implemented note.
+
+OPEN DECISION the implementer must resolve and justify — the orchestrator has not
+picked one, and it changes a public MCP contract:
+(1) Put Harness.AgentDriver in @driver_surface instead, giving it its own api()
+    annotation. Renames the generated tool from driver-run to agent_driver-run,
+    which is a breaking change for any MCP client that calls it by name.
+(2) Keep the exported name stable and make the exported module delegate into
+    AgentDriver, so the tool name is unchanged and the rule-delivery policy still
+    applies.
+(3) Move the reroute down into the harness_agent_adapter package's Driver so no
+    harness-side wrapper is needed. This is a git-dependency change and widens
+    the blast radius to every consumer of that package.
+Name the choice and why the rejected ones were rejected.
+
+Scope this as the class invariant, not as a one-line Manifest edit: the reason
+this hole existed is that nothing prevents a new call site from reaching the raw
+driver. Whatever option is chosen must be backed by a check that fails when a
+future module bypasses the funnel.
+"""
+created_at = "2026-08-26"
+scored_at = "2026-08-26"
