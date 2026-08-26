@@ -17815,7 +17815,7 @@
       "id": "392",
       "phase": 22,
       "bundle": "core-loop",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Terminate the agent process tree, not just the direct PID — orphaned children outlive the kill and share the worktree",
       "scores": {
         "d": 5,
@@ -17860,6 +17860,7 @@
       ],
       "body": "Harness.AgentAdapter.OSProcess.kill/1 SIGKILLs only the immediate OS pid; its own moduledoc states the consequence: \"tool subprocesses the agent itself spawned can be orphaned by that.\" An agent CLI is never a leaf — it spawns mix test, dialyzer, rg, node. Harness.Run.MemoryGuard.kill_tree/1 already implements the correct behavior (ps table -> descendants -> kill each) but is wired only to the memory watchdog via Run.Actions.Control; every other termination path leaks the tree.\n\nThe sharpest instance is reviewer rotation. In lib/harness/run/actions/reviewing.ex, a reviewer idle-timeout calls terminate_reviewer/1 — single-pid kill — and then :repeat_state spawns the NEXT reviewer into the SAME worktree. Reviewer A's orphaned `mix test` keeps running against the tree that reviewer B is now checking: concurrent writes to _build, a shared test database, and lock files, from a process harness believes it killed. That is a false-red/false-green generator in exactly the bug class the agent-gate rebuild set out to end, and it is pure substrate — no judgment involved.\n\nIdea confirmed against DeepSeek Harness (packages/subprocess: terminate() is tree-scoped on every platform, escalates SIGTERM -> grace -> SIGKILL, is idempotent, and is paired with a waitForExit that observes whole-tree liveness) and its docs/defensive-patterns.md rule \"Dispose must reach quiescence, not just request it\": a teardown that issues kills and returns before the work stops leaves orphans.\n",
       "created_at": "2026-08-23",
+      "started_at": "2026-08-26",
       "scored_at": "2026-08-23",
       "cross_repo": []
     },
