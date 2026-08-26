@@ -11813,7 +11813,7 @@ shipped_in = "1433aea06feebd2a12511f060181f91ff40f7bd5"
 id = "391"
 phase = 23
 bundle = "surface"
-status = "pending"
+status = "in_progress"
 title = "Four `roadmap-mark_*` MCP tools expose zero parameters — declare their params, then guard the class"
 scores = { d = 3, b = 6, u = 6 }
 acceptance_criteria = ["`roadmap-mark_landed`, `roadmap-mark_blocked`, `roadmap-mark_in_progress` and `roadmap-mark_pending` each expose their documented arguments in the MCP tool schema, and each is callable end to end over MCP against a registered project", "A test asserts the invariant for the whole module, not the four instances: every `@descripex_api_declarations` entry in `Harness.Roadmap` whose backing function has arity > 0 declares a non-empty parameter set", "The moduledoc'd option lists and the declared parameter sets agree — a documented option that is not declared fails the new test"]
@@ -11831,6 +11831,7 @@ Blast radius is bounded — `Harness.Lander.Resilience` calls `Roadmap.mark_bloc
 Fix the four declarations, and then close the class rather than the four instances: the failure mode is that an `api/2` declaration on a function that takes arguments compiles cleanly, documents itself correctly, and only fails at call time from a client. A module-level test over the declaration accumulator turns that into a compile-or-test failure.
 """
 created_at = "2026-08-23"
+started_at = "2026-08-26"
 scored_at = "2026-08-23"
 
 [[task]]
