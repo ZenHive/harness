@@ -2,16 +2,16 @@ defmodule Harness.CapabilityDomain do
   @moduledoc """
   Advisory capability-domain vocabulary for KPI slicing and routing.
 
-  Flat atom list — not hierarchical. Tags are declared on roadmap tasks and
+  Flat tag list — not hierarchical. Tags are declared on roadmap tasks and
   copied onto run records; they are metadata, not a contract (same posture as
   `Harness.AgentRegistry` availability).
 
-  Unknown atoms are kept at normalize time so new stacks (e.g. `:rust`) land
-  without a code change; `@domains/0` is the curated starter set only.
+  Curated tags use atoms; open-vocabulary tags stay strings so persistence does
+  not depend on the writing node's atom table.
   """
 
   @typedoc "A declared capability domain tag."
-  @type t :: atom()
+  @type t :: atom() | String.t()
 
   @typedoc "Grouping bucket for records with no declared domains."
   @type bucket :: t() | :untagged
@@ -40,20 +40,35 @@ defmodule Harness.CapabilityDomain do
   @doc "Whether `domain` is in the canonical vocabulary."
   @spec known?(t()) :: boolean()
   def known?(domain) when is_atom(domain), do: domain in @domains
+  def known?(domain) when is_binary(domain), do: domain in Enum.map(@domains, &Atom.to_string/1)
+  def known?(_domain), do: false
 
   @doc """
   Normalizes declared domain tags for persistence and grouping.
 
-  Drops non-atoms, dedupes, sorts. Unknown atoms are kept. An empty input
+  Curated strings become atoms; unknown atoms and strings become strings.
   stays empty — callers map that to `:untagged` at group time via `buckets/1`.
   """
   @spec normalize([term()]) :: [t()]
   def normalize(tags) when is_list(tags) do
     tags
-    |> Enum.filter(&is_atom/1)
+    |> Enum.flat_map(&normalize_tag/1)
     |> Enum.uniq()
     |> Enum.sort()
   end
+
+  defp normalize_tag(tag) when is_atom(tag) do
+    if known?(tag), do: [tag], else: [Atom.to_string(tag)]
+  end
+
+  defp normalize_tag(tag) when is_binary(tag) do
+    case Enum.find(@domains, &(Atom.to_string(&1) == tag)) do
+      nil -> [tag]
+      domain -> [domain]
+    end
+  end
+
+  defp normalize_tag(_tag), do: []
 
   @doc """
   Domain bucket keys for one record's tags.
@@ -71,11 +86,11 @@ defmodule Harness.CapabilityDomain do
   @doc """
   Validates domain tags from external input (e.g. a TOML corpus item).
 
-  Accepts atoms only; rejects non-atoms loudly. Unknown atoms pass through.
+  Accepts atom or string tags; rejects other values loudly.
   """
   @spec validate([term()]) :: {:ok, [t()]} | {:error, {:invalid_domain_tag, term()}}
   def validate(tags) when is_list(tags) do
-    case Enum.find(tags, &(not is_atom(&1))) do
+    case Enum.find(tags, &(not (is_atom(&1) or is_binary(&1)))) do
       nil -> {:ok, normalize(tags)}
       bad -> {:error, {:invalid_domain_tag, bad}}
     end

@@ -175,11 +175,12 @@ defmodule Harness.Roadmap do
 
   defp task_domains(_task), do: []
 
-  @spec domain_atom(term()) :: atom() | term()
+  @spec domain_atom(term()) :: CapabilityDomain.t() | term()
   defp domain_atom(domain) when is_binary(domain) do
-    String.to_existing_atom(domain)
-  rescue
-    ArgumentError -> domain
+    case CapabilityDomain.normalize([domain]) do
+      [normalized] -> normalized
+      [] -> domain
+    end
   end
 
   defp domain_atom(domain), do: domain

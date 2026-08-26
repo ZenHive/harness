@@ -10,8 +10,16 @@ defmodule Harness.Application do
   @spec start(Application.start_type(), term()) :: {:ok, pid()} | {:error, term()}
   @impl true
   def start(_type, _args) do
+    load_application_modules()
     opts = [strategy: :one_for_one, name: Harness.Supervisor]
     Supervisor.start_link(children(), opts)
+  end
+
+  @spec load_application_modules() :: :ok
+  defp load_application_modules do
+    :harness
+    |> Application.spec(:modules)
+    |> Enum.each(&Code.ensure_loaded!/1)
   end
 
   # The run layer: a Registry for run-id -> pid lookup, a Task.Supervisor that

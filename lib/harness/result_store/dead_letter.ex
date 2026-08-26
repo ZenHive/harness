@@ -14,6 +14,7 @@ defmodule Harness.ResultStore.DeadLetter do
   """
 
   alias Harness.Run.LogRecord
+  alias Harness.SafeTerm
 
   require Logger
 
@@ -264,7 +265,15 @@ defmodule Harness.ResultStore.DeadLetter do
   # sobelow_skip ["Misc.BinToTerm"]
   @spec decode_entry(binary(), String.t()) :: {:ok, entry()} | {:error, term()}
   defp decode_entry(bin, path) when is_binary(bin) do
-    case :erlang.binary_to_term(bin, [:safe]) do
+    case SafeTerm.decode(bin) do
+      {:ok, entry} -> decode_term_entry(entry, path)
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @spec decode_term_entry(term(), String.t()) :: {:ok, entry()} | {:error, :invalid_entry}
+  defp decode_term_entry(entry, path) do
+    case entry do
       %{v: @entry_version, run_id: run_id, record: %LogRecord{} = record} = entry
       when is_binary(run_id) ->
         {:ok,
@@ -281,7 +290,5 @@ defmodule Harness.ResultStore.DeadLetter do
       _other ->
         {:error, :invalid_entry}
     end
-  rescue
-    ArgumentError -> {:error, :invalid_term}
   end
 end

@@ -18,19 +18,17 @@ defmodule Harness.CapabilityDomainTest do
     assert domains == Enum.sort(domains)
   end
 
-  test "normalize/1 keeps JS/TS domains through the rmap String.to_existing_atom round-trip" do
-    # Harness.Roadmap.task_domains/1 resolves rmap `domains` strings via
-    # String.to_existing_atom/1, then normalizes. JS/TS atoms must be registered
-    # (by @general_domains) so they survive instead of collapsing to :untagged.
-    tags = Enum.map(["javascript", "typescript"], &String.to_existing_atom/1)
+  test "normalize/1 atomizes curated strings and preserves unknown tags as strings" do
+    tags = ["javascript", "typescript", "delta_calc", :custom_stack]
 
-    assert CapabilityDomain.normalize(tags) == [:javascript, :typescript]
-    assert CapabilityDomain.buckets(tags) == [:javascript, :typescript]
+    assert CapabilityDomain.normalize(tags) == [:javascript, :typescript, "custom_stack", "delta_calc"]
+    assert CapabilityDomain.buckets(tags) == [:javascript, :typescript, "custom_stack", "delta_calc"]
   end
 
-  test "validate/1 accepts atoms and rejects non-atoms" do
+  test "validate/1 accepts atom and string tags and rejects other values" do
     assert {:ok, [:ecto, :otp]} = CapabilityDomain.validate([:otp, :ecto, :otp])
-    assert {:error, {:invalid_domain_tag, "otp"}} = CapabilityDomain.validate(["otp"])
+    assert {:ok, [:otp, "unknown"]} = CapabilityDomain.validate(["otp", "unknown"])
+    assert {:error, {:invalid_domain_tag, 42}} = CapabilityDomain.validate([42])
   end
 
   test "buckets/1 maps empty tags to :untagged" do

@@ -28,11 +28,13 @@ defmodule Harness.ResultStore.Postgres do
   alias Harness.AgentKPI
   alias Harness.AgentKPI.TokenMeans
   alias Harness.Batch.Result, as: BatchResult
+  alias Harness.CapabilityDomain
   alias Harness.Config
   alias Harness.Repo
   alias Harness.ResultStore.Schema.BatchResult, as: BatchResultSchema
   alias Harness.ResultStore.Schema.RunRecord, as: RunRecordSchema
   alias Harness.Run.LogRecord
+  alias Harness.SafeTerm
   alias Harness.TokenUsage
 
   require Logger
@@ -758,9 +760,7 @@ defmodule Harness.ResultStore.Postgres do
   # sobelow_skip ["Misc.BinToTerm"]
   @spec decode_binary_payload(binary()) :: {:ok, term()} | {:error, :invalid_term}
   defp decode_binary_payload(payload) do
-    {:ok, :erlang.binary_to_term(payload, [:safe])}
-  rescue
-    ArgumentError -> {:error, :invalid_term}
+    SafeTerm.decode(payload)
   end
 
   # --- filter translation (documented keys only; others ignored for forward compat) ---
@@ -837,7 +837,7 @@ defmodule Harness.ResultStore.Postgres do
       review_proposed_tasks: encode_freeform_list(r.review_proposed_tasks),
       review_warning?: r.review_warning?,
       review_ratings: encode_jsonb(r.review_ratings),
-      domains: encode_jsonb(r.domains),
+      domains: encode_jsonb(Enum.map(r.domains, &to_string/1)),
       recovery_token_usage: encode_jsonb(r.recovery_token_usage),
       cold_check: r.cold_check,
       approved_then_found_red: r.approved_then_found_red,
@@ -884,7 +884,7 @@ defmodule Harness.ResultStore.Postgres do
       reviewer_outcome_kind: string_to_kind(row.reviewer_outcome_kind),
       reviewer_exit_status: row.reviewer_exit_status,
       reviewer_output: default(row.reviewer_output, ""),
-      domains: default(decode_jsonb(row.domains), []),
+      domains: decode_domains(row.domains),
       recovery_attempts: default(row.recovery_attempts, 0),
       recovery_outcome: string_to_atom(row.recovery_outcome),
       recovery_repaired: row.recovery_repaired,
@@ -933,17 +933,25 @@ defmodule Harness.ResultStore.Postgres do
   defp default(nil, default), do: default
   defp default(value, _default), do: value
 
-  # Column values come from our own INSERTs (Atom.to_string in log_record_to_attrs)
-  # — the atom always already exists (the code that wrote it defines it), so
-  # to_existing_atom both decodes correctly and rejects stale/foreign strings.
-  @spec string_to_atom(String.t() | nil) :: atom() | nil
-  defp string_to_atom(s) when is_binary(s), do: String.to_existing_atom(s)
+  # Curated values restore their existing atom identity. Values written by a
+  # different build remain strings instead of invalidating the containing row.
+  @spec string_to_atom(String.t() | nil) :: atom() | String.t() | nil
+  defp string_to_atom(s) when is_binary(s) do
+    String.to_existing_atom(s)
+  rescue
+    ArgumentError -> s
+  end
+
   defp string_to_atom(nil), do: nil
 
-  # Module names come from our own INSERTs (Atom.to_string of a loaded adapter
-  # module) — the module atom is already loaded, so to_existing_atom is safe.
-  @spec string_to_module(String.t() | nil) :: module() | nil
-  defp string_to_module(s) when is_binary(s), do: String.to_existing_atom(s)
+  # An adapter module absent from this build likewise remains its raw string.
+  @spec string_to_module(String.t() | nil) :: module() | String.t() | nil
+  defp string_to_module(s) when is_binary(s) do
+    String.to_existing_atom(s)
+  rescue
+    ArgumentError -> s
+  end
+
   defp string_to_module(nil), do: nil
 
   # agent_outcome_kind is Outcome.kind(): :exited or a tagged tuple such as
@@ -955,7 +963,7 @@ defmodule Harness.ResultStore.Postgres do
   defp kind_to_string(kind) when is_atom(kind), do: Atom.to_string(kind)
   defp kind_to_string(kind) when is_tuple(kind), do: Jason.encode!(encode_term(kind))
 
-  @spec string_to_kind(String.t() | nil) :: Outcome.kind() | nil
+  @spec string_to_kind(String.t() | nil) :: Outcome.kind() | String.t() | nil
   defp string_to_kind(nil), do: nil
   defp string_to_kind("{" <> _ = json), do: decode_term(Jason.decode!(json))
   defp string_to_kind(s) when is_binary(s), do: string_to_atom(s)
@@ -975,6 +983,14 @@ defmodule Harness.ResultStore.Postgres do
   @spec decode_jsonb(term()) :: term()
   defp decode_jsonb(%{"$list" => list}) when is_list(list), do: decode_term(list)
   defp decode_jsonb(other), do: decode_term(other)
+
+  @spec decode_domains(term()) :: [CapabilityDomain.t()]
+  defp decode_domains(value) do
+    value
+    |> decode_jsonb()
+    |> default([])
+    |> Enum.flat_map(&CapabilityDomain.normalize([&1]))
+  end
 
   # token_usage is a %TokenUsage{} struct on LogRecord; restore struct identity on read.
   @spec decode_token_usage(map() | nil) :: TokenUsage.t()
@@ -1050,11 +1066,14 @@ defmodule Harness.ResultStore.Postgres do
   defp decode_term(list) when is_list(list), do: Enum.map(list, &decode_term/1)
   defp decode_term(other), do: other
 
-  # Map keys come only from our encode_term (harness-controlled jsonb roundtrip)
-  # — the key atom existed when encoded, so to_existing_atom restores it and
-  # rejects any stale/foreign key rather than minting a new atom.
+  # Map keys restore existing atoms and retain unavailable ones as strings.
   @spec decode_map_key(String.t() | term()) :: atom() | String.t()
-  defp decode_map_key(k) when is_binary(k), do: String.to_existing_atom(k)
+  defp decode_map_key(k) when is_binary(k) do
+    String.to_existing_atom(k)
+  rescue
+    ArgumentError -> k
+  end
+
   defp decode_map_key(k), do: k
 
   # --- test helper: expose sandbox checkout for DataCase consumers ---

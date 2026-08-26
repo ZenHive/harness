@@ -20,6 +20,7 @@ defmodule Harness.ResultStore.PostgresCodecTest do
   alias Harness.AgentKPI.TokenMeans
   alias Harness.Batch.Result, as: BatchResult
   alias Harness.ResultStore.Postgres
+  alias Harness.ResultStore.Schema.BatchResult, as: BatchResultSchema
   alias Harness.ResultStore.Schema.RunRecord, as: RunRecordSchema
   alias Harness.ResultStoreContract
   alias Harness.Run.LogRecord
@@ -239,40 +240,49 @@ defmodule Harness.ResultStore.PostgresCodecTest do
   end
 
   describe "never-raise contract (codec failures)" do
-    test "list_run_records skips one row with unknown jsonb atom keys and returns healthy siblings" do
+    test "list_run_records degrades unavailable atoms per field without losing run facts" do
       FakeRepo.reset()
 
-      unknown_key = "unknown_atom_key_#{System.unique_integer([:positive])}"
+      suffix = System.unique_integer([:positive])
+      unknown_reason = "reason_compiled_into_no_module_#{suffix}"
+      unknown_kind = "kind_compiled_into_no_module_#{suffix}"
+      unknown_domain = "domain_compiled_into_no_module_#{suffix}"
 
-      assert_raise ArgumentError, fn ->
-        String.to_existing_atom(unknown_key)
+      for name <- [unknown_reason, unknown_kind, unknown_domain] do
+        assert_raise ArgumentError, fn -> String.to_existing_atom(name) end
       end
 
-      assert :ok =
-               Postgres.record_run(ResultStoreContract.log_record(run_id: "healthy-a"), repo: FakeRepo)
-
-      assert :ok =
-               Postgres.record_run(ResultStoreContract.log_record(run_id: "healthy-b"), repo: FakeRepo)
-
       bad_row = %RunRecordSchema{
-        run_id: "bad-jsonb-key",
+        run_id: "degraded-atoms",
         agent: "codex",
         adapter: Atom.to_string(Codex),
-        state: "done",
+        state: "failed",
         verdict: "approve",
-        duration_ms: 1,
-        reason: %{unknown_key => "value"}
+        duration_ms: 12,
+        reason: %{"$atom" => unknown_reason},
+        agent_outcome_kind: Jason.encode!(%{"$atom" => unknown_kind}),
+        reviewer_outcome_kind: Jason.encode!(%{"$atom" => unknown_kind}),
+        domains: %{"$list" => [%{"$atom" => unknown_domain}]},
+        token_usage: %{"input" => 7, "output" => 5, "total" => 12},
+        landed_sha: "abc123"
       }
 
-      FakeRepo.put_rows([bad_row | FakeRepo.rows()])
+      FakeRepo.put_rows([bad_row])
 
       log =
         capture_log([level: :debug], fn ->
-          assert {:ok, records} = Postgres.list_run_records([], repo: FakeRepo)
-          assert records |> Enum.map(& &1.run_id) |> Enum.sort() == ["healthy-a", "healthy-b"]
+          assert {:ok, [record]} = Postgres.list_run_records([], repo: FakeRepo)
+          assert record.reason == unknown_reason
+          assert record.agent_outcome_kind == unknown_kind
+          assert record.reviewer_outcome_kind == unknown_kind
+          assert record.domains == [unknown_domain]
+          assert record.state == :failed
+          assert record.verdict == :approve
+          assert record.token_usage == %TokenUsage{input: 7, output: 5, total: 12}
+          assert record.landed_sha == "abc123"
         end)
 
-      assert log =~ "ResultStore.Postgres skipped 1 undecodable run_records row(s)"
+      refute log =~ "skipped"
     end
 
     test "an unencodable kind returns {:error, _}, never raises into the caller" do
@@ -332,7 +342,7 @@ defmodule Harness.ResultStore.PostgresCodecTest do
       assert kpi.cost_to_green == 42.0
     end
 
-    test "aggregate_by_agent skips rows with unknown agent atoms and keeps healthy rows" do
+    test "aggregate_by_agent preserves rows with unknown agent names as string keys" do
       unknown_agent = "unknown_agent_#{System.unique_integer([:positive])}"
 
       FakeRepo.put_rows([
@@ -342,11 +352,13 @@ defmodule Harness.ResultStore.PostgresCodecTest do
 
       log =
         capture_log([level: :debug], fn ->
-          assert {:ok, %{codex: kpi}} = Postgres.aggregate_by_agent([], repo: FakeRepo)
+          assert {:ok, result} = Postgres.aggregate_by_agent([], repo: FakeRepo)
+          assert %{codex: kpi} = result
           assert kpi.run_count == 1
+          assert result[unknown_agent].run_count == 1
         end)
 
-      assert log =~ "ResultStore.Postgres skipped 1 undecodable run_records row(s) during aggregate_by_agent scan"
+      refute log =~ "skipped"
     end
 
     test "aggregate_reviewer_reliability projects reviewer rows" do
@@ -373,20 +385,23 @@ defmodule Harness.ResultStore.PostgresCodecTest do
       assert kpi.by_model["gpt-5.5"].false_approval_count == 1
     end
 
-    test "aggregate_reviewer_reliability skips unknown reviewer modules and keeps healthy rows" do
+    test "aggregate_reviewer_reliability preserves unknown reviewer names as string keys" do
+      unknown_reviewer = "Elixir.UnknownReviewer#{System.unique_integer([:positive])}"
+
       FakeRepo.put_rows([
         reviewer_row(Atom.to_string(Codex)),
-        reviewer_row("Elixir.UnknownReviewer#{System.unique_integer([:positive])}")
+        reviewer_row(unknown_reviewer)
       ])
 
       log =
         capture_log([level: :debug], fn ->
-          assert {:ok, %{Codex => kpi}} = Postgres.aggregate_reviewer_reliability([], repo: FakeRepo)
+          assert {:ok, result} = Postgres.aggregate_reviewer_reliability([], repo: FakeRepo)
+          assert %{Codex => kpi} = result
           assert kpi.reviewed_count == 1
+          assert result[unknown_reviewer].reviewed_count == 1
         end)
 
-      assert log =~
-               "ResultStore.Postgres skipped 1 undecodable run_records row(s) during aggregate_reviewer_reliability scan"
+      refute log =~ "skipped"
     end
 
     test "aggregate_by_facet groups facet rows and projects per-agent KPIs" do
@@ -455,6 +470,31 @@ defmodule Harness.ResultStore.PostgresCodecTest do
       FakeRepo.reset()
 
       assert {:error, :not_found} = Postgres.load_batch("missing-batch", repo: FakeRepo)
+    end
+
+    test "load_batch restores a harness-owned payload containing a cold atom" do
+      cold_name = "batch_codec_coldx"
+      assert_raise ArgumentError, fn -> String.to_existing_atom(cold_name) end
+
+      result = %BatchResult{
+        batch_id: "cold-batch",
+        total: 0,
+        max_concurrency: 1,
+        results: [],
+        events: [:batch_codec_known]
+      }
+
+      payload =
+        result
+        |> :erlang.term_to_binary()
+        |> :binary.replace("batch_codec_known", cold_name, [:global])
+
+      FakeRepo.put_rows([%BatchResultSchema{batch_id: "cold-batch", payload: payload}])
+
+      assert {:ok, %BatchResult{events: [cold_atom]}} =
+               Postgres.load_batch("cold-batch", repo: FakeRepo)
+
+      assert Atom.to_string(cold_atom) == cold_name
     end
 
     test "delete_run and mark_landed return ok through repo success responses" do
