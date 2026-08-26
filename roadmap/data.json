@@ -17422,7 +17422,7 @@
       "phase": 23,
       "bundle": "audit-perf",
       "milestone": "v0_16",
-      "status": "in_progress",
+      "status": "done",
       "title": "Remove the per-lookup Postgres landing-settings round trip from ProjectRegistry",
       "scores": {
         "d": 3,
@@ -17460,10 +17460,17 @@
         "otp",
         "ecto"
       ],
+      "shipped_in": "3dc2dc6a640c90e246436bb5df61e7990121d746",
       "body": "ProjectRegistry.lookup/1 overlays landing settings with a fresh single-project Postgres read on each call, including dashboard task-detail hot paths, while list/0 already batches the overlay. Give lookup the same bounded read behavior or keep the rarely-changing overrides in registry state with explicit invalidation on writes. Preserve the persisted source of truth and current lookup/list results. This is the former M3 part of Task 358, split because it changes registry/cache coherence rather than dashboard rendering.\n",
       "created_at": "2026-08-07",
       "started_at": "2026-08-26",
+      "done_at": "2026-08-26",
       "scored_at": "2026-08-07",
+      "implemented": "Landed by grok via merge-train; reviewer-approved (run run-1787719638784-295f968e, 3dc2dc6a640c90e246436bb5df61e7990121d746).",
+      "delivered_by": "grok",
+      "verified": true,
+      "verified_by": "cursor",
+      "verification_ref": "harness-run:run-1787719638784-295f968e",
       "cross_repo": []
     },
     {
