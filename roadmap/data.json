@@ -17307,7 +17307,7 @@
       "phase": 23,
       "bundle": "audit-perf",
       "milestone": "v0_16",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Fetch each project target once per landed-sha reconciliation pass",
       "scores": {
         "d": 3,
@@ -17346,6 +17346,7 @@
       ],
       "body": "The dashboard reconciles unlanded run-history rows on mount and each roadmap tick. The current path calls ResultStore.reconcile_landed_sha/4 per row, which reaches fetch_target/2 and performs a real git fetch each time. Change the reconciliation pass so target-ref retrieval is shared only within one project/pass, while row-level landed-sha decisions and failure visibility remain unchanged. This is the former H2 part of Task 358, split because it has a separate git/dashboard seam and verification surface.\n",
       "created_at": "2026-08-07",
+      "started_at": "2026-08-26",
       "scored_at": "2026-08-07",
       "cross_repo": []
     },
