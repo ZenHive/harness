@@ -19020,7 +19020,7 @@
       "id": "414",
       "phase": 23,
       "bundle": "config-surface",
-      "status": "in_progress",
+      "status": "done",
       "title": "Give dispatch-register_project a typed languages schema so MCP clients can send a JSON array",
       "scores": {
         "d": 3,
@@ -19051,10 +19051,17 @@
         "lib/harness/project_registry.ex",
         "test/harness/chat/tools_test.exs"
       ],
+      "shipped_in": "86c0e76fc17ba9c780a145022ac9722b9790c532",
       "body": "bugs.md #3, reproduced 2026-08-20 registering zen_websocket: mcp__harness__dispatch-register_project with languages: [\"elixir\"] arrives at validate_languages/1 as the literal string [\"elixir\"], so registration fails. A bare string \"elixir\" also fails. Only a hand-rolled tools/call carrying a real JSON array succeeded.\n\nCause: register_project/9's @spec uses nonempty_list(atom() | String.t()) for languages. json_spec 1.1 raises ArgumentError on nonempty_list/1 and on union element types; descripex safe_convert/1 rescues that to :skip, so the MCP schema ships typeless. Anubis then stringifies the array. warm_paths uses [String.t()] and already emits a typed array schema — this is a mapping gap, not a wiring failure. Task 259's Manifest sweep only covered scalar/atom params, so a typeless list property never failed the suite.\n\nTask 389 extended this same tool to register_project/9 without closing the hole. Two halves: (1) descripex should fold nonempty_list(T) / [T, ...] to [T] and reduce union element types to an expressible member before JSONSpec.convert/1 (tracked in descripex BUGS.md #1); (2) harness should widen the Task 259 sweep to every declared param so a typeless property fails the suite, and optionally decode a JSON-string-encoded list in validate_languages/1 as belt-and-braces.\n\nEvidence: bugs.md #3; lib/harness/dispatch.ex register_project/9 @spec; ProjectRegistry.validate_languages/1.\n",
       "created_at": "2026-08-25",
       "started_at": "2026-08-26",
+      "done_at": "2026-08-26",
       "scored_at": "2026-08-25",
+      "implemented": "Landed by grok via merge-train; reviewer-approved (run run-1787709916967-e3f5f797, 86c0e76fc17ba9c780a145022ac9722b9790c532).",
+      "delivered_by": "grok",
+      "verified": true,
+      "verified_by": "cursor",
+      "verification_ref": "harness-run:run-1787709916967-e3f5f797",
       "cross_repo": []
     },
     {
