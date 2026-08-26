@@ -11708,15 +11708,15 @@ done_at = "2026-08-13"
 
 [[task]]
 id = "385"
-touches = ["lib/harness/worktree.ex", "lib/harness/agent_adapter/", "test/harness/worktree_test.exs"]
 phase = 22
 bundle = "core-loop"
-status = "pending"
+status = "in_progress"
 title = "Strip the harness-injected ephemeral AGENTS.md header before committing the delivery"
 scores = { d = 3, b = 7, u = 6 }
 markers = ["bug"]
 acceptance_criteria = ["A run whose worktree carries the injected '<!-- harness-injected: canonical agent rules — ephemeral, do not commit -->' AGENTS.md block never includes that block in the delivery commit: the injected content is reverted/excluded at the commit step regardless of whether the implementer or reviewer touched AGENTS.md otherwise", "A test pins the invariant: given a worktree where AGENTS.md differs from the base only by the injected header, the delivery commit leaves AGENTS.md byte-identical to the base; given a worktree where AGENTS.md has both the header and a legitimate regen, the commit carries the regen but not the header", "Existing exclusion list behavior (.harness/, roadmap files, CHANGELOG) is unchanged", "A target repo that tracks its own AGENTS.md has that file byte-identical before and after a run whose agent did not intentionally edit it", "Coverage is per-adapter, not per-instance: a regression test reproduces the leak against the adapter that produced the second occurrence (cursor) before the fix, and every adapter's injection path is covered", "The reason Task 36's criterion did not hold for this path is named explicitly in the implemented field, rather than the leak simply being re-patched"]
 out_of_scope = ["Changing what the injected block says or when it is injected", "AGENTS.md freshness checking (sync-agents-md --check remains the consumer-side gate)"]
+touches = ["lib/harness/worktree.ex", "lib/harness/agent_adapter/", "test/harness/worktree_test.exs"]
 domains = ["git", "run-lifecycle"]
 assignee = "codex"
 model = "gpt-5.6-sol"
@@ -11730,6 +11730,7 @@ SECOND OCCURRENCE, different repo and adapter (folded in from the duplicate Task
 Worth checking during diagnosis, as a hypothesis and not a confirmed root cause: Harness.AgentAdapter documents the AGENTS.md channel as Codex's (@codex_agents_rel), while the observed leak came from a cursor run — so either the per-adapter channel mapping does not hold at runtime, or the cross-family reviewer (codex) wrote into the worktree before the delivery commit was taken. Confirm before building on it.
 """
 created_at = "2026-08-14"
+started_at = "2026-08-26"
 scored_at = "2026-08-14"
 
 [[task]]
