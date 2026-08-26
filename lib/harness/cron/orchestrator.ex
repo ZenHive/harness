@@ -61,7 +61,7 @@ defmodule Harness.Cron.Orchestrator do
 
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
-  alias Harness.AgentDriver, as: Driver
+  alias Harness.AgentDriver
   alias Harness.AgentRegistry
   alias Harness.AgentRules
   alias Harness.Artifact
@@ -138,7 +138,7 @@ defmodule Harness.Cron.Orchestrator do
   defp invoke_and_read(project, ready, agent, adapter, scratch) do
     invocation = build_invocation(project, ready, agent, scratch)
 
-    case Driver.run(adapter, invocation, driver_opts()) do
+    case AgentDriver.run(adapter, invocation, driver_opts()) do
       {:ok, %Outcome{}} -> read(scratch)
       {:error, reason} -> {:error, {:agent, reason}}
     end

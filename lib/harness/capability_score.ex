@@ -14,7 +14,7 @@ defmodule Harness.CapabilityScore do
 
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
-  alias Harness.AgentDriver, as: Driver
+  alias Harness.AgentDriver
   alias Harness.AgentKPI
   alias Harness.AgentRegistry
   alias Harness.AgentRules
@@ -221,7 +221,7 @@ defmodule Harness.CapabilityScore do
 
     try do
       with {:ok, _agent, adapter} <- resolve_scout_adapter(opts),
-           {:ok, %Outcome{}} <- Driver.run(adapter, scout_invocation(context, scratch), driver_opts(opts)) do
+           {:ok, %Outcome{}} <- AgentDriver.run(adapter, scout_invocation(context, scratch), driver_opts(opts)) do
         read_scout_artifact(scratch)
       end
     after

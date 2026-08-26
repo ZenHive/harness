@@ -49,7 +49,7 @@ defmodule Harness.Audit do
   alias Harness.Agent.Settings, as: AgentSettings
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
-  alias Harness.AgentDriver, as: Driver
+  alias Harness.AgentDriver
   alias Harness.AgentRegistry
   alias Harness.AgentRules
   alias Harness.Artifact
@@ -283,7 +283,11 @@ defmodule Harness.Audit do
   @spec finalize_audit(Worktree.t(), String.t(), String.t(), Project.t(), request(), map(), module(), String.t()) ::
           {outcome(), audit_meta()}
   defp finalize_audit(worktree, repo, target, project, request, range, auditor, agent) do
-    case Driver.run(auditor, invocation(worktree, repo, target, project, request, range, auditor_model(auditor)), []) do
+    case AgentDriver.run(
+           auditor,
+           invocation(worktree, repo, target, project, request, range, auditor_model(auditor)),
+           []
+         ) do
       {:ok, %Outcome{output: output}} ->
         finalize_after_run(worktree, repo, target, project, request, range, agent, output)
 

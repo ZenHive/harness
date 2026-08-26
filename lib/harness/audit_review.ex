@@ -12,7 +12,7 @@ defmodule Harness.AuditReview do
   the grader's words ARE the verdict. Routing through `Harness.Run` would force a
   fake verification check (shelling `true` so the always-runs `:no_checks` gate
   passes) and pollute the result store with non-task runs. Going straight to
-  `Harness.AgentAdapter.Driver` keeps the dispatch semantics honest: spawn the
+  `Harness.AgentDriver` keeps the dispatch semantics honest: spawn the
   agent, capture raw output, parse the sentinel, return.
 
   Repair loop, session resume, rmap integration, and the result store are all
@@ -51,7 +51,7 @@ defmodule Harness.AuditReview do
 
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
-  alias Harness.AgentDriver, as: Driver
+  alias Harness.AgentDriver
   alias Harness.AgentRegistry
   alias Harness.AgentRules
 
@@ -106,7 +106,7 @@ defmodule Harness.AuditReview do
          {:ok, grader_module} <- resolve_grader(implementer, opts),
          invocation = build_invocation(sha, prompt, opts),
          driver_opts = Keyword.take(opts, [:total_timeout, :idle_timeout]),
-         {:ok, %Outcome{} = outcome} <- Driver.run(grader_module, invocation, driver_opts) do
+         {:ok, %Outcome{} = outcome} <- AgentDriver.run(grader_module, invocation, driver_opts) do
       {:ok,
        %{
          verdict: extract_verdict(outcome.output),

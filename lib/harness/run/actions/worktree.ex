@@ -7,7 +7,7 @@ defmodule Harness.Run.Actions.Worktree do
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentAdapter.Run, as: AgentRun
-  alias Harness.AgentDriver, as: Driver
+  alias Harness.AgentDriver
   alias Harness.AgentRules
   alias Harness.Config
   alias Harness.Git
@@ -207,7 +207,7 @@ defmodule Harness.Run.Actions.Worktree do
   @doc false
   @spec run_driver(data(), module(), Invocation.t(), keyword()) :: {:ok, Outcome.t()} | {:error, term()}
   def run_driver(data, adapter, %Invocation{} = invocation, opts) do
-    retry_substrate(data.substrate_retry, fn -> Driver.run(adapter, invocation, opts) end)
+    retry_substrate(data.substrate_retry, fn -> AgentDriver.run(adapter, invocation, opts) end)
   end
 
   @doc false

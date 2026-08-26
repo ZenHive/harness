@@ -48,7 +48,7 @@ defmodule Harness.Lander.Resolver do
   alias Harness.Agent.Settings
   alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Invocation
-  alias Harness.AgentDriver, as: Driver
+  alias Harness.AgentDriver
   alias Harness.AgentRegistry
   alias Harness.AgentRules
   alias Harness.Config
@@ -314,7 +314,7 @@ defmodule Harness.Lander.Resolver do
   end
 
   @spec driver_fun(keyword()) :: (module(), Invocation.t() -> {:ok, term()} | {:error, term()})
-  defp driver_fun(opts), do: Keyword.get(opts, :driver, &Driver.run/2)
+  defp driver_fun(opts), do: Keyword.get(opts, :driver, &AgentDriver.run/2)
 
   # Unknown strings (no matching agent atom) normalize to nil rather than
   # raising — an unrecognized implementer/reviewer just means "no preferred
