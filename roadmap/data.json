@@ -17123,8 +17123,8 @@
       "unlocks": 0,
       "markers": [],
       "depends_on": [],
-      "assignee": "grok",
-      "model": "grok-4.6",
+      "assignee": "codex",
+      "model": "gpt-5.6-sol",
       "acceptance_criteria": [
         "Running the full suite twice leaves the same number of entries in the configured test worktree root as before the first run",
         "No new `harness-repo-*` or `harness-suite-health-*` directory remains after the suite exits",
@@ -18865,8 +18865,8 @@
         "bug"
       ],
       "depends_on": [],
-      "assignee": "cursor",
-      "model": "cursor-grok-4.6-high",
+      "assignee": "codex",
+      "model": "gpt-5.6-sol",
       "acceptance_criteria": [
         "A row whose `reason`, `agent_outcome_kind`, `reviewer_outcome_kind` or `domains` carries an atom absent from the reading node's atom table is returned with that FIELD degraded to its raw string; the row is never discarded. Against the current ledger `list_run_records([], [])` returns every row (1740/1740 at time of filing) and the aggregated skip line reports 0",
         "The degradation is per-decode, not a row-level rescue: each atomizing call site in `decode_term/1` / `decode_map_key/1` / `string_to_atom/1` / `string_to_module/1` falls back on `ArgumentError` instead of letting it escape to `safe_row_to_log_record/1`. `safe_row_to_log_record/1` stays as the last-resort guard but must no longer be the mechanism that hides this class",

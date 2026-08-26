@@ -11363,8 +11363,8 @@ scores = { d = 2, b = 4, u = 5 }
 acceptance_criteria = ["Running the full suite twice leaves the same number of entries in the configured test worktree root as before the first run", "No new `harness-repo-*` or `harness-suite-health-*` directory remains after the suite exits", "Scratch repositories use a test-dedicated temporary root or a shared fixture with guaranteed on_exit cleanup; production worktree-root behavior is unchanged", "Focused regression coverage proves cleanup on both successful and failing test paths without Process.sleep"]
 out_of_scope = ["Stale harness/run-* branches and orphaned run worktrees — separate task", "Changing the production worktree root location"]
 touches = ["test/support/git_fixture.ex", "test/harness/lander_test.exs", "test/harness/audit_test.exs", "test/harness/suite_health/"]
-assignee = "grok"
-model = "grok-4.6"
+assignee = "codex"
+model = "gpt-5.6-sol"
 body = """
 Running the suite leaves a `harness-repo-<pid>-<nanotime>/` directory behind in
 the shared harness worktree root (`~/_DATA/worktrees/.harness/` on the dev host),
@@ -12640,8 +12640,8 @@ out_of_scope = ["Rewriting the 4 historical rows whose `domains` atoms exist in 
 files_to_modify = ["lib/harness/result_store/postgres.ex", "lib/harness/capability_domain.ex", "lib/harness/roadmap.ex", "test/harness/result_store/postgres_codec_test.exs"]
 touches = ["lib/harness/result_store/postgres.ex", "lib/harness/capability_domain.ex", "lib/harness/roadmap.ex", "lib/harness/agent_kpi.ex", "lib/harness/application.ex", "test/harness/result_store/postgres_codec_test.exs", "test/harness/capability_domain_test.exs"]
 domains = ["ecto"]
-assignee = "cursor"
-model = "cursor-grok-4.6-high"
+assignee = "codex"
+model = "gpt-5.6-sol"
 body = """
 `Harness.ResultStore.Postgres.rows_to_log_records/1` (`lib/harness/result_store/postgres.ex:899-911`) keeps `{:ok, rec}` and silently discards the entire row on `{:error, _}`. `safe_row_to_log_record/1` (`:913-917`) produces that error by rescuing `ArgumentError`, and in this module `ArgumentError` has exactly one source: `String.to_existing_atom/1` at `:940`, `:946`, `:1039` and `:1057`.
 
