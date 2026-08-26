@@ -12893,15 +12893,15 @@ shipped_in = "b1f31b4"
 
 [[task]]
 id = "417"
-touches = ["lib/harness/worktree.ex", "test/harness/worktree_test.exs"]
 phase = 23
 bundle = "resilience"
-status = "pending"
+status = "in_progress"
 title = "Delivery staging must never carry a symlink or dependency/build artifact — a leaked deps symlink destroyed the base checkout"
 scores = { d = 3, b = 9, u = 8 }
 markers = ["bug"]
 acceptance_criteria = ["A run whose worktree contains a symlink pointing outside the worktree produces a delivery commit with zero symlink entries (git ls-files -s shows no mode 120000 path added by the run) — pinned by a test at the staging layer", "A run whose worktree contains a `deps`, `_build`, `cover`, `node_modules` or `.elixir_ls` entry — of ANY file type, directory or symlink — produces a delivery commit that does not stage it, and the guard does not depend on the target repo's .gitignore wording", "The guard is enforced in harness's staging step, not by asking target repos to change .gitignore; a test proves it holds against a target repo whose .gitignore uses the stock mix-generated trailing-slash rules (/deps/, /_build/)", "The implemented field names why the existing @excluded_paths reset did not cover this path"]
 out_of_scope = ["Preventing the agent from creating such a symlink inside its worktree (it is legitimate there; only staging it is the defect)", "The .harness/ and injected-AGENTS.md exclusion work already scoped by tasks 383 and 385"]
+touches = ["lib/harness/worktree.ex", "test/harness/worktree_test.exs"]
 domains = ["git", "run-lifecycle"]
 assignee = "codex"
 model = "gpt-5.6-sol"
@@ -12920,4 +12920,5 @@ Fix it at the staging layer so the invariant holds regardless of how a target re
 Sibling instances of the same "delivery commit carries something that is not the agent's source change" class, already filed and deliberately NOT folded in here because their mechanism is harness-injected files rather than agent-created artifacts: task 383 (.harness/agent-rules.md) and task 385 (injected AGENTS.md header).
 """
 created_at = "2026-08-26"
+started_at = "2026-08-26"
 scored_at = "2026-08-26"
