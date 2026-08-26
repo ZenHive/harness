@@ -5,6 +5,15 @@ defmodule Harness.AgentDriver do
   Applies rule-delivery policy, then drives the adapter through
   `Harness.AgentAdapter.Driver`. Codex/Pi runs receive harness rules in the
   prompt so a tracked `AGENTS.md` is never modified.
+
+  Task 415 chose option (1): advertise this module on `Harness.Manifest`
+  (generated tool renamed `driver-run` → `agent_driver-run`; still filtered
+  from JSON MCP/chat because it takes a module and `%Invocation{}`). Option
+  (2) — keep the `driver-run` name via a `.Driver` facade that delegates
+  here — was rejected because the advertised Elixir module would no longer
+  be the policy boundary. Option (3) — push the reroute into
+  `harness_agent_adapter` — was rejected because the AGENTS.md policy is
+  harness-owned and would hit every package consumer.
   """
 
   use Descripex, namespace: "/agent_driver"

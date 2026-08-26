@@ -9,7 +9,7 @@
     forbidden: [
       # The cold-path dashboard never drives agent adapters directly — all
       # dispatch goes through Harness.Dispatch / Harness.Batch.
-      {"Harness.Dashboard.*", ["Harness.AgentAdapter.*"]},
+      {"Harness.Dashboard.*", ["Harness.AgentAdapter.*", "Harness.AgentDriver"]},
       # Adapters are leaves invoked by the run lifecycle — they never reach
       # into the dashboard surface or the Oban dispatch / landing layer.
       {"Harness.AgentAdapter.*",
