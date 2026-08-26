@@ -11598,7 +11598,7 @@ id = "381"
 phase = 23
 bundle = "audit-perf"
 milestone = "v0_16"
-status = "in_progress"
+status = "done"
 title = "Make capped dashboard transcript append linear in incoming chunk size"
 scores = { d = 2, b = 4, u = 3 }
 acceptance_criteria = ["Appending a port chunk no longer copies the complete retained transcript buffer on every call", "The existing 200 KiB cap, parsing output, event ordering, and connected-viewer behavior are unchanged", "Focused tests cover incremental append, cap truncation, and chunk boundaries without relying on timing", "mix check.dispatch is green"]
@@ -11611,9 +11611,16 @@ model = "cursor-grok-4.6-high"
 body = """
 Harness.Dashboard.Transcript.append/3 currently evaluates buffer <> chunk for each port chunk, copying the retained buffer repeatedly up to the 200 KiB cap for every connected viewer. Preserve the public behavior and cap while making incremental accumulation linear in the new chunk size, materializing only at the existing parse/render boundary. This is the former M2 part of Task 358, split because it is an isolated data-structure change.
 """
+implemented = "Landed by cursor via merge-train; reviewer-approved (run run-1787704690762-6e36b106, de864c1d5c55ee768c2b4bd7e400e601a660f154)."
+delivered_by = "cursor"
+verified = true
+verified_by = "grok"
+verification_ref = "harness-run:run-1787704690762-6e36b106"
 created_at = "2026-08-07"
 started_at = "2026-08-26"
 scored_at = "2026-08-07"
+done_at = "2026-08-26"
+shipped_in = "de864c1d5c55ee768c2b4bd7e400e601a660f154"
 
 [[task]]
 id = "382"
