@@ -21,10 +21,9 @@ defmodule Harness.CapabilityDomain do
   # Elixir-stack starters; extend as new language stacks land (e.g. :rust).
   @elixir_domains [:otp, :genserver, :liveview, :phoenix, :ecto, :oban]
 
-  # Cross-language / general domains beyond the Elixir starter set. Each atom must
-  # be pre-registered here so `String.to_existing_atom/1` (the rmap-`domains` →
-  # atom path in `Harness.Roadmap.task_domains/1`) resolves it instead of dropping
-  # it to the `:untagged` bucket — that is how JS/TS tasks get domain-sliced KPIs.
+  # Cross-language / general domains beyond the Elixir starter set. Curated tags
+  # restore as atoms; any other tag stays a string so an open vocabulary survives
+  # persistence on nodes that never compiled the writing-side atom.
   @general_domains [:rust, :elixir, :javascript, :typescript]
 
   @domains (@elixir_domains ++ @general_domains) |> Enum.uniq() |> Enum.sort()
@@ -47,7 +46,8 @@ defmodule Harness.CapabilityDomain do
   Normalizes declared domain tags for persistence and grouping.
 
   Curated strings become atoms; unknown atoms and strings become strings.
-  stays empty — callers map that to `:untagged` at group time via `buckets/1`.
+  Empty input stays empty — callers map that to `:untagged` at group time via
+  `buckets/1`.
   """
   @spec normalize([term()]) :: [t()]
   def normalize(tags) when is_list(tags) do
@@ -57,6 +57,7 @@ defmodule Harness.CapabilityDomain do
     |> Enum.sort()
   end
 
+  @spec normalize_tag(term()) :: [t()]
   defp normalize_tag(tag) when is_atom(tag) do
     if known?(tag), do: [tag], else: [Atom.to_string(tag)]
   end

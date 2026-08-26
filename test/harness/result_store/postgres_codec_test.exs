@@ -220,6 +220,16 @@ defmodule Harness.ResultStore.PostgresCodecTest do
       assert decoded.domains == [:otp, :oban]
     end
 
+    test "open-vocabulary domain strings round-trip without being dropped or atomized" do
+      record =
+        ResultStoreContract.log_record(
+          run_id: "jsonb-open-domains",
+          domains: [:otp, "delta_calc"]
+        )
+
+      assert roundtrip(record).domains == [:otp, "delta_calc"]
+    end
+
     test "agent/adapter/state/verdict atom columns round-trip" do
       record =
         ResultStoreContract.log_record(

@@ -189,8 +189,10 @@ defmodule Harness.CapabilityScore do
   end
 
   @doc "Predicts routing facets from a roadmap domain tag (backward-compatible shim)."
-  @spec facets_from_domain(atom()) :: %{String.t() => term()}
-  def facets_from_domain(domain) when is_atom(domain), do: %{"surface" => Atom.to_string(domain)}
+  @spec facets_from_domain(atom() | String.t()) :: %{String.t() => term()}
+  def facets_from_domain(domain) when is_atom(domain) or is_binary(domain) do
+    %{"surface" => to_string(domain)}
+  end
 
   @doc false
   @spec assessment_path(keyword()) :: String.t()

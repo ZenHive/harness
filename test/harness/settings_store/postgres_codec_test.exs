@@ -18,6 +18,7 @@ defmodule Harness.SettingsStore.PostgresCodecTest do
     payload = <<131, 100, byte_size(name)::16, name::binary>>
     Process.put({FakeRepo, :payload}, payload)
 
+    assert_raise ArgumentError, fn -> :erlang.binary_to_term(payload, [:safe]) end
     assert {:ok, atom} = Postgres.fetch("cold-setting", repo: FakeRepo)
     assert Atom.to_string(atom) == name
   end

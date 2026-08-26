@@ -62,6 +62,25 @@ defmodule Harness.ResultStore.DeadLetterTest do
       assert :ok = DeadLetter.patch_landed_sha("no-such-run", "abc")
     end
 
+    test "load restores a spill whose ETF contains an atom absent from the reading node" do
+      # Unique 10-byte marker so the replace cannot collide with struct field
+      # names such as `approved_then_found_red`.
+      record = ResultStoreContract.log_record(run_id: "run-cold-etf", reason: :dlknownatm)
+      assert {:ok, entry} = DeadLetter.spill(record, :x)
+
+      cold = "dlcoldatom"
+      assert_raise ArgumentError, fn -> String.to_existing_atom(cold) end
+
+      bin = File.read!(entry.path)
+      replaced = :binary.replace(bin, "dlknownatm", cold)
+      assert_raise ArgumentError, fn -> :erlang.binary_to_term(replaced, [:safe]) end
+      File.write!(entry.path, replaced)
+
+      assert {:ok, loaded} = DeadLetter.load("run-cold-etf")
+      assert loaded.record.run_id == "run-cold-etf"
+      assert Atom.to_string(loaded.record.reason) == cold
+    end
+
     test "list/0 returns every readable spill" do
       for id <- ["run-a", "run-b"] do
         assert {:ok, _} = DeadLetter.spill(ResultStoreContract.log_record(run_id: id), :x)

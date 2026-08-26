@@ -9,6 +9,7 @@ defmodule Harness.SafeTermTest do
 
     payload = <<131, 100, byte_size(name)::16, name::binary>>
 
+    assert_raise ArgumentError, fn -> :erlang.binary_to_term(payload, [:safe]) end
     assert {:ok, atom} = SafeTerm.decode(payload)
     assert Atom.to_string(atom) == name
   end

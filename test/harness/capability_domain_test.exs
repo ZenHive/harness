@@ -23,6 +23,10 @@ defmodule Harness.CapabilityDomainTest do
 
     assert CapabilityDomain.normalize(tags) == [:javascript, :typescript, "custom_stack", "delta_calc"]
     assert CapabilityDomain.buckets(tags) == [:javascript, :typescript, "custom_stack", "delta_calc"]
+    assert CapabilityDomain.known?(:otp)
+    assert CapabilityDomain.known?("otp")
+    refute CapabilityDomain.known?("delta_calc")
+    refute CapabilityDomain.known?(:delta_calc)
   end
 
   test "validate/1 accepts atom and string tags and rejects other values" do

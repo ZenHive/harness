@@ -220,6 +220,7 @@ defmodule Harness.CapabilityScoreTest do
 
   test "facets_from_domain maps a domain tag to a surface facet" do
     assert CapabilityScore.facets_from_domain(:otp) == %{"surface" => "otp"}
+    assert CapabilityScore.facets_from_domain("delta_calc") == %{"surface" => "delta_calc"}
   end
 
   test "recommend matches on partial facet overlap when keys agree" do
