@@ -52,8 +52,8 @@ defmodule Harness.Run.Actions.Reviewing do
   @doc false
   @spec rotate_or_fail_review(data(), String.t()) :: handler_result()
   def rotate_or_fail_review(%{reviewer_candidates: [next | rest]} = data, _report) do
-    # Terminate the timed-out reviewer (SIGKILL via its captured os_pid) and tear
-    # down its step task BEFORE re-entering :reviewing — same ordering as
+    # Quiesce the timed-out reviewer's process tree and tear down its step task
+    # BEFORE re-entering :reviewing — same ordering as
     # fail_review_stuck so closing the Port can't race the pid (Task 199 audit).
     terminate_reviewer(data)
     cancel_task(data.task)
@@ -82,7 +82,7 @@ defmodule Harness.Run.Actions.Reviewing do
   @doc false
   @spec fail_review_stuck(data(), String.t()) :: handler_result()
   def fail_review_stuck(data, report) do
-    # Terminate the reviewer (SIGKILL via its captured os_pid) BEFORE tearing
+    # Quiesce the reviewer process tree BEFORE tearing
     # down the task that owns its Port — closing the port first could reap/race
     # the pid (Task 199 audit).
     terminate_reviewer(data)

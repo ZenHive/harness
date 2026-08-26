@@ -1,6 +1,6 @@
 defmodule Harness.Run.MemoryGuard do
   @moduledoc """
-  Mechanical resident-memory sampling and force-kill for a spawned run's OS
+  Mechanical resident-memory sampling for a spawned run's OS
   process *tree* — the Port'd agent CLI plus every descendant it forks,
   including the `check_command` (`mix`/`cargo`/…) the reviewer AI runs itself.
 
@@ -8,8 +8,8 @@ defmodule Harness.Run.MemoryGuard do
   tree past its configured ceiling is `kill_tree/1`'d whole and the run settles
   `:failed`. This exists because a single runaway project check OOM'd the host
   twice on 2026-06-04 (an "onchain" `mix` task ballooned to ~27 GB — kernel
-  watchdog panic + jetsam): `Harness.AgentAdapter.OSProcess.kill/1` SIGKILLs
-  only the immediate pid and orphans the grandchild that actually held the RAM.
+  watchdog panic + jetsam). Process-tree termination is owned by the shared
+  `Harness.AgentAdapter.OSProcess` lifecycle surface.
 
   Mechanical substrate only — `ps`/`kill`, no judgment, no output parsing. RSS
   is read from `ps -o rss=`, reported in KiB on macOS and Linux alike.
@@ -31,6 +31,7 @@ defmodule Harness.Run.MemoryGuard do
   """
 
   alias Harness.AgentAdapter.OSProcess
+  alias Harness.Run.HostMemory
 
   @typep ps_row :: {non_neg_integer(), non_neg_integer()}
 
@@ -52,20 +53,15 @@ defmodule Harness.Run.MemoryGuard do
   end
 
   @doc """
-  SIGKILLs `os_pid` and every descendant, reaping the whole tree so a leaked
-  grandchild (`mix`/`beam.smp`) cannot survive the run's teardown.
+  Terminates `os_pid` and every descendant through the shared lifecycle helper.
 
-  Idempotent and safe on an already-dead pid; a no-op for `nil`. Uses a fresh
-  process-table snapshot so descendants forked since the last sample are caught.
+  Idempotent and safe on an already-dead pid; a no-op for `nil`. The helper
+  performs graceful escalation and waits for tree quiescence.
   """
   @spec kill_tree(non_neg_integer() | nil) :: :ok
   def kill_tree(nil), do: :ok
 
-  def kill_tree(os_pid) when is_integer(os_pid) do
-    ps_table()
-    |> descendants(os_pid)
-    |> Enum.each(&OSProcess.sigkill/1)
-  end
+  def kill_tree(os_pid) when is_integer(os_pid), do: OSProcess.kill_tree(os_pid)
 
   @doc """
   Total resident memory (KiB) summed across every process in the host table —
@@ -86,33 +82,7 @@ defmodule Harness.Run.MemoryGuard do
   (admit) rather than deadlock dispatch.
   """
   @spec host_total_kb() :: non_neg_integer()
-  def host_total_kb do
-    case :os.type() do
-      {:unix, :darwin} -> sysctl_memsize_kb()
-      {:unix, _other} -> meminfo_total_kb()
-      _other -> 0
-    end
-  end
-
-  @spec sysctl_memsize_kb() :: non_neg_integer()
-  defp sysctl_memsize_kb do
-    with {out, 0} <- System.cmd("sysctl", ["-n", "hw.memsize"], stderr_to_stdout: true),
-         {bytes, _rest} <- Integer.parse(String.trim(out)) do
-      div(bytes, 1024)
-    else
-      _other -> 0
-    end
-  end
-
-  @spec meminfo_total_kb() :: non_neg_integer()
-  defp meminfo_total_kb do
-    with {:ok, contents} <- File.read("/proc/meminfo"),
-         [_line, kb] <- Regex.run(~r/MemTotal:\s+(\d+)/, contents) do
-      String.to_integer(kb)
-    else
-      _other -> 0
-    end
-  end
+  def host_total_kb, do: HostMemory.total_kb()
 
   # Process table: pid => {ppid, rss_kb}. Empty map if `ps` is unavailable.
   @spec ps_table() :: %{non_neg_integer() => ps_row()}

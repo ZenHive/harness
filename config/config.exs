@@ -162,7 +162,9 @@ config :harness, ecto_repos: [Harness.Repo]
 config :harness_agent_adapter, :run,
   total_timeout: 1_800_000,
   idle_timeout: 300_000,
-  progress_timeout: 300_000
+  progress_timeout: 300_000,
+  # Agent CLIs use SIGTERM to flush their transcript tail before forced reap.
+  terminate_grace_ms: 1_000
 
 # Logger's own default is :debug, and `Harness.Repo` logs every query at that
 # level. On a long-lived node that turns an idle BEAM into a steady journal
