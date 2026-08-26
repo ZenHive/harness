@@ -1039,6 +1039,18 @@ defmodule Harness.ProjectRegistryTest do
       assert {:ok, ^project} = ProjectRegistry.lookup("ephemeral-land")
       assert [^project] = ProjectRegistry.list()
     end
+
+    test "resetting the active settings store drops the overlay on the next lookup" do
+      project = %{sample_project("store-reset") | landing_policy: :manual, target_branch: nil}
+      assert :ok = ProjectRegistry.register(project)
+      assert :ok = LandingSettings.set("store-reset", :auto, "main", "test")
+      assert {:ok, %{landing_policy: :auto, target_branch: "main"}} = ProjectRegistry.lookup("store-reset")
+
+      SettingsStoreMemory.reset(scope: :test_default)
+
+      assert {:ok, ^project} = ProjectRegistry.lookup("store-reset")
+      assert [^project] = ProjectRegistry.list()
+    end
   end
 
   defp sample_project(name) do

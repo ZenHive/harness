@@ -14,6 +14,7 @@ defmodule Harness.Test.SettingsStoreMemory do
 
   @behaviour Harness.SettingsStore
 
+  alias Harness.ProjectRegistry
   alias Harness.SettingsStore
 
   @table __MODULE__
@@ -41,7 +42,25 @@ defmodule Harness.Test.SettingsStoreMemory do
     ensure_table()
     :ets.delete(@table, scope(backend_opts))
     SettingsStore.reset_cache()
-    :ok
+    maybe_refresh_landing_snapshot(backend_opts)
+  end
+
+  # `ProjectRegistry.lookup/1` overlays a write-invalidated snapshot. Clearing
+  # the active store without refreshing that snapshot leaves a stale override on
+  # the next lookup (observed as a lander worker flake on `:no_target_branch`).
+  @spec maybe_refresh_landing_snapshot(keyword()) :: :ok
+  defp maybe_refresh_landing_snapshot(backend_opts) do
+    case SettingsStore.configured() do
+      {__MODULE__, opts} when is_list(opts) ->
+        if scope(opts) == scope(backend_opts) do
+          ProjectRegistry.refresh_landing_overrides()
+        else
+          :ok
+        end
+
+      _other ->
+        :ok
+    end
   end
 
   @spec read(keyword()) :: %{String.t() => term()}

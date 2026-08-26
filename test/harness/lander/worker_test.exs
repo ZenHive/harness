@@ -80,10 +80,14 @@ defmodule Harness.Lander.WorkerTest do
     scope = :"worker_test_#{System.unique_integer([:positive])}"
 
     Application.put_env(:harness, :settings_store, {SettingsStoreMemory, scope: scope})
+    # Lookup overlays a registry snapshot; a fresh empty scope must replace any
+    # override a sibling test wrote through `Landing.Settings.set/4`.
+    ProjectRegistry.refresh_landing_overrides()
 
     on_exit(fn ->
       SettingsStoreMemory.reset(scope: scope)
       restore(:settings_store, prior_store)
+      ProjectRegistry.refresh_landing_overrides()
     end)
   end
 
