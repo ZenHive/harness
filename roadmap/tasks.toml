@@ -12853,3 +12853,21 @@ started_at = "2026-08-26"
 scored_at = "2026-08-26"
 done_at = "2026-08-26"
 shipped_in = "f2f86303b24d4c1dda67ca239ee5a00e620498e5"
+
+[[task]]
+id = "416"
+phase = 20
+bundle = "reviewer-pair"
+status = "blocked"
+title = "Fix post-merge cold-check red for 1e345b9"
+scores = { d = 3, b = 8, u = 5 }
+markers = ["bug"]
+acceptance_criteria = ["The clean-build/check passes from a cold checkout at landed SHA 1e345b9cfd01282eb18fe54e8bb1c518062d0cc4."]
+out_of_scope = ["Reverting or unmerging the already-landed SHA"]
+blocked_reason = 'post-merge cold check red for landed SHA 1e345b9cfd01282eb18fe54e8bb1c518062d0cc4: ** (Mix) Unknown dependency :ecto given to :import_deps in the formatter configuration. Make sure the dependency is listed in your mix.exs for environment :dev and you have run "mix deps.get"'
+body = """
+The post-merge audit AI reported a red cold check for landed SHA 1e345b9cfd01282eb18fe54e8bb1c518062d0cc4.
+
+** (Mix) Unknown dependency :ecto given to :import_deps in the formatter configuration. Make sure the dependency is listed in your mix.exs for environment :dev and you have run "mix deps.get""""
+created_at = "2026-08-26"
+scored_at = "2026-08-26"
