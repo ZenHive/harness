@@ -1,10 +1,13 @@
 defmodule Harness.WorktreeTest do
   use ExUnit.Case, async: true
 
+  alias Harness.AgentAdapter.Antigravity
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentAdapter.Codex
   alias Harness.AgentAdapter.Cursor
+  alias Harness.AgentAdapter.Grok
   alias Harness.AgentAdapter.Invocation
+  alias Harness.AgentAdapter.Pi
   alias Harness.AgentAdapter.RulesInjection
   alias Harness.GitFixture
   alias Harness.ProjectFixture
@@ -366,6 +369,40 @@ defmodule Harness.WorktreeTest do
       assert GitFixture.git!(repo, ["rev-parse", wt.branch]) == sha_before
     end
 
+    test "reports :no_changes after Grok injects rules into a no-op run" do
+      {repo, wt} = create_worktree()
+      sha_before = GitFixture.git!(repo, ["rev-parse", wt.branch])
+
+      injected = %{invocation(wt.path) | rule_content: "ephemeral rules\n"}
+      assert {:ok, {"grok", _argv, _env}} = Grok.build_command(injected)
+      assert {:ok, :no_changes} = Worktree.commit(wt, "agent delivery")
+
+      assert GitFixture.git!(repo, ["rev-parse", wt.branch]) == sha_before
+    end
+
+    test "reports :no_changes after Antigravity injects rules into a no-op run" do
+      {repo, wt} = create_worktree()
+      sha_before = GitFixture.git!(repo, ["rev-parse", wt.branch])
+
+      injected = %{invocation(wt.path) | rule_content: "ephemeral rules\n"}
+      assert {:ok, {"agy", _argv, _env}} = Antigravity.build_command(injected)
+      assert {:ok, :no_changes} = Worktree.commit(wt, "agent delivery")
+
+      assert GitFixture.git!(repo, ["rev-parse", wt.branch]) == sha_before
+    end
+
+    test "reports :no_changes after Pi injects AGENTS.md rules into a no-op run" do
+      {repo, wt} = create_worktree()
+      sha_before = GitFixture.git!(repo, ["rev-parse", wt.branch])
+
+      injected = %{invocation(wt.path) | rule_content: "ephemeral rules\n"}
+      assert {:ok, {"pi", _argv, _env}} = Pi.build_command(injected)
+      assert {:ok, :no_changes} = Worktree.commit(wt, "agent delivery")
+
+      assert GitFixture.git!(repo, ["rev-parse", wt.branch]) == sha_before
+      refute File.exists?(Path.join(wt.path, "AGENTS.md"))
+    end
+
     test "does not commit Codex's harness block into an existing AGENTS.md" do
       repo = GitFixture.init_repo()
       File.write!(Path.join(repo, "AGENTS.md"), "target repo instructions\n")
@@ -381,6 +418,41 @@ defmodule Harness.WorktreeTest do
 
       assert GitFixture.git!(repo, ["rev-parse", wt.branch]) == sha_before
       assert File.read!(Path.join(wt.path, "AGENTS.md")) == "target repo instructions\n"
+    end
+
+    test "leaves tracked AGENTS.md byte-identical when only the injected header changed" do
+      repo = GitFixture.init_repo()
+      File.write!(Path.join(repo, "AGENTS.md"), "target repo instructions\n")
+      GitFixture.git!(repo, ["add", "AGENTS.md"])
+      GitFixture.git!(repo, ["commit", "-q", "-m", "add agents"])
+      {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: GitFixture.tmp_base())
+
+      injected = %{invocation(wt.path) | rule_content: "ephemeral rules\n"}
+      assert :ok = RulesInjection.install_codex_rules(injected)
+      File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
+
+      assert {:ok, :committed} = Worktree.commit(wt, "agent delivery")
+
+      assert GitFixture.git!(repo, ["show", "#{wt.branch}:AGENTS.md"]) == "target repo instructions\n"
+      refute GitFixture.git!(repo, ["show", "#{wt.branch}:AGENTS.md"]) =~ "harness-injected"
+      assert GitFixture.git!(repo, ["show", "#{wt.branch}:delivery.txt"]) == "agent work\n"
+    end
+
+    test "Pi's AGENTS.md channel is stripped the same way as Codex" do
+      repo = GitFixture.init_repo()
+      File.write!(Path.join(repo, "AGENTS.md"), "target repo instructions\n")
+      GitFixture.git!(repo, ["add", "AGENTS.md"])
+      GitFixture.git!(repo, ["commit", "-q", "-m", "add agents"])
+      {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: GitFixture.tmp_base())
+
+      injected = %{invocation(wt.path) | rule_content: "ephemeral rules\n"}
+      assert {:ok, {"pi", _argv, _env}} = Pi.build_command(injected)
+      File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
+
+      assert {:ok, :committed} = Worktree.commit(wt, "agent delivery")
+
+      assert GitFixture.git!(repo, ["show", "#{wt.branch}:AGENTS.md"]) == "target repo instructions\n"
+      refute GitFixture.git!(repo, ["show", "#{wt.branch}:AGENTS.md"]) =~ "harness-injected"
     end
 
     test "commits legitimate Codex edits to AGENTS.md without the harness block" do
@@ -415,6 +487,19 @@ defmodule Harness.WorktreeTest do
 
       assert GitFixture.git!(repo, ["show", "#{wt.branch}:AGENTS.md"]) == "regenerated rules\n"
       refute GitFixture.git!(repo, ["show", "#{wt.branch}:AGENTS.md"]) =~ "harness-injected"
+    end
+
+    test "does not commit Cursor's injected rules file alongside a delivery" do
+      {repo, wt} = create_worktree()
+
+      assert {:ok, {"cursor-agent", _argv, _env}} = Cursor.build_command(invocation(wt.path))
+      File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
+
+      assert {:ok, :committed} = Worktree.commit(wt, "agent delivery")
+
+      files = GitFixture.git!(repo, ["ls-tree", "-r", "--name-only", wt.branch])
+      assert files =~ "delivery.txt"
+      refute files =~ ".cursor"
     end
 
     test "surfaces a git failure on a path that is not a git repository" do
@@ -572,6 +657,22 @@ defmodule Harness.WorktreeTest do
       refute files =~ ".harness/"
     end
 
+    test "scrubs a .harness/agent-rules.md the agent already committed" do
+      {repo, wt} = create_worktree()
+      File.mkdir_p!(Path.join(wt.path, ".harness"))
+      File.write!(Path.join([wt.path, ".harness", "agent-rules.md"]), "You are being driven by harness\n")
+      GitFixture.git!(wt.path, ["add", ".harness/agent-rules.md"])
+      GitFixture.git!(wt.path, ["commit", "-q", "-m", "agent committed harness rules"])
+
+      File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
+
+      assert {:ok, :committed} = Worktree.commit(wt, "agent delivery")
+
+      files = GitFixture.git!(repo, ["ls-tree", "-r", "--name-only", wt.branch])
+      assert files =~ "delivery.txt"
+      refute files =~ ".harness/"
+    end
+
     test "excludes build artifacts of every file type despite stock Mix ignores" do
       repo = GitFixture.init_repo()
       File.write!(Path.join(repo, ".gitignore"), "/deps/\n/_build/\n")
@@ -591,11 +692,47 @@ defmodule Harness.WorktreeTest do
       assert {:ok, :committed} = Worktree.commit(wt, "agent delivery")
 
       changed = GitFixture.git!(repo, ["diff-tree", "--no-commit-id", "--name-only", "-r", wt.branch])
-      assert changed =~ "delivery.txt"
+      changed_files = String.split(changed, "\n", trim: true)
+      assert "delivery.txt" in changed_files
 
       for artifact <- ~w(deps _build cover node_modules .elixir_ls) do
-        refute changed =~ artifact
+        refute artifact in changed_files
+        refute Enum.any?(changed_files, &String.starts_with?(&1, artifact <> "/"))
       end
+    end
+
+    test "does not stage a deps symlink despite stock Mix trailing-slash ignores" do
+      repo = GitFixture.init_repo()
+      File.write!(Path.join(repo, ".gitignore"), "/deps/\n/_build/\n")
+      GitFixture.git!(repo, ["add", ".gitignore"])
+      GitFixture.git!(repo, ["commit", "-q", "-m", "stock ignores"])
+      {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: GitFixture.tmp_base())
+
+      File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
+      File.ln_s!(repo, Path.join(wt.path, "deps"))
+
+      assert {:ok, :committed} = Worktree.commit(wt, "agent delivery")
+
+      changed = GitFixture.git!(repo, ["diff-tree", "--no-commit-id", "--raw", "-r", wt.branch])
+      assert changed =~ "delivery.txt"
+      refute changed =~ "deps"
+      refute changed =~ "120000"
+    end
+
+    test "scrubs a deps symlink the agent already committed" do
+      {repo, wt} = create_worktree()
+      File.ln_s!(repo, Path.join(wt.path, "deps"))
+      GitFixture.git!(wt.path, ["add", "-f", "deps"])
+      GitFixture.git!(wt.path, ["commit", "-q", "-m", "agent committed deps symlink"])
+
+      File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
+
+      assert {:ok, :committed} = Worktree.commit(wt, "agent delivery")
+
+      files = GitFixture.git!(repo, ["ls-tree", "-r", wt.branch])
+      assert files =~ "delivery.txt"
+      refute files =~ "deps"
+      refute files =~ "120000"
     end
 
     test "does not stage a symlink that resolves outside the worktree" do
@@ -605,10 +742,22 @@ defmodule Harness.WorktreeTest do
 
       assert {:ok, :committed} = Worktree.commit(wt, "agent delivery")
 
-      staged = GitFixture.git!(repo, ["ls-tree", "-r", wt.branch])
-      assert staged =~ "delivery.txt"
-      refute staged =~ "120000"
-      refute staged =~ "external-checkout"
+      added = GitFixture.git!(repo, ["diff-tree", "--no-commit-id", "--raw", "-r", wt.branch])
+      assert added =~ "delivery.txt"
+      refute added =~ "120000"
+      refute added =~ "external-checkout"
+    end
+
+    test "still commits a symlink whose target stays inside the worktree" do
+      {repo, wt} = create_worktree()
+      File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
+      File.ln_s!("delivery.txt", Path.join(wt.path, "inside-link"))
+
+      assert {:ok, :committed} = Worktree.commit(wt, "agent delivery")
+
+      added = GitFixture.git!(repo, ["diff-tree", "--no-commit-id", "--raw", "-r", wt.branch])
+      assert added =~ "inside-link"
+      assert added =~ "120000"
     end
 
     test "never commits the .harness-retained marker (not gitignored, not under .harness/)" do

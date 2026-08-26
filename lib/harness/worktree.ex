@@ -66,30 +66,39 @@ defmodule Harness.Worktree do
   # and must NEVER ride in the deliverable commit.
   @artifact_dir ".harness"
 
-  # The full harness-managed artifact family that must never be staged into an
-  # agent commit: the verdict dir plus the run-state markers. Staging excludes it
-  # in two moves (`stage_worktree/1`): a *bare* `git add -A` — no pathspec, so a
-  # gitignored `.harness/` is silently skipped instead of fataling git's
-  # ignored-path guard (`git add` exits 1 whenever ANY explicit pathspec, even an
-  # `:(exclude)`, matches a gitignored path) — then a `git reset` that unstages
-  # this family (covering both the markers and a *non*-gitignored `.harness/`).
-  @artifact_paths [@artifact_dir, @active_marker, @retained_marker]
+  # Paths that must never exist in a delivery tree. `git reset` is the wrong
+  # tool here — it copies HEAD back into the index, so a `.harness/agent-rules.md`
+  # or `deps` symlink the agent already committed is restored after cleanup /
+  # `git add -A` staged the deletion. `git rm --cached` drops them from the
+  # index instead, so a prior leak is deleted rather than preserved.
+  #
+  # Build-artifact names are in this set (not the reset set) because stock Mix
+  # ignores `/deps/` and `/_build/` with a trailing slash, which matches
+  # directories but not symlinks. The old `@excluded_paths` reset only named
+  # harness/roadmap artifacts, so a dependency symlink escaped it.
+  @never_deliver_paths [
+    @artifact_dir,
+    @active_marker,
+    @retained_marker,
+    "deps",
+    "_build",
+    "cover",
+    "node_modules",
+    ".elixir_ls"
+  ]
 
   # Reviewers communicate discoveries through `.harness/review.json`, never by
   # modifying the target project's roadmap or history. Those shared files are
   # excluded mechanically so a stale run worktree cannot commit a colliding task
-  # id or documentation render.
+  # id or documentation render. Reset (keep HEAD) is correct here — unlike the
+  # never-deliver set, these files are repository-owned.
   @roadmap_paths ["roadmap/tasks.toml", "roadmap/data.json", "ROADMAP.md", "CHANGELOG.md"]
-  # A bare `git add -A` also stages artifact names when they are symlinks: stock
-  # Mix ignores `/deps/` and `/_build/`, whose trailing slash matches directories
-  # but not symlinks. The old reset only named harness/roadmap artifacts, so a
-  # dependency symlink escaped it and became delivery content.
-  @build_artifact_paths ["deps", "_build", "cover", "node_modules", ".elixir_ls"]
-  @excluded_paths @artifact_paths ++ @roadmap_paths ++ @build_artifact_paths
+  @reset_paths @roadmap_paths
 
-  # The same family as exclude pathspecs, for the read-only `status`/`diff` calls
-  # that filter (rather than stage) the artifacts out of the commit measurement.
-  @stage_exclude Enum.map(@excluded_paths, &":(exclude)#{&1}")
+  # Status/diff measurement excludes the reset family (HEAD is kept). Never-deliver
+  # paths are intentionally *not* excluded: a staged deletion of an already-committed
+  # leak must remain visible so `commit/2` actually records it.
+  @stage_exclude Enum.map(@reset_paths, &":(exclude)#{&1}")
 
   # Ignored-but-load-bearing files the parent checkout carries that the verification
   # stack relies on but that .gitignore keeps out of the worktree-add. `.sobelow-skips`
@@ -514,24 +523,30 @@ defmodule Harness.Worktree do
     end
   end
 
-  # Stage every agent change while keeping the harness/build artifact family
-  # (`@excluded_paths`) and destructive external symlinks out of the index.
-  # Three moves are required:
+  # Stage every agent change while keeping harness/build artifacts and
+  # destructive external symlinks out of the index. Four moves:
   # `git add` exits 1 whenever an *explicit* pathspec (even an `:(exclude)` one)
   # matches a gitignored path, so a target repo that gitignores `.harness/` (with
   # the reviewer's `.harness/review.json` present) fatals the whole stage. A
   # *bare* `git add -A` carries no pathspec, so git silently skips the gitignored
-  # dir instead of erroring; the follow-up `git reset` then unstages the artifact
-  # family in the other repo state — where `.harness/` is *not* gitignored and
-  # `git add -A` would otherwise stage it (and always stages the un-ignored
-  # `.harness-retained`/`.harness-active` markers). `reset` never errors on an
-  # absent/unstaged path, so the call is a no-op when no artifact was staged.
+  # dir instead of erroring. `git rm --cached` then drops `@never_deliver_paths`
+  # from the index (deleting a `.harness/` file or `deps` symlink the agent
+  # already committed, rather than `reset` restoring HEAD's copy). `git reset`
+  # keeps HEAD for roadmap/changelog names. External symlinks are then dropped
+  # from the index (`git rm --cached`) so a leak the agent already committed is
+  # deleted rather than left in the tree.
   @spec stage_worktree(String.t()) :: {:ok, String.t()} | {:error, error()}
   defp stage_worktree(path) do
     with {:ok, _added} <- Git.run(["add", "-A"], path),
-         {:ok, _reset} <- Git.run(["reset", "-q", "--" | @excluded_paths], path) do
+         {:ok, _dropped} <- drop_never_deliver(path),
+         {:ok, _reset} <- Git.run(["reset", "-q", "--" | @reset_paths], path) do
       unstage_external_symlinks(path)
     end
+  end
+
+  @spec drop_never_deliver(String.t()) :: {:ok, String.t()} | {:error, error()}
+  defp drop_never_deliver(path) do
+    Git.run(["rm", "-f", "-r", "--cached", "--ignore-unmatch", "--" | @never_deliver_paths], path)
   end
 
   @spec unstage_external_symlinks(String.t()) :: {:ok, String.t()} | {:error, error()}
@@ -541,7 +556,7 @@ defmodule Harness.Worktree do
 
       case external do
         [] -> {:ok, ""}
-        paths -> Git.run(["reset", "-q", "--" | paths], path)
+        paths -> Git.run(["rm", "-f", "--cached", "--ignore-unmatch", "--" | paths], path)
       end
     end
   end
@@ -860,11 +875,13 @@ defmodule Harness.Worktree do
 
   @spec prepare_for_staging(String.t()) :: :ok | {:error, error()}
   defp prepare_for_staging(path) do
-    # Adapter-side rerouting alone cannot enforce delivery cleanliness: a
-    # cross-family reviewer may use a different injection channel than the
-    # implementer (the cursor-run recurrence), or leave a stale injected file.
-    # Cleanup therefore remains a commit-layer invariant and preserves any
-    # repository-owned AGENTS.md remainder.
+    # Task 36's cleanup already stripped the injected AGENTS.md block at commit
+    # time. That criterion missed this path because AgentRuleDelivery.prepare/2
+    # reroutes Codex/Pi onto a prompt (so live `attach_rules/2` is a no-op) while
+    # a cross-family reviewer still uses a different channel than the
+    # implementer — Cursor writes `.cursor/rules/`, and a Codex reviewer that
+    # reaches native `attach_rules/2` (or leaves a stale injected file) dirties
+    # AGENTS.md. Cleanup here is the per-adapter invariant, not the reroute.
     with :ok <- assert_worktree_dir(path),
          :ok <- remove_marker(Path.join(path, @active_marker)) do
       cleanup_injected_rules(path)
