@@ -235,7 +235,7 @@ defmodule Harness.Chat.Tools do
   @spec keyword_list_param?(map()) :: boolean()
   defp keyword_list_param?(details) do
     is_list(Map.get(details, :default)) or
-      String.starts_with?(Map.get(details, :description, ""), "Keyword list")
+      String.starts_with?(Map.get(details, :description) || "", "Keyword list")
   end
 
   @spec decode_param(term(), map()) :: term()

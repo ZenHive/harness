@@ -324,7 +324,13 @@ defmodule Harness.Dashboard.MCPServerTest do
   describe "blocking tool transport timeout (Task 296)" do
     @blocking_wait_ms 31_000
     @concurrent_wait_ms 1_000
-    @read_tool_timeout_ms 250
+    # Waiting for the blocking dispatch to reach its Oban job lookup: that path
+    # shells out to rmap, so it is subprocess-bound and must not share the tight
+    # read-tool budget below.
+    @dispatch_settle_ms 5_000
+    # The invariant under test: a read tool answers WHILE the await above is
+    # still blocking. Must stay below @concurrent_wait_ms or it stops proving it.
+    @read_tool_timeout_ms 500
 
     setup do
       start_supervised!(
@@ -468,7 +474,7 @@ defmodule Harness.Dashboard.MCPServerTest do
           )
         end)
 
-      assert_receive {:job_lookup, ^queued_id}, @read_tool_timeout_ms
+      assert_receive {:job_lookup, ^queued_id}, @dispatch_settle_ms
 
       status_task =
         Task.async(fn ->
