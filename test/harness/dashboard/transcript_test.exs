@@ -55,32 +55,85 @@ defmodule Harness.Dashboard.TranscriptTest do
 
   describe "append/3 (shared trim helper)" do
     test "appends to an empty buffer" do
-      assert {"hello", 5} = Transcript.append(<<>>, 0, "hello")
+      {buf, bytes} = Transcript.append(<<>>, 0, "hello")
+      assert Transcript.to_binary(buf) == "hello"
+      assert bytes == 5
     end
 
     test "appends to an existing buffer and updates byte count" do
-      assert {"abc-def", 7} = Transcript.append("abc", 3, "-def")
+      {buf, bytes} = Transcript.append("abc", 3, "-def")
+      assert Transcript.to_binary(buf) == "abc-def"
+      assert bytes == 7
     end
 
-    test "accepts iodata chunks and flattens to binary" do
-      assert {"one two three", 13} = Transcript.append(<<>>, 0, ["one", [" ", "two"], " three"])
+    test "accepts iodata chunks and retains their flattened bytes" do
+      {buf, bytes} = Transcript.append(<<>>, 0, ["one", [" ", "two"], " three"])
+      assert Transcript.to_binary(buf) == "one two three"
+      assert bytes == 13
     end
 
-    test "passes the buffer through untouched when under the cap" do
+    test "passes the buffer through untouched when the chunk is empty" do
       buf = String.duplicate("x", 1_024)
       assert Transcript.append(buf, 1_024, "") == {buf, 1_024}
+    end
+
+    test "incremental append keeps chunks disjoint rather than concatenating the retained buffer" do
+      {buf, bytes} = Transcript.append(<<>>, 0, "aaa")
+      {buf, bytes} = Transcript.append(buf, bytes, "bbb")
+      {buf, bytes} = Transcript.append(buf, bytes, "ccc")
+
+      assert buf == ["aaa", "bbb", "ccc"]
+      assert bytes == 9
+      assert Transcript.to_binary(buf) == "aaabbbccc"
     end
 
     test "trims to the configured 200 KiB tail when the buffer overflows" do
       head = String.duplicate("a", 100_000)
       tail = String.duplicate("b", 150_000)
       {trimmed, trimmed_bytes} = Transcript.append(head, 100_000, tail)
+      materialized = Transcript.to_binary(trimmed)
 
       assert trimmed_bytes == Transcript.buffer_bytes()
-      assert byte_size(trimmed) == Transcript.buffer_bytes()
+      assert byte_size(materialized) == Transcript.buffer_bytes()
       # The trim keeps the most recent bytes, so the tail-most byte is unchanged
       # and the head-most byte is from the original buffer at the boundary.
-      assert binary_part(trimmed, trimmed_bytes - 1, 1) == "b"
+      assert binary_part(materialized, trimmed_bytes - 1, 1) == "b"
+    end
+
+    test "a chunk larger than the cap replaces the buffer with that chunk's tail" do
+      cap = Transcript.buffer_bytes()
+      huge = "x" <> String.duplicate("y", cap)
+      {buf, bytes} = Transcript.append("kept-then-dropped", 17, huge)
+
+      assert bytes == cap
+      assert Transcript.to_binary(buf) == String.duplicate("y", cap)
+    end
+
+    test "overflow at a chunk boundary drops whole leading chunks and keeps later ones intact" do
+      cap = Transcript.buffer_bytes()
+      first = String.duplicate("a", 50_000)
+      second = String.duplicate("b", cap)
+      {buf, bytes} = Transcript.append(<<>>, 0, first)
+      {buf, bytes} = Transcript.append(buf, bytes, second)
+
+      assert bytes == cap
+      assert buf == [second]
+      assert Transcript.to_binary(buf) == second
+    end
+
+    test "overflow that splits a chunk keeps the suffix of that chunk plus later chunks" do
+      cap = Transcript.buffer_bytes()
+      first = String.duplicate("a", 100)
+      second = String.duplicate("b", cap)
+      third = "ccc"
+      {buf, bytes} = Transcript.append(<<>>, 0, first)
+      {buf, bytes} = Transcript.append(buf, bytes, second)
+      {buf, bytes} = Transcript.append(buf, bytes, third)
+
+      assert bytes == cap
+      expected = binary_part(first <> second <> third, byte_size(first <> second <> third) - cap, cap)
+      assert Transcript.to_binary(buf) == expected
+      assert List.last(buf) == third
     end
 
     test "buffer_bytes/0 reports the trim cap" do

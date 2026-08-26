@@ -8,8 +8,9 @@ defmodule Harness.Dashboard.Transcript do
   one chunk at a time. The run-wrapping `Harness.Run` gen_statem ingests each
   chunk twice:
 
-    * Into the legacy raw iodata buffer (`append/3`, 200 KiB tail cap) and
-      broadcasts the raw bytes as `{:harness_transcript, run_id, seq, data}`.
+    * Into the legacy raw iodata buffer (`append/3`, 200 KiB tail cap, chunk
+      list — flattened only at `to_binary/1`) and broadcasts the raw bytes as
+      `{:harness_transcript, run_id, seq, data}`.
     * Through `Harness.Dashboard.Transcript.Parser.append/3` into the parsed
       event list (`append_chunk/4`, event-count cap), broadcasting the new
       events as `{:harness_transcript_events, run_id, seq, events}`.
@@ -21,8 +22,10 @@ defmodule Harness.Dashboard.Transcript do
   ## Caps
 
     * **Raw buffer** — `@buffer_bytes` (200 KiB), trimmed to the most recent
-      tail by `append/3`. Producer and consumer share the helper so they never
-      disagree on what "the last 200 KiB" means.
+      tail by `append/3`. Chunks stay a list so each port byte is copied once;
+      `to_binary/1` materializes at the parse/render/snapshot boundary.
+      Producer and consumer share the helper so they never disagree on what
+      "the last 200 KiB" means.
     * **Event list** — `event_count_cap/0` (default 500, configurable via
       `config :harness, :dashboard, transcript_max_events: <pos_integer>`).
       Oldest events drop first when the cap is exceeded — mirrors the raw
@@ -133,16 +136,27 @@ defmodule Harness.Dashboard.Transcript do
 
   Shared between the producer (`Harness.Run` gen_statem holding the snapshot
   buffer) and the consumer (`Harness.Dashboard.Live` holding the live-streamed
-  buffer) so both ends agree on the trim semantics. `chunk` may be iodata; the
-  return buffer is always binary.
+  buffer) so both ends agree on the trim semantics. `chunk` may be iodata.
+
+  The retained buffer is a chunk list, not a concatenated binary: each call
+  is linear in the incoming chunk. Flatten with `to_binary/1` at the
+  parse/render/snapshot boundary.
   """
-  @spec append(binary(), non_neg_integer(), iodata()) :: {binary(), non_neg_integer()}
-  def append(buffer, bytes, chunk) when is_binary(buffer) and is_integer(bytes) and bytes >= 0 do
+  @spec append(iodata(), non_neg_integer(), iodata()) :: {iodata(), non_neg_integer()}
+  def append(buffer, bytes, chunk) when (is_binary(buffer) or is_list(buffer)) and is_integer(bytes) and bytes >= 0 do
     chunk_bin = IO.iodata_to_binary(chunk)
-    combined = buffer <> chunk_bin
-    combined_bytes = bytes + byte_size(chunk_bin)
-    trim(combined, combined_bytes)
+    acc_append(buffer, bytes, chunk_bin, byte_size(chunk_bin))
   end
+
+  @doc """
+  Flattens a retained transcript buffer to a binary.
+
+  `append/3` keeps chunks unconcatenated so each port chunk is linear in the
+  incoming bytes. Call this at the parse/render/snapshot boundary — never on
+  the per-chunk path.
+  """
+  @spec to_binary(iodata()) :: binary()
+  def to_binary(buffer), do: IO.iodata_to_binary(buffer)
 
   @doc """
   Feeds `new_chunk` through the per-agent parser, appending fresh events to
@@ -205,14 +219,50 @@ defmodule Harness.Dashboard.Transcript do
     end
   end
 
-  @spec trim(binary(), non_neg_integer()) :: {binary(), non_neg_integer()}
-  defp trim(buffer, bytes) when bytes <= @buffer_bytes, do: {buffer, bytes}
+  @spec acc_append(iodata(), non_neg_integer(), binary(), non_neg_integer()) ::
+          {iodata(), non_neg_integer()}
+  defp acc_append(buffer, bytes, _chunk, 0), do: {buffer, bytes}
 
-  defp trim(buffer, _bytes) do
-    target = @buffer_bytes
-    size = byte_size(buffer)
-    start = size - target
-    trimmed = binary_part(buffer, start, target)
-    {trimmed, byte_size(trimmed)}
+  defp acc_append(_buffer, _bytes, chunk, size) when size >= @buffer_bytes do
+    {cap_chunk(chunk, size), @buffer_bytes}
   end
+
+  defp acc_append(buffer, bytes, chunk, size) do
+    take_tail(chunks_of(buffer) ++ [chunk], bytes + size)
+  end
+
+  @spec cap_chunk(binary(), non_neg_integer()) :: [binary()]
+  defp cap_chunk(chunk, size) when size == @buffer_bytes, do: [chunk]
+  defp cap_chunk(chunk, size), do: [copy_suffix(chunk, size - @buffer_bytes, size)]
+
+  @spec chunks_of(iodata()) :: [binary()]
+  defp chunks_of(<<>>), do: []
+  defp chunks_of(bin) when is_binary(bin), do: [bin]
+  defp chunks_of(list) when is_list(list), do: list
+
+  @spec take_tail([binary()], non_neg_integer()) :: {iodata(), non_neg_integer()}
+  defp take_tail(chunks, bytes) when bytes <= @buffer_bytes, do: {chunks, bytes}
+  defp take_tail(chunks, bytes), do: drop_oldest(chunks, bytes - @buffer_bytes, bytes)
+
+  @spec drop_oldest([binary()], non_neg_integer(), non_neg_integer()) ::
+          {iodata(), non_neg_integer()}
+  defp drop_oldest([], _overflow, _bytes), do: {[], 0}
+
+  defp drop_oldest([head | rest] = chunks, overflow, bytes) do
+    head_size = byte_size(head)
+
+    cond do
+      overflow >= head_size ->
+        drop_oldest(rest, overflow - head_size, bytes - head_size)
+
+      overflow > 0 ->
+        {[copy_suffix(head, overflow, head_size) | rest], @buffer_bytes}
+
+      true ->
+        {chunks, bytes}
+    end
+  end
+
+  @spec copy_suffix(binary(), non_neg_integer(), non_neg_integer()) :: binary()
+  defp copy_suffix(bin, start, size), do: :binary.copy(binary_part(bin, start, size - start))
 end

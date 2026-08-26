@@ -36,7 +36,7 @@ defmodule Harness.Run.Actions do
   end
 
   def handle_common({:call, from}, :transcript, _state, data) do
-    snapshot = TranscriptSnapshot.buffer_only(data.transcript, data.transcript_seq)
+    snapshot = TranscriptSnapshot.buffer_only(Transcript.to_binary(data.transcript), data.transcript_seq)
     {:keep_state_and_data, [{:reply, from, snapshot}]}
   end
 

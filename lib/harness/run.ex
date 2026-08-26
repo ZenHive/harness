@@ -198,7 +198,7 @@ defmodule Harness.Run do
            cancel_requested: {Result.reason(), :gen_statem.from() | nil} | nil,
            reason: Result.reason() | nil,
            result: Result.t() | nil,
-           transcript: binary(),
+           transcript: iodata(),
            transcript_bytes: non_neg_integer(),
            transcript_seq: non_neg_integer(),
            agent_kind: Parser.agent_kind() | nil,

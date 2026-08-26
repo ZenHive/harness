@@ -24,6 +24,7 @@ defmodule Harness.Run.States.Running do
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentAdapter.Run, as: AgentRun
   alias Harness.Dashboard.RunFeed
+  alias Harness.Dashboard.Transcript
 
   require Logger
 
@@ -82,7 +83,12 @@ defmodule Harness.Run.States.Running do
     cancel_task(data.task)
     cancel_task(data.discernment_task)
 
-    outcome = %Outcome{run: run, output: data.transcript, exit_status: nil, kind: {:timed_out, :idle}}
+    outcome = %Outcome{
+      run: run,
+      output: Transcript.to_binary(data.transcript),
+      exit_status: nil,
+      kind: {:timed_out, :idle}
+    }
 
     settle_implementer_outcome(%{data | task: nil, discernment_task: nil}, outcome)
   end

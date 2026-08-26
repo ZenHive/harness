@@ -24,6 +24,7 @@ defmodule Harness.Run.Actions.Reviewing do
   alias Harness.AgentKPI
   alias Harness.AgentRegistry
   alias Harness.Config
+  alias Harness.Dashboard.Transcript
   alias Harness.Git
   alias Harness.ModelAvailability
   alias Harness.ResultStore
@@ -794,10 +795,17 @@ defmodule Harness.Run.Actions.Reviewing do
   end
 
   @doc false
-  @spec transcript_tail(String.t()) :: String.t()
-  def transcript_tail(transcript) when byte_size(transcript) <= @reviewer_transcript_tail_bytes, do: transcript
-
+  @spec transcript_tail(iodata()) :: String.t()
   def transcript_tail(transcript) do
+    transcript
+    |> Transcript.to_binary()
+    |> transcript_tail_bin()
+  end
+
+  @spec transcript_tail_bin(binary()) :: String.t()
+  defp transcript_tail_bin(transcript) when byte_size(transcript) <= @reviewer_transcript_tail_bytes, do: transcript
+
+  defp transcript_tail_bin(transcript) do
     total = byte_size(transcript)
     elided = total - @reviewer_transcript_tail_bytes
 

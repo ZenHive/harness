@@ -9,6 +9,7 @@ defmodule Harness.Run.Actions.Discernment do
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentRegistry
   alias Harness.AuditReview
+  alias Harness.Dashboard.Transcript
   alias Harness.Git
   alias Harness.Notification
   alias Harness.Notification.Event, as: NotificationEvent
@@ -228,7 +229,7 @@ defmodule Harness.Run.Actions.Discernment do
     #{format_acceptance_criteria(data.item.acceptance_criteria)}
 
     Partial live transcript:
-    #{Text.placeholder(truncate_semantic_diff(data.transcript))}
+    #{Text.placeholder(truncate_semantic_diff(Transcript.to_binary(data.transcript)))}
 
     Current uncommitted diff, if any:
     #{Text.placeholder(diff)}

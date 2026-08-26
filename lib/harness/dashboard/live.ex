@@ -968,8 +968,8 @@ defmodule Harness.Dashboard.Live do
       <Components.transcript_view events={@transcript_events} agent={@agent_kind} />
     </div>
     <div :if={@raw_view}>
-      <p :if={@transcript == ""}>Waiting for output…</p>
-      <pre :if={@transcript != ""} class="transcript">{@transcript}</pre>
+      <p :if={@transcript_bytes == 0}>Waiting for output…</p>
+      <pre :if={@transcript_bytes > 0} class="transcript">{Transcript.to_binary(@transcript)}</pre>
     </div>
     """
   end
@@ -1692,9 +1692,9 @@ defmodule Harness.Dashboard.Live do
   # report a model fall back to the task's requested model; when only that is
   # known, the label carries a "(requested)" hint.
   @doc false
-  @spec model_label(Parser.agent_kind() | nil, String.t() | nil, binary()) :: String.t()
+  @spec model_label(Parser.agent_kind() | nil, String.t() | nil, iodata()) :: String.t()
   def model_label(agent_kind, stored, transcript) do
-    reported = Harness.AgentModel.parse(agent_kind, transcript)
+    reported = Harness.AgentModel.parse(agent_kind, Transcript.to_binary(transcript))
 
     cond do
       is_binary(stored) and stored != "" ->
@@ -1716,9 +1716,9 @@ defmodule Harness.Dashboard.Live do
 
   # honestly render "—" rather than a misleading 0.
   @doc false
-  @spec token_label(Parser.agent_kind() | nil, binary()) :: String.t()
+  @spec token_label(Parser.agent_kind() | nil, iodata()) :: String.t()
   def token_label(agent_kind, transcript) do
-    usage = token_usage(agent_kind, transcript)
+    usage = token_usage(agent_kind, Transcript.to_binary(transcript))
 
     if Harness.TokenUsage.measured?(usage) do
       usage.total
