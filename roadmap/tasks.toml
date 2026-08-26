@@ -11326,7 +11326,7 @@ id = "375"
 phase = 20
 bundle = "config-surface"
 milestone = "v0_16"
-status = "pending"
+status = "done"
 title = "Validate optional %Harness.Project{} fields at registration — an uncast concurrency_cap silently kills batch dispatch"
 scores = { d = 2, b = 6, u = 6 }
 markers = ["bug"]
@@ -11342,9 +11342,16 @@ The dashboard cannot produce this: `settings_live.ex` casts via `parse_concurren
 
 Fix the seam, not the one field: validate the whole optional set at build time so a registration that cannot work is rejected where it is created, not discovered as an unrelated error at dispatch time. The three bad rows were repaired by hand in Postgres on 2026-08-03; this task closes the hole that let them in.
 """
+implemented = "Landed by grok via merge-train; reviewer-approved (run run-1787704685761-f829604f, 120528769dc9d0b18114fba63965d93ecc4b06e8)."
+delivered_by = "grok"
+verified = true
+verified_by = "cursor"
+verification_ref = "harness-run:run-1787704685761-f829604f"
 created_at = "2026-08-03"
 started_at = "2026-08-26"
 scored_at = "2026-08-03"
+done_at = "2026-08-26"
+shipped_in = "120528769dc9d0b18114fba63965d93ecc4b06e8"
 
 [[task]]
 id = "376"

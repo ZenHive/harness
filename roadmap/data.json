@@ -17062,7 +17062,7 @@
       "phase": 20,
       "bundle": "config-surface",
       "milestone": "v0_16",
-      "status": "pending",
+      "status": "done",
       "title": "Validate optional %Harness.Project{} fields at registration — an uncast concurrency_cap silently kills batch dispatch",
       "scores": {
         "d": 2,
@@ -17094,10 +17094,17 @@
         "lib/harness/project_registry.ex",
         "lib/harness/project_registry/persistence.ex"
       ],
+      "shipped_in": "120528769dc9d0b18114fba63965d93ecc4b06e8",
       "body": "Found 2026-08-03 while auditing all 19 registrations against reality. Three projects — onchain_evm, onchain_js, onchain_tempo — carried `concurrency_cap: \"4\"` as a STRING. Consequence: `Harness.Batch.max_concurrency/2` guards on `is_integer(cap) and cap > 0`, but the string is truthy so it survives the `||` chain and lands in the guard, returning `{:error, {:invalid_max_concurrency, \"4\"}}` — batch dispatch was dead for those three projects. `Harness.Oban.queue_limit/1` separately fell through its own `is_integer` guard to the default limit, silently ignoring the operator's intent. Neither failure named the registration as the cause.\n\nThe dashboard cannot produce this: `settings_live.ex` casts via `parse_concurrency_cap/1`, which returns `:error` on anything non-integer. The value came in through the programmatic path — `ProjectRegistry.build_project/1` reads every optional field with a bare `Map.get(entry, :concurrency_cap)` and no cast or type check, while the required fields (name, source, roadmap_path, check_command, languages) all go through `fetch_*` validators. So the struct's `@type` is enforced on one half of its fields and merely documented on the other.\n\nFix the seam, not the one field: validate the whole optional set at build time so a registration that cannot work is rejected where it is created, not discovered as an unrelated error at dispatch time. The three bad rows were repaired by hand in Postgres on 2026-08-03; this task closes the hole that let them in.\n",
       "created_at": "2026-08-03",
       "started_at": "2026-08-26",
+      "done_at": "2026-08-26",
       "scored_at": "2026-08-03",
+      "implemented": "Landed by grok via merge-train; reviewer-approved (run run-1787704685761-f829604f, 120528769dc9d0b18114fba63965d93ecc4b06e8).",
+      "delivered_by": "grok",
+      "verified": true,
+      "verified_by": "cursor",
+      "verification_ref": "harness-run:run-1787704685761-f829604f",
       "cross_repo": []
     },
     {
