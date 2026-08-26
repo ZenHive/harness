@@ -61,6 +61,7 @@ defmodule Harness.Roadmap.Durable do
           | {:roadmap_stage_failed, term()}
           | {:roadmap_commit_failed, term()}
           | {:roadmap_push_failed, String.t()}
+          | {:roadmap_push_unverified, String.t(), term()}
           | {:roadmap_push_exhausted, String.t(), pos_integer()}
           | term()
 
@@ -217,14 +218,34 @@ defmodule Harness.Roadmap.Durable do
   # (a concurrent writer landed first) routes to `:retry`, never `--force`.
   @spec push(String.t(), String.t()) :: :ok | :retry | {:error, error()}
   defp push(path, target) do
-    case Git.run(["push", "origin", "HEAD:refs/heads/" <> target], path) do
-      {:ok, _output} ->
-        :ok
-
-      {:error, {:git_failed, _args, status, output}} ->
+    with {:ok, head} <- Git.run(["rev-parse", "HEAD"], path),
+         {:ok, _output} <- Git.run(["push", "origin", "HEAD:refs/heads/" <> target], path) do
+      verify_remote_tip(path, target, String.trim(head))
+    else
+      {:error, {:git_failed, ["push" | _args], status, output}} ->
         if Git.non_fast_forward?(path, "HEAD", target, status, output),
           do: :retry,
           else: {:error, {:roadmap_push_failed, output}}
+
+      {:error, reason} ->
+        {:error, {:roadmap_push_unverified, target, reason}}
+    end
+  end
+
+  @spec verify_remote_tip(String.t(), String.t(), String.t()) :: :ok | {:error, error()}
+  defp verify_remote_tip(path, target, expected) do
+    ref = "refs/heads/" <> target
+
+    case Git.run(["ls-remote", "--exit-code", "origin", ref], path) do
+      {:ok, output} ->
+        case String.split(output, ~r/\s+/, trim: true) do
+          [^expected, ^ref] -> :ok
+          [actual, ^ref] -> {:error, {:roadmap_push_unverified, target, {:tip_mismatch, expected, actual}}}
+          _ -> {:error, {:roadmap_push_unverified, target, {:unexpected_ls_remote, output}}}
+        end
+
+      {:error, reason} ->
+        {:error, {:roadmap_push_unverified, target, reason}}
     end
   end
 

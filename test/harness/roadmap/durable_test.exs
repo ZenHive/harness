@@ -145,6 +145,44 @@ defmodule Harness.Roadmap.DurableTest do
       assert File.read!(Path.join(ctx.repo, "scratch.txt")) == "operator mid-edit\n"
     end
 
+    test "dispatch-start and post-land commits reach origin while the operator is dirty and ahead", ctx do
+      File.write!(Path.join(ctx.repo, "operator.txt"), "local commit\n")
+      GitFixture.git!(ctx.repo, ["add", "operator.txt"])
+      GitFixture.git!(ctx.repo, ["commit", "-q", "-m", "operator unpushed work"])
+      File.write!(Path.join(ctx.repo, "scratch.txt"), "dirty operator edit\n")
+      local_head = local_tip(ctx.repo)
+
+      assert {:ok, _output} = Roadmap.mark_in_progress("2", project: ctx.project)
+      in_progress_tip = origin_tip(ctx.repo)
+      assert origin_log(ctx.repo) =~ "roadmap: task 2 -> in_progress"
+
+      shipped = "0123456789abcdef0123456789abcdef01234567"
+
+      assert {:ok, _output} =
+               Roadmap.mark_landed("2",
+                 project: ctx.project,
+                 sha: shipped,
+                 verified_by: "codex",
+                 verification_ref: "harness-run:run-durable",
+                 implemented:
+                   "Root cause: post-push work ran before durable roadmap writeback, so a landing job exit lost it."
+               )
+
+      assert origin_tip(ctx.repo) != in_progress_tip
+      assert origin_log(ctx.repo) =~ "roadmap: task 2 -> done"
+      task = origin_task(ctx.repo, "2")
+      assert task["status"] == "done"
+      assert task["verified"] == true
+      assert task["verified_by"] == "codex"
+      assert task["verification_ref"] == "harness-run:run-durable"
+      assert task["shipped_in"] == shipped
+      assert is_binary(task["started_at"])
+
+      assert local_tip(ctx.repo) == local_head
+      assert File.read!(Path.join(ctx.repo, "scratch.txt")) == "dirty operator edit\n"
+      refute origin_log(ctx.repo) =~ "operator unpushed work"
+    end
+
     test "interleaved transitions both land — neither clobbers the other's edit", ctx do
       assert {:ok, _output} = Roadmap.mark_in_progress("2", project: ctx.project)
       assert {:ok, _output} = Roadmap.mark_blocked("3", project: ctx.project, reason: "waiting on upstream")
@@ -317,13 +355,17 @@ defmodule Harness.Roadmap.DurableTest do
   # Reads task `id`'s status from roadmap/tasks.toml as it exists on origin/main,
   # via rmap so the assertion is contract-accurate rather than TOML-string-shaped.
   defp origin_task_status(repo, id) do
+    repo |> origin_task(id) |> Map.fetch!("status")
+  end
+
+  defp origin_task(repo, id) do
     toml = origin_show(repo, "roadmap/tasks.toml")
     path = Path.join(System.tmp_dir!(), "durable-verify-#{System.unique_integer([:positive])}.toml")
     File.write!(path, toml)
     on_exit(fn -> File.rm(path) end)
 
     {out, 0} = System.cmd("rmap", ["show", id, "--json", "--tasks-path", path], stderr_to_stdout: true)
-    out |> JSON.decode!() |> Map.fetch!("status")
+    JSON.decode!(out)
   end
 
   # Reads task `id`'s status from the operator clone's on-disk roadmap/tasks.toml

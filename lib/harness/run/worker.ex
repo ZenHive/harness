@@ -428,7 +428,7 @@ defmodule Harness.Run.Worker do
     # the file-backed status write; failure still logs but does not abort the run.
     # The next cron tick's ready/next will skip this task while it is in_progress
     # (or green-unlanded under manual landing_policy).
-    _ = claim_in_progress(item, project)
+    _ = claim_in_progress(item, project, job.args["run_id"] || "unknown")
 
     case start_run(item, project, adapter, run_opts(job, item)) do
       {:ok, run_id, pid} ->
@@ -610,9 +610,9 @@ defmodule Harness.Run.Worker do
   end
 
   # Best-effort claim + revert seams (default to real Roadmap calls + log).
-  @spec claim_in_progress(Item.t(), Project.t()) :: :ok
-  defp claim_in_progress(%Item{} = item, %Project{} = project) do
-    item |> member_items() |> Enum.each(&claim_one_in_progress(&1, project))
+  @spec claim_in_progress(Item.t(), Project.t(), String.t()) :: :ok
+  defp claim_in_progress(%Item{} = item, %Project{} = project, run_id) do
+    item |> member_items() |> Enum.each(&claim_one_in_progress(&1, project, run_id))
     :ok
   end
 
@@ -622,11 +622,11 @@ defmodule Harness.Run.Worker do
     :ok
   end
 
-  @spec claim_one_in_progress(Item.t(), Project.t()) :: :ok
-  defp claim_one_in_progress(item, project) do
+  @spec claim_one_in_progress(Item.t(), Project.t(), String.t()) :: :ok
+  defp claim_one_in_progress(item, project, run_id) do
     case Application.get_env(:harness, :roadmap_mark_in_progress) do
       fun when is_function(fun, 2) -> fun.(item, project)
-      _ -> do_mark_in_progress(item, project)
+      _ -> do_mark_in_progress(item, project, run_id)
     end
   end
 
@@ -645,15 +645,16 @@ defmodule Harness.Run.Worker do
     Enum.map(ids, fn id -> %{item | id: id, task_ids: [id], fingerprint: Map.get(item.task_fingerprints, id)} end)
   end
 
-  @spec do_mark_in_progress(Item.t(), Project.t()) :: :ok
-  defp do_mark_in_progress(%Item{} = item, %Project{} = project) do
+  @spec do_mark_in_progress(Item.t(), Project.t(), String.t()) :: :ok
+  defp do_mark_in_progress(%Item{} = item, %Project{} = project, run_id) do
     case Roadmap.mark_in_progress(item, project: project) do
       {:ok, _output} ->
         :ok
 
       {:error, reason} ->
         Logger.warning(
-          "harness run: failed to mark task #{item.id} in_progress (best-effort; continuing): #{inspect(reason)}"
+          "harness roadmap writeback failed: transition=in_progress task_id=#{item.id} run_id=#{run_id} " <>
+            "reason=#{inspect(reason)} (best-effort; continuing)"
         )
 
         :ok

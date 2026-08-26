@@ -205,8 +205,10 @@ defmodule Harness.Lander do
       with {:ok, integrated_tip} <- integrate(worktree, target, base_sha, request),
            {:ok, tip} <- rewrite_colliding_roadmap_task_ids(worktree, base_sha, integrated_tip),
            {:ok, pushed} <- push(repo, tip, target) do
-        sync_local_target(repo, target, project, request)
+        # The delivery push is the point of no return. Persist its roadmap
+        # outcome before any unrelated best-effort post-land side effect can die.
         writeback(project, request, pushed)
+        sync_local_target(repo, target, project, request)
         enqueue_audit(project, request, base_sha)
         prune_landed_run(repo, request)
         {:landed, pushed}
@@ -724,7 +726,10 @@ defmodule Harness.Lander do
         :ok
 
       {:error, reason} ->
-        Logger.warning("harness lander: rmap writeback failed for task #{task_id} (landed #{sha}): #{inspect(reason)}")
+        Logger.warning(
+          "harness roadmap writeback failed: transition=done task_id=#{task_id} run_id=#{request.run_id} " <>
+            "reason=#{inspect(reason)} (landed #{sha}; best-effort; continuing)"
+        )
     end
   end
 
