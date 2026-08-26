@@ -188,12 +188,15 @@ defmodule Harness.Dashboard.MCPServerTest do
     test "calls every roadmap mark tool with its declared arguments", %{frame: frame} do
       root = Path.join(System.tmp_dir!(), "harness-mcp-roadmap-mark-#{System.unique_integer([:positive])}")
       File.mkdir_p!(root)
+      on_exit(fn -> File.rm_rf(root) end)
+
       rmap = Path.join(root, "rmap-stub")
       File.write!(rmap, "#!/bin/sh\nprintf 'marked %s' \"$*\"\n")
       File.chmod!(rmap, 0o755)
 
       project = ProjectFixture.from_repo(root, name: "mcp-roadmap-mark", roadmap_path: root)
       assert :ok = ProjectRegistry.register(project)
+      assert {:ok, %{roadmap_path: ^root}} = ProjectRegistry.lookup("mcp-roadmap-mark")
 
       calls = [
         {"roadmap-mark_landed", %{"root" => root, "rmap_bin" => rmap, "sha" => "abc123", "verified_by" => "reviewer"}},

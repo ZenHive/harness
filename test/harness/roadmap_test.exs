@@ -27,13 +27,26 @@ defmodule Harness.RoadmapTest do
 
   describe "descripex declarations" do
     test "every argument-taking API declares parameters and documents every declared option" do
+      tools = Map.new(Harness.Manifest.mcp_tools(), &{&1.name, &1})
+
       for entry <- Roadmap.__api__(), entry.arity > 0 do
         assert entry.param_order != [], "#{entry.name}/#{entry.arity} declares no parameters"
         assert length(entry.param_order) == entry.arity
 
+        tool = Map.fetch!(tools, "roadmap-#{entry.name}")
+        properties = tool.inputSchema.properties
+
+        for key <- entry.param_order do
+          assert Map.has_key?(properties, key),
+                 "roadmap-#{entry.name} MCP schema missing #{inspect(key)}"
+        end
+
         if :opts in entry.param_order and String.contains?(entry.hints.description, "Options:") do
           documented_opts = documented_options(entry.hints.description)
           declared_opts = documented_options(entry.hints.params.opts.description)
+
+          assert documented_opts != MapSet.new(),
+                 "#{entry.name}/#{entry.arity} Options: section lists no `:option` atoms"
 
           assert documented_opts == declared_opts,
                  "#{entry.name}/#{entry.arity} documented options and opts declaration differ"
@@ -207,17 +220,6 @@ defmodule Harness.RoadmapTest do
       assert {:ok, %Item{id: "7", markers: []}} =
                Roadmap.ingest({:id, "7"}, project_root: @sample, rmap_bin: stub)
     end
-  end
-
-  defp documented_options(description) do
-    description
-    |> String.split("Options:", parts: 2)
-    |> List.last()
-    |> String.split("Returns", parts: 2)
-    |> hd()
-    |> then(&Regex.scan(~r/`:([a-z][a-z_]*)`/, &1, capture: :all_but_first))
-    |> List.flatten()
-    |> MapSet.new()
   end
 
   describe "ingest/2 next" do
@@ -394,6 +396,18 @@ defmodule Harness.RoadmapTest do
     test "enforces all four fields" do
       assert_raise ArgumentError, fn -> struct!(Item, id: "1") end
     end
+  end
+
+  @spec documented_options(String.t()) :: MapSet.t(String.t())
+  defp documented_options(description) do
+    description
+    |> String.split("Options:", parts: 2)
+    |> List.last()
+    |> String.split("Returns", parts: 2)
+    |> hd()
+    |> then(&Regex.scan(~r/`:([a-z][a-z_]*)`/, &1, capture: :all_but_first))
+    |> List.flatten()
+    |> MapSet.new()
   end
 
   # Writes an executable `/bin/sh` stub standing in for `rmap`, cleaned up after

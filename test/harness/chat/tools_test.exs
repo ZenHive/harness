@@ -173,6 +173,37 @@ defmodule Harness.Chat.ToolsTest do
              Tools.dispatch(registry, "result_store-list_run_records", %{"filters" => "not json"})
   end
 
+  # mark_* `opts` are required keyword lists with no schema default. The
+  # description (not a `default: []`) is what signals keyword-list coercion.
+  test "dispatch/3 coerces a required keyword-list param from object and JSON string" do
+    root = Path.join(System.tmp_dir!(), "harness-tools-mark-#{System.unique_integer([:positive])}")
+    File.mkdir_p!(root)
+    on_exit(fn -> File.rm_rf(root) end)
+
+    rmap = Path.join(root, "rmap-stub")
+    File.write!(rmap, "#!/bin/sh\nprintf 'marked %s' \"$*\"\n")
+    File.chmod!(rmap, 0o755)
+
+    registry = Tools.build()
+    opts = %{"root" => root, "rmap_bin" => rmap, "reason" => "operator intervention"}
+
+    assert {:ok, {:ok, out_map}} =
+             Tools.dispatch(registry, "roadmap-mark_blocked", %{
+               "item_or_id" => "391",
+               "opts" => opts
+             })
+
+    assert out_map =~ "marked status 391"
+
+    assert {:ok, {:ok, out_string}} =
+             Tools.dispatch(registry, "roadmap-mark_blocked", %{
+               "item_or_id" => "391",
+               "opts" => Jason.encode!(opts)
+             })
+
+    assert out_string =~ "marked status 391"
+  end
+
   describe "result store read tool store defaults" do
     setup do
       root =

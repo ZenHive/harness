@@ -255,16 +255,13 @@ defmodule Harness.Chat.Tools do
   # type hint serializes a structured argument as JSON text — e.g. filters as
   # `"{\"agent\": \"cursor\"}"`. Parse it, then decode like the map clause; a
   # non-JSON / non-collection string falls through to the plain-binary clause.
-  defp decode_param(value, %{kind: :value, default: default}) when is_binary(value) and is_list(default) do
-    case Jason.decode(value) do
-      {:ok, decoded} when is_map(decoded) -> to_atom_kwlist(decoded)
-      {:ok, decoded} when is_list(decoded) -> decoded
-      _other -> value
-    end
-  end
-
+  # Detection must not require a list default: mark_* `opts` are required
+  # (no schema default) but are still keyword lists.
   defp decode_param(value, %{kind: :value} = details) when is_binary(value) do
     cond do
+      keyword_list_param?(details) ->
+        decode_keyword_list_string(value)
+
       String.starts_with?(value, ":") ->
         value |> String.slice(1..-1//1) |> String.to_existing_atom()
 
@@ -282,6 +279,15 @@ defmodule Harness.Chat.Tools do
   end
 
   defp decode_param(value, _details), do: value
+
+  @spec decode_keyword_list_string(String.t()) :: term()
+  defp decode_keyword_list_string(value) do
+    case Jason.decode(value) do
+      {:ok, decoded} when is_map(decoded) -> to_atom_kwlist(decoded)
+      {:ok, decoded} when is_list(decoded) -> decoded
+      _other -> value
+    end
+  end
 
   @spec safe_apply(entry(), [term()]) :: {:ok, term()} | {:error, term()}
   defp safe_apply(%{module: module, function: function}, args) do
