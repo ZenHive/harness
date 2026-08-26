@@ -12771,7 +12771,7 @@ status = "pending"
 title = "Close the last AgentAdapter.Driver bypass and make the single-entry-point invariant a test"
 scores = { d = 4, b = 7, u = 7 }
 markers = ["bug"]
-acceptance_criteria = ["No harness-owned path — production code, the MCP/chat tool surface generated from Harness.Manifest, or a driver script — can invoke an adapter without passing through the rule-delivery policy. A Codex/Pi invocation started from the MCP surface leaves a tracked AGENTS.md byte-identical for the whole run", "A test enforces the invariant as a class, not as a fixed list: it fails when any module other than the designated entry point calls Harness.AgentAdapter.Driver.run/2,3. Asserting only that today's known call sites are correct does not satisfy this", "The chosen option from the open decision above is named in the implemented note together with why the other two were rejected; if the MCP tool name changes, the rename is stated explicitly as a client-visible contract change", "The disposition of test/harness/worktree/isolation_integration_test.exs's direct Driver alias is decided and recorded — either rewired through the entry point or documented in the test as a deliberate negative control", "The six adapters still pass Harness.AgentAdapter.Testing.ConformanceCase unchanged, and mix check.dispatch is green with focused tests for the manifest and rule-delivery paths"]
+acceptance_criteria = ["No harness-owned path — production code, the MCP/chat tool surface generated from Harness.Manifest, or a driver script — can invoke an adapter without passing through the rule-delivery policy. A Codex/Pi invocation started from the MCP surface leaves a tracked AGENTS.md byte-identical for the whole run", "A test enforces the invariant as a class, not as a fixed list: it fails when any module other than the designated entry point calls Harness.AgentAdapter.Driver.run/2,3. Asserting only that today's known call sites are correct does not satisfy this", "The chosen option from the open decision above is named in the implemented note together with why the other two were rejected; if the MCP tool name changes, the rename is stated explicitly as a client-visible contract change", "The disposition of test/harness/worktree/isolation_integration_test.exs's direct Driver alias is decided and recorded — either rewired through the entry point or documented in the test as a deliberate negative control", "Every __api__/0 entry across Harness.Manifest.modules() with arity > 0 has a non-empty param_order whose length matches the function arity, and Manifest.mcp_tools() advertises those keys — asserted over the live module list, not a hardcoded roster (tools filtered as unjsonifiable may be skipped). Elixir arities are not changed and keyword opts are not flattened to satisfy it", "The six adapters still pass Harness.AgentAdapter.Testing.ConformanceCase unchanged, and mix check.dispatch is green with focused tests for the manifest and rule-delivery paths"]
 out_of_scope = ["Changing what the injected rules say, or which languages get which guidance", "Revisiting the prompt-preamble reroute itself — Task 398 settled that mechanism", "The approved_then_found_red data correction, which Task 398 already shipped as a migration"]
 touches = ["lib/harness/manifest.ex", "lib/harness/agent_driver.ex", "test/harness/manifest_test.exs", "test/harness/agent_driver_test.exs"]
 assignee = "cursor"
@@ -12807,6 +12807,15 @@ Scope this as the class invariant, not as a one-line Manifest edit: the reason
 this hole existed is that nothing prevents a new call site from reaching the raw
 driver. Whatever option is chosen must be backed by a check that fails when a
 future module bypasses the funnel.
+
+FOLDED IN from the reviewer of run-1787704688388-3cceb58b (task 391), because it lands
+in the same test file and is the same kind of manifest-wide assertion: task 391 locked
+the empty-param-schema class inside Harness.Roadmap only. Another api/2 on an
+argument-taking function elsewhere in Manifest.modules() would still compile, document,
+advertise an empty MCP schema, and fail at call time the same way. That reviewer's
+one-shot scan found zero remaining instances today, so this is a lock against
+recurrence and not a known hole — say so plainly in the implemented note rather than
+claiming a bug was fixed.
 """
 created_at = "2026-08-26"
 scored_at = "2026-08-26"
