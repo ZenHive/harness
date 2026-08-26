@@ -9,7 +9,7 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (15 of 27 done · 0 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (15 of 28 done · 0 in progress)
 
 **Last shipped:** Task 376 — Landing tests leak an empty temp repo dir per run into the shared worktree root, Task 381 — Make capped dashboard transcript append linear in incoming chunk size, Task 391 — Four `roadmap-mark_*` MCP tools expose zero parameters — declare their params, then guard the class, Task 414 — Give dispatch-register_project a typed languages schema so MCP clients can send a JSON array on 2026-08-26
 
@@ -265,7 +265,7 @@
 | Task 351 `[P]` | ✅ | 🎁 **autolanding** · 🐛 TaskIdRewriter misses unquoted integer task ids — collision reassignment silently no-ops for integer-id projects [D:2/B:5/U:4 → Eff:2.25?] 🎯 |
 | Task 375 | ✅ | 🎁 **config-surface** · 🚀 **v0_16** · 🐛 Validate optional %Harness.Project{} fields at registration — an uncast concurrency_cap silently kills batch dispatch [D:2/B:6/U:6 → Eff:3.0] 🎯 |
 | Task 412 | ⬜ | 🎁 **config-surface** · 🔒 Scope inherited credentials per project — every dispatched agent currently sees every registered project's keys [D:4/B:7/U:6 → Eff:1.62] 🚀 |
-| Task 416 | 🔶 | 🎁 **reviewer-pair** · 🐛 Fix post-merge cold-check red for 1e345b9 [D:3/B:8/U:5 → Eff:2.17] 🎯 ⛔ post-merge cold check red for landed SHA 1e345b9cfd01282eb18fe54e8bb1c518062d0cc4: ** (Mix) Unknown dependency :ecto given to :import_deps in the formatter configuration. Make sure the dependency is listed in your mix.exs for environment :dev and you have run "mix deps.get" |
+| Task 416 | ✅ | 🎁 **reviewer-pair** · 🐛 Fix post-merge cold-check red for 1e345b9 [D:3/B:8/U:5 → Eff:2.17] 🎯 |
 <!-- TASKS:END -->
 
 ---
@@ -370,4 +370,5 @@
 | Task 405 | ✅ | 🎁 **roadmap-writeback** · 🚀 **v0_16** · 🐛 Audit discovery filing writes into the operator's live checkout and is never committed [D:3/B:7/U:6 → Eff:2.17] 🎯 |
 | Task 413 | ✅ | 🎁 **witness-legibility** · Surface an in-flight audit signal on the fleet count strip, not just the ops panel [D:4/B:7/U:6 → Eff:1.62] 🚀 |
 | Task 414 | ✅ | 🎁 **config-surface** · 🐛 Give dispatch-register_project a typed languages schema so MCP clients can send a JSON array [D:3/B:7/U:6 → Eff:2.17] 🎯 |
+| Task 417 | ⬜ | 🎁 **resilience** · 🐛 Delivery staging must never carry a symlink or dependency/build artifact — a leaked deps symlink destroyed the base checkout [D:3/B:9/U:8 → Eff:2.83] 🎯 |
 <!-- TASKS:END -->
