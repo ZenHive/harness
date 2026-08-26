@@ -72,6 +72,12 @@ defmodule Harness.Batch do
         kind: :exchange_data,
         source: "Harness.Roadmap.ingest/2",
         description: "List of %Harness.Roadmap.Item{} (ingest each via Harness.Roadmap.ingest/2)."
+      ],
+      opts: [
+        kind: :value,
+        default: [],
+        description:
+          "Keyword list. :env (a jsonb-safe map of env set/scrub pairs persisted on each Oban job and applied by Harness.Run.Worker). Other keys forwarded into the enqueued run."
       ]
     ],
     returns: %{

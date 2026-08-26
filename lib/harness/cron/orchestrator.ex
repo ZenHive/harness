@@ -55,7 +55,7 @@ defmodule Harness.Cron.Orchestrator do
   `plan/2` is injectable via `config :harness, :cron_orchestrator` (a
   `fun(project, ready) :: {:ok, t()} | {:error, term()}`) for tests; otherwise it
   assembles context, spawns the configured adapter (default `:codex`,
-  non-Opus — honors the Opus-last roster) under `Harness.AgentAdapter.Driver` in
+  non-Opus — honors the Opus-last roster) under `Harness.AgentDriver` in
   a throwaway scratch cwd, and reads the artifact it wrote.
   """
 

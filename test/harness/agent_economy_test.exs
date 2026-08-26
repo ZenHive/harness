@@ -121,8 +121,46 @@ defmodule Harness.AgentEconomyTest do
              result_store-get_capability_score
              result_store-list_capability_scores
              driver-run
+             agent_driver-run
            ) do
         refute excluded in names
+      end
+    end
+
+    test "every argument-taking API declares parameters advertised on MCP tools" do
+      # Recurrence lock, not a known hole: a one-shot scan at Task 415 found
+      # zero remaining empty-param-schema instances (the Task 391 class).
+      # length(param_order) is checked against the max non-hidden arity so a
+      # @doc false overload (e.g. list_run_records/2) does not force flattening
+      # keyword opts or inventing a JSON-reachable store handle.
+      tools = Map.new(Harness.Manifest.mcp_tools(), &{&1.name, &1})
+      delim = Harness.Manifest.tool_name_delimiter()
+
+      for module <- Harness.Manifest.modules(),
+          entry <- module.__api__(),
+          entry.arity > 0 do
+        assert entry.param_order != [], "#{inspect(module)}.#{entry.name}/#{entry.arity} declares no parameters"
+
+        public_arity = advertised_arity(module, entry.name)
+
+        assert length(entry.param_order) == public_arity,
+               "#{inspect(module)}.#{entry.name} param_order #{inspect(entry.param_order)} does not match public arity #{public_arity}"
+
+        prefix = module |> Module.split() |> List.last() |> Macro.underscore()
+        tool_name = prefix <> delim <> Atom.to_string(entry.name)
+
+        case Map.fetch(tools, tool_name) do
+          {:ok, tool} ->
+            properties = tool.inputSchema.properties
+
+            for key <- entry.param_order do
+              assert Map.has_key?(properties, key),
+                     "#{tool_name} MCP schema missing #{inspect(key)}"
+            end
+
+          :error ->
+            :ok
+        end
       end
     end
 
@@ -187,5 +225,21 @@ defmodule Harness.AgentEconomyTest do
     String.starts_with?(spec, "[") or
       String.starts_with?(spec, "list(") or
       String.starts_with?(spec, "nonempty_list(")
+  end
+
+  @spec advertised_arity(module(), atom()) :: non_neg_integer()
+  defp advertised_arity(module, name) do
+    case Code.fetch_docs(module) do
+      {:docs_v1, _, _, _, _, _, docs} ->
+        docs
+        |> Enum.flat_map(fn
+          {{:function, ^name, arity}, _, _, doc, _} when doc != :hidden -> [arity]
+          _ -> []
+        end)
+        |> Enum.max()
+
+      _other ->
+        flunk("Code.fetch_docs/1 did not return a docs_v1 chunk for #{inspect(module)}")
+    end
   end
 end

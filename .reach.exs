@@ -31,6 +31,7 @@
       "Harness",
       "Harness.Application",
       "Harness.AgentAdapter.Driver",
+      "Harness.AgentDriver",
       "Harness.AgentKPI",
       "Harness.AuditReview",
       "Harness.Batch",

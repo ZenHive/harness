@@ -11,6 +11,11 @@ defmodule Harness.Worktree.IsolationIntegrationTest do
 
       mix test --include integration test/harness/worktree/isolation_integration_test.exs
 
+  This tripwire goes through `Harness.AgentDriver` (the production entry point),
+  not the raw `Harness.AgentAdapter.Driver`. Isolation must hold for the same
+  funnel every harness-owned invocation uses; the raw-Driver negative control
+  for rule delivery lives in `agent_rule_delivery_test.exs`.
+
   Optional per-adapter model overrides (when the default is unavailable):
 
       HARNESS_ISOLATION_TRIPWIRE_MODEL_CODEX=gpt-5.5 \\
@@ -28,10 +33,10 @@ defmodule Harness.Worktree.IsolationIntegrationTest do
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentAdapter.Codex
   alias Harness.AgentAdapter.Cursor
-  alias Harness.AgentAdapter.Driver
   alias Harness.AgentAdapter.Grok
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Pi
+  alias Harness.AgentDriver
   alias Harness.AgentRegistry
   alias Harness.GitFixture
   alias Harness.Worktree.Isolation
@@ -120,7 +125,7 @@ defmodule Harness.Worktree.IsolationIntegrationTest do
         model: tripwire_model(adapter)
       }
 
-      case Driver.run(adapter, invocation,
+      case AgentDriver.run(adapter, invocation,
              total_timeout: @total_timeout_ms,
              idle_timeout: @idle_timeout_ms
            ) do

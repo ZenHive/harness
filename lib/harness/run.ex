@@ -240,6 +240,11 @@ defmodule Harness.Run do
         source: "Harness.Run.Supervisor.list_runs/0",
         description:
           "A run handle: run id string (from list_runs/0 or start_run/4) or the gen_statem pid directly. A run that has stopped is unregistered and returns {:error, :not_found}."
+      ],
+      timeout: [
+        kind: :value,
+        default: :infinity,
+        description: "gen_statem.call timeout (milliseconds or :infinity). The 1-arity form uses :infinity."
       ]
     ],
     returns: %{

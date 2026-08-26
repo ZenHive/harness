@@ -998,6 +998,7 @@ defmodule Harness.DispatchTest do
              result_store-save_batch
              result_store-save_capability_score
              driver-run
+             agent_driver-run
            ) do
         refute excluded in names, "#{excluded} must not be on the MCP surface"
       end

@@ -58,7 +58,9 @@ Reachable over MCP/chat (JSON scalars only). Grouped by orchestrator intent.
 ### In-process only (`:exchange_data` — filtered from JSON, reached via `project_eval`/IEx)
 
 `supervisor-start_run`, `batch-run` / `batch-run_pinned` / `batch-dispatch`,
-`agent_evaluation-compare`, and the struct-handle `Harness.Run.{status,transcript,…}`
+`agent_evaluation-compare`, `agent_driver-run` (Task 415 renamed the cheap-path
+tool from `driver-run`; still filtered because it takes an adapter module and
+`%Invocation{}` struct), and the struct-handle `Harness.Run.{status,transcript,…}`
 functions (the flat `dispatch-*` wrappers are their JSON path). These take `%Item{}` /
 `%Project{}` / pid handles a JSON caller cannot construct, and stay on the full Elixir
 driver surface (`Harness.Manifest.build/0` / `modules/0`).

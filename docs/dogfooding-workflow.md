@@ -138,7 +138,7 @@ state — so the eval process exiting between dispatch and observation is fine.
 
 5. **Watch live:** open `http://localhost:4018/harness/runs/<run_id>` in a browser. The
    dashboard subscribes to `Phoenix.PubSub` topic `harness:run:<id>:transcript`, which
-   `AgentAdapter.Driver.run/3` feeds via its `:on_output` callback. Bounded 200 KiB buffer.
+   `Harness.AgentDriver.run/3` feeds via its `:on_output` callback. Bounded 200 KiB buffer.
 
 6. **Poll status (optional, while alive):** `Harness.Run.status/1` here, or the JSON-native
    `dispatch__status` / `dispatch__transcript` / `dispatch__transcript_events` tools by `run_id`
@@ -486,7 +486,7 @@ produces a one-shot *text verdict*, so it **bypasses the `Harness.Run` lifecycle
 run lifecycle would pollute the result store with non-task runs.
 
 `Harness.AuditReview.grade_fix/1` is the one-call wrapper. It synchronously dispatches
-the opposite-agent grader via `Harness.AgentAdapter.Driver.run/3` directly, parses the
+the opposite-agent grader via `Harness.AgentDriver.run/3` directly, parses the
 grader's raw transcript for a sentinel, and returns the verdict.
 
 ```elixir

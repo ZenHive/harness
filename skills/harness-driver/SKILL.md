@@ -260,12 +260,17 @@ rmap can also render an agent harness has **no adapter for** (currently `droid`)
 
 > **Worktree isolation is a separate, orthogonal axis.** All six shipped adapters currently declare `worktree_isolation: true`. `agy` ignores Port `cwd` for writes unless the adapter also passes `--add-dir <worktree>` (Task 32/198 — mirrors Codex `exec --cd`, Task 41). The dispatch guard (`Harness.Worktree.Isolation`) still refuses to start a worktree-isolated run on any future adapter that declares `false`. This is independent of whether rmap can render the agent.
 
-### 2. Cheap / Direct Driver Path (`Harness.AgentAdapter.Driver.run/3`)
+### 2. Cheap / Direct Driver Path (`Harness.AgentDriver.run/3`)
 
 Use for:
 - Cross-agent grading (`Harness.AuditReview`)
 - Quick probes or A/B experiments where you don't need the full worktree + verification lifecycle
 - Situations where you just want raw transcript + `Outcome`
+
+`Harness.AgentDriver` is the only harness-owned entry point. It applies
+rule-delivery policy (Codex/Pi rules go in the prompt so a tracked `AGENTS.md`
+is never modified) and then drives `Harness.AgentAdapter.Driver`. Do not call
+the raw Driver from harness code, MCP/chat tools, or driver scripts.
 
 ```elixir
 invocation = %Harness.AgentAdapter.Invocation{
@@ -276,7 +281,7 @@ invocation = %Harness.AgentAdapter.Invocation{
 }
 
 {:ok, %Harness.AgentAdapter.Outcome{} = outcome} =
-  Harness.AgentAdapter.Driver.run(Harness.AgentAdapter.Grok, invocation,
+  Harness.AgentDriver.run(Harness.AgentAdapter.Grok, invocation,
     total_timeout: 1_800_000,
     idle_timeout: 300_000
   )
@@ -290,7 +295,7 @@ invocation = %Harness.AgentAdapter.Invocation{
 - `:grader` — defaults to the cross-family pair from `config :harness, :audit_review, grader_pairs:` (built-in default: `:codex` for `:claude` and vice versa); implementers absent from the pair map require explicit `:grader`.
 - `:cwd` — defaults to `File.cwd!/0` (see caveat above for Context A).
 - `:model` — pin a specific model id (e.g. `"claude-opus-4-7"` when grading higher-stakes fixes).
-- `:total_timeout` / `:idle_timeout` — forwarded to `Driver`.
+- `:total_timeout` / `:idle_timeout` — forwarded to `AgentDriver`.
 
 ---
 
@@ -315,7 +320,7 @@ Never trust `agent_outcome.exit_status` or the implementer's self-reported succe
 
 ## Driving via Chat / MCP (Phase 9, milestone v0_7)
 
-A third consumer surface — alongside `Harness.Run.Supervisor.start_run/4` (verified lifecycle) and `Harness.AgentAdapter.Driver.run/3` (cheap path) — lets an operator drive harness through a natural-language chat session backed by a tool-equipped LLM. Two pieces:
+A third consumer surface — alongside `Harness.Run.Supervisor.start_run/4` (verified lifecycle) and `Harness.AgentDriver.run/3` (cheap path) — lets an operator drive harness through a natural-language chat session backed by a tool-equipped LLM. Two pieces:
 
 ### Chat backend (in-process)
 
@@ -607,7 +612,7 @@ In consuming-repo context (A), inline means editing the consuming repo directly 
 Changes that require an update to this skill:
 - New or changed fields on `Harness.AgentAdapter.Invocation`
 - New `rule_channel` values or rule injection behavior
-- New public functions on `Harness.Run.Supervisor`, `Harness.Batch`, `Harness.Batch.AgentEvaluation`, `Harness.Roadmap`, `Harness.Dispatch`, `Harness.AgentAdapter.Driver`
+- New public functions on `Harness.Run.Supervisor`, `Harness.Batch`, `Harness.Batch.AgentEvaluation`, `Harness.Roadmap`, `Harness.Dispatch`, `Harness.AgentDriver`
 - Changes to which `api()`-annotated functions are JSON-reachable vs. `:exchange_data`-filtered (the orchestrator surface) — keep `docs/orchestrator-surface-inventory.md` in sync
 - New adapters or capability declarations
 - Changes to the renderable-vs-executable contract (`@valid_agents`, the adapter registry) or recommended dispatch paths
