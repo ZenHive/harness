@@ -11516,7 +11516,7 @@ id = "379"
 phase = 23
 bundle = "roadmap-writeback"
 milestone = "v0_16"
-status = "pending"
+status = "in_progress"
 title = "Durable roadmap writeback silently produced no commit — dispatch-start and post-land transitions both lost"
 scores = { d = 4, b = 7, u = 7 }
 markers = ["bug"]
@@ -11578,6 +11578,7 @@ succeeds — consistent with the landing job dying between ff-push and writeback
 Operator repaired by hand (trading_dashboard commit 7319255).
 """
 created_at = "2026-08-05"
+started_at = "2026-08-26"
 scored_at = "2026-08-07"
 
 [[task]]
