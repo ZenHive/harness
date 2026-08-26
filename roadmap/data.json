@@ -19229,7 +19229,7 @@
       "id": "417",
       "phase": 23,
       "bundle": "resilience",
-      "status": "in_progress",
+      "status": "done",
       "title": "Delivery staging must never carry a symlink or dependency/build artifact — a leaked deps symlink destroyed the base checkout",
       "scores": {
         "d": 3,
@@ -19263,10 +19263,17 @@
         "git",
         "run-lifecycle"
       ],
+      "shipped_in": "0cc1f16b993a3d5ba9e810df0aca8343ce3a3dcd",
       "body": "Observed 2026-08-26 on harness itself. Run run-1787709910822-0c07aa04 (task 411, reviewer stage) produced delivery commit 71ea88d whose entire diff is one line: `deps` added as mode 120000, a symlink whose target is the absolute path of the dispatching checkout (`/data/postgresql/harness/base/deps`). It landed on origin/main. When the operator's checkout advanced onto that commit, git replaced the real `deps/` directory with the symlink; the symlink then pointed at itself, producing ELOOP. Every mix command in the base checkout failed with \"dependency is not available\", and the post-merge cold check reported `Unknown dependency :ecto given to :import_deps` (filed as task 416, closed as this same root cause). Audit commit 7d94031 removed the symlink and b1f31b4 hardened this repo's .gitignore, but neither closes the harness-side hole.\n\nTwo verified facts make this a class defect, not a one-off:\n\n1. `Harness.Worktree.stage_worktree/1` (lib/harness/worktree.ex:525) stages with a bare `git add -A`, then unstages only the enumerated `@excluded_paths`. Anything outside that denylist that git is willing to track gets committed.\n2. The stock mix-generated .gitignore writes `/deps/` and `/_build/` with a trailing slash, which matches directories only. A symlink named `deps` is not a directory to git, so it is not ignored — verified here: git tracked it despite the rule being present.\n\nThat combination means any registered project using the stock Elixir .gitignore is exposed, and the blast radius is destructive rather than cosmetic: the bad entry does not merely ride along in a diff, it replaces the consumer's dependency tree on checkout.\n\nFix it at the staging layer so the invariant holds regardless of how a target repo wrote its .gitignore. Two candidate shapes, both acceptable if the criteria hold: refuse to stage any entry whose mode is 120000 and whose target resolves outside the worktree, or extend the unstage step to a fixed artifact-path set independent of gitignore. Prefer the symlink guard as the primary rule — it catches the destructive class — with the artifact-path set as defence in depth.\n\nSibling instances of the same \"delivery commit carries something that is not the agent's source change\" class, already filed and deliberately NOT folded in here because their mechanism is harness-injected files rather than agent-created artifacts: task 383 (.harness/agent-rules.md) and task 385 (injected AGENTS.md header).\n",
       "created_at": "2026-08-26",
       "started_at": "2026-08-26",
+      "done_at": "2026-08-26",
       "scored_at": "2026-08-26",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1787719696500-bf09c0f1, 0cc1f16b993a3d5ba9e810df0aca8343ce3a3dcd).",
+      "delivered_by": "codex",
+      "verified": true,
+      "verified_by": "cursor",
+      "verification_ref": "harness-run:run-1787719696500-bf09c0f1",
       "cross_repo": []
     },
     {

@@ -12930,7 +12930,7 @@ shipped_in = "b1f31b4"
 id = "417"
 phase = 23
 bundle = "resilience"
-status = "in_progress"
+status = "done"
 title = "Delivery staging must never carry a symlink or dependency/build artifact — a leaked deps symlink destroyed the base checkout"
 scores = { d = 3, b = 9, u = 8 }
 markers = ["bug"]
@@ -12954,9 +12954,16 @@ Fix it at the staging layer so the invariant holds regardless of how a target re
 
 Sibling instances of the same "delivery commit carries something that is not the agent's source change" class, already filed and deliberately NOT folded in here because their mechanism is harness-injected files rather than agent-created artifacts: task 383 (.harness/agent-rules.md) and task 385 (injected AGENTS.md header).
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1787719696500-bf09c0f1, 0cc1f16b993a3d5ba9e810df0aca8343ce3a3dcd)."
+delivered_by = "codex"
+verified = true
+verified_by = "cursor"
+verification_ref = "harness-run:run-1787719696500-bf09c0f1"
 created_at = "2026-08-26"
 started_at = "2026-08-26"
 scored_at = "2026-08-26"
+done_at = "2026-08-26"
+shipped_in = "0cc1f16b993a3d5ba9e810df0aca8343ce3a3dcd"
 
 [[task]]
 id = "418"
