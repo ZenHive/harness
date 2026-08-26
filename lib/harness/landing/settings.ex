@@ -10,13 +10,16 @@ defmodule Harness.Landing.Settings do
   and agent enablement. A run never auto-merges until an operator opts the project
   into `:auto` **with a target branch**.
 
-  ## One Postgres table, read directly
+  ## One Postgres table, read directly; registry holds the hot snapshot
 
-  `overlay/1` reads the persisted overrides straight from `Harness.SettingsStore`
-  (Postgres when `:repo_enabled`) every time a run starts, so the table is the
-  single source of truth — a flip takes effect on the next run and survives a
-  restart with no boot loader and no app-env cache to drift. This is what fixed
-  the silent landing-policy revert: the value lives in exactly one place.
+  The `harness_settings[:landing]` row is the persisted source of truth. Direct
+  `overlay/1` / `overlay_many/1` still read that row (via `Harness.SettingsStore`)
+  so a caller that needs a fresh store view can take it. `ProjectRegistry.lookup/1`
+  and `list/0` overlay from a registry-held snapshot of the same map, refreshed on
+  `set/4` / `set_reviewer/3` (and on registry boot/reset/reload), so the dashboard
+  hot path does not round-trip Postgres per lookup. A flip still takes effect on
+  the next registry read and survives a restart: there is no app-env cache to
+  drift. This is what fixed the silent landing-policy revert.
 
   ## The footgun guard
 
@@ -30,6 +33,7 @@ defmodule Harness.Landing.Settings do
   """
 
   alias Harness.Project
+  alias Harness.ProjectRegistry
   alias Harness.SettingsStore
 
   require Logger
@@ -53,22 +57,30 @@ defmodule Harness.Landing.Settings do
   registration-time `landing_policy` / `target_branch` stand.
   """
   @spec overlay(Project.t()) :: Project.t()
-  def overlay(%Project{} = project) do
-    [overlaid] = overlay_many([project])
-    overlaid
+  def overlay(%Project{} = project), do: overlay(project, overrides())
+
+  @doc """
+  Overlays a caller-supplied overrides map onto a project without reading the store.
+  """
+  @spec overlay(Project.t(), t()) :: Project.t()
+  def overlay(%Project{} = project, overrides) when is_map(overrides) do
+    do_overlay(project, overrides)
   end
 
   @doc """
-  Overlays persisted landing overrides (fetched once) onto the given projects.
+  Overlays landing overrides onto the given projects.
 
-  Callers such as `ProjectRegistry.list/0` use this to issue exactly one
-  `SettingsStore.fetch/1` for the landing key regardless of project count.
-  Per-project `overlay/1` delegates here (one-element batch).
+  Fetches the persisted map once, then applies it to every project.
   """
   @spec overlay_many([Project.t()]) :: [Project.t()]
-  def overlay_many(projects) when is_list(projects) do
-    ov = overrides()
-    Enum.map(projects, &do_overlay(&1, ov))
+  def overlay_many(projects) when is_list(projects), do: overlay_many(projects, overrides())
+
+  @doc """
+  Overlays a caller-supplied overrides map onto projects without reading the store.
+  """
+  @spec overlay_many([Project.t()], t()) :: [Project.t()]
+  def overlay_many(projects, overrides) when is_list(projects) and is_map(overrides) do
+    Enum.map(projects, &do_overlay(&1, overrides))
   end
 
   @spec do_overlay(Project.t(), t()) :: Project.t()
@@ -134,6 +146,7 @@ defmodule Harness.Landing.Settings do
     next = Map.put(current, name, Map.merge(Map.get(current, name, %{}), override))
     SettingsStore.put(@store_key, next)
     Logger.info("harness landing: #{name} -> #{describe(override)} by #{actor}")
+    ProjectRegistry.refresh_landing_overrides()
     :ok
   end
 
@@ -171,8 +184,9 @@ defmodule Harness.Landing.Settings do
 
   # The persisted overrides, sanitized — a torn or hand-edited term can't inject
   # a malformed override. Reads straight from the store (no app-env cache).
+  @doc false
   @spec overrides() :: t()
-  defp overrides do
+  def overrides do
     case SettingsStore.fetch(@store_key) do
       {:ok, map} when is_map(map) -> sanitize(map)
       _missing_or_invalid -> %{}

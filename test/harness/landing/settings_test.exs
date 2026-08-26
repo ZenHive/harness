@@ -80,6 +80,18 @@ defmodule Harness.Landing.SettingsTest do
       p2 = project("plain2")
       assert LandingSettings.overlay_many([project, p2]) == [project, p2]
     end
+
+    test "2-arity applies the supplied snapshot without rereading the store", %{project: project} do
+      :ok = LandingSettings.set(project.name, :auto, "release", "test")
+
+      assert LandingSettings.overlay(project, %{}) == project
+      assert LandingSettings.overlay_many([project], %{}) == [project]
+
+      snapshot = %{project.name => %{landing_policy: :auto, target_branch: "main"}}
+      overlaid = LandingSettings.overlay(project, snapshot)
+      assert overlaid.landing_policy == :auto
+      assert overlaid.target_branch == "main"
+    end
   end
 
   describe "set/4" do

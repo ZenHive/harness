@@ -37,6 +37,7 @@ defmodule Harness.ProjectRegistryTest do
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
   alias Harness.ProjectRegistry.Schema.Project, as: ProjectSchema
+  alias Harness.ProjectRegistryTest.CountingSettingsStore
   alias Harness.Repo
   alias Harness.Roadmap.Item
   alias Harness.Run.Result
@@ -878,7 +879,13 @@ defmodule Harness.ProjectRegistryTest do
   describe "lookup/1 + list/0 return the landing-overlaid effective project (Task 257)" do
     setup do
       SettingsStoreMemory.reset(scope: :test_default)
-      on_exit(fn -> SettingsStoreMemory.reset(scope: :test_default) end)
+      ProjectRegistry.refresh_landing_overrides()
+
+      on_exit(fn ->
+        SettingsStoreMemory.reset(scope: :test_default)
+        ProjectRegistry.refresh_landing_overrides()
+      end)
+
       :ok
     end
 
@@ -935,7 +942,7 @@ defmodule Harness.ProjectRegistryTest do
              "overlay/1 must be applied only at the ProjectRegistry read boundary; stray call sites: #{inspect(offenders)}"
     end
 
-    test "list/0 issues exactly one landing-settings fetch regardless of project count" do
+    test "list/0 and lookup/1 do not refetch landing settings once the snapshot is warm" do
       owner = self()
       scope = :"one_fetch_#{System.unique_integer([:positive])}"
       SettingsStoreMemory.reset(scope: scope)
@@ -947,6 +954,7 @@ defmodule Harness.ProjectRegistryTest do
       on_exit(fn ->
         SettingsStoreMemory.reset(scope: scope)
         Application.put_env(:harness, :settings_store, prev)
+        ProjectRegistry.refresh_landing_overrides()
       end)
 
       p1 = %{sample_project("batch1") | landing_policy: :manual, target_branch: nil}
@@ -956,20 +964,80 @@ defmodule Harness.ProjectRegistryTest do
       assert :ok = LandingSettings.set("batch1", :auto, "main", "test")
 
       # Now swap to counting backend (shares ETS data via scope).
-      counting = {Harness.ProjectRegistryTest.CountingSettingsStore, scope: scope, owner: owner}
+      counting = {CountingSettingsStore, scope: scope, owner: owner}
       Application.put_env(:harness, :settings_store, counting)
+      Harness.SettingsStore.reset_cache()
 
       flush_messages()
 
       assert [e1, e2] = ProjectRegistry.list()
+      assert {:ok, ^e1} = ProjectRegistry.lookup("batch1")
+      assert {:ok, ^e2} = ProjectRegistry.lookup("batch2")
       assert e1.landing_policy == :auto
       assert e1.target_branch == "main"
       assert e2.landing_policy == :manual
 
       fetches = drain_landing_fetches()
 
-      assert fetches == 1,
-             "ProjectRegistry.list/0 with #{length([e1, e2])} projects must issue exactly 1 landing fetch, got #{fetches}"
+      assert fetches == 0,
+             "warm lookup/list must not refetch landing settings, got #{fetches}"
+    end
+
+    test "a landing write is visible on the next lookup without leaving lookup on the fetch path" do
+      owner = self()
+      scope = :"lookup_write_#{System.unique_integer([:positive])}"
+      SettingsStoreMemory.reset(scope: scope)
+
+      prev = Application.get_env(:harness, :settings_store)
+      Application.put_env(:harness, :settings_store, {SettingsStoreMemory, scope: scope})
+
+      on_exit(fn ->
+        SettingsStoreMemory.reset(scope: scope)
+        Application.put_env(:harness, :settings_store, prev)
+        ProjectRegistry.refresh_landing_overrides()
+      end)
+
+      project = %{sample_project("cache-write") | landing_policy: :manual, target_branch: nil}
+      assert :ok = ProjectRegistry.register(project)
+      assert :ok = LandingSettings.set("cache-write", :auto, "main", "test")
+
+      counting = {CountingSettingsStore, scope: scope, owner: owner}
+      Application.put_env(:harness, :settings_store, counting)
+      Harness.SettingsStore.reset_cache()
+      flush_messages()
+
+      assert {:ok, %{landing_policy: :auto, target_branch: "main"}} =
+               ProjectRegistry.lookup("cache-write")
+
+      assert drain_landing_fetches() == 0
+
+      assert :ok = LandingSettings.set("cache-write", :auto, "release", "test")
+      write_fetches = drain_landing_fetches()
+      assert write_fetches >= 1
+
+      assert {:ok, effective} = ProjectRegistry.lookup("cache-write")
+      assert effective.landing_policy == :auto
+      assert effective.target_branch == "release"
+      assert [^effective] = ProjectRegistry.list()
+      assert drain_landing_fetches() == 0
+    end
+
+    test "with the ephemeral store, lookup keeps registration defaults after a flip" do
+      prior = Application.get_env(:harness, :settings_store)
+      Application.put_env(:harness, :settings_store, false)
+
+      on_exit(fn ->
+        restore_settings_store(prior)
+        ProjectRegistry.refresh_landing_overrides()
+      end)
+
+      ProjectRegistry.refresh_landing_overrides()
+
+      project = %{sample_project("ephemeral-land") | landing_policy: :manual, target_branch: nil}
+      assert :ok = ProjectRegistry.register(project)
+      assert :ok = LandingSettings.set("ephemeral-land", :auto, "ship", "test")
+      assert {:ok, ^project} = ProjectRegistry.lookup("ephemeral-land")
+      assert [^project] = ProjectRegistry.list()
     end
   end
 
@@ -1032,6 +1100,9 @@ defmodule Harness.ProjectRegistryTest do
 
   defp restore_projects_env(nil), do: Application.delete_env(:harness, :projects)
   defp restore_projects_env(projects), do: Application.put_env(:harness, :projects, projects)
+
+  defp restore_settings_store(nil), do: Application.delete_env(:harness, :settings_store)
+  defp restore_settings_store(store), do: Application.put_env(:harness, :settings_store, store)
 
   defp assert_persisted_project(project) do
     assert %ProjectSchema{payload: payload} = Repo.get(ProjectSchema, project.name)

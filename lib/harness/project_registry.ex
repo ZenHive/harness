@@ -17,6 +17,11 @@ defmodule Harness.ProjectRegistry do
   payload's landing fields are a *registration-time seed* only — a project with no
   override returns its registration default unchanged.
 
+  The overlay is applied from a registry-held snapshot of that settings row,
+  loaded at boot and refreshed when `Landing.Settings` writes (or on `reset/0` /
+  `reload_persisted_state/0`). Repeated `lookup/1` does not re-fetch Postgres.
+  The store remains the persisted source of truth.
+
   This is THE single place the overlay is applied. Callers must not re-overlay a
   looked-up struct (the old per-call-site `Landing.Settings.overlay/1` in
   `Harness.Run` / `Harness.Lander.Worker` is gone). Task 171 was a point-fix of one
@@ -48,6 +53,11 @@ defmodule Harness.ProjectRegistry do
   @type error ::
           {:duplicate, String.t()} | {:unknown_project, String.t()} | {:invalid_project, term()}
 
+  @typep state :: %{
+           projects: %{String.t() => Project.t()},
+           landing_overrides: LandingSettings.t()
+         }
+
   @doc false
   @spec child_spec(term()) :: Supervisor.child_spec()
   def child_spec(init_arg) do
@@ -62,13 +72,13 @@ defmodule Harness.ProjectRegistry do
 
   @doc false
   @impl GenServer
-  @spec init(term()) :: {:ok, %{projects: %{String.t() => Project.t()}}}
+  @spec init(term()) :: {:ok, state()}
   def init(_init_arg) do
     restored_projects = load_projects()
 
     Enum.each(restored_projects, &ensure_project_queue/1)
 
-    {:ok, %{projects: projects_map(restored_projects)}}
+    {:ok, new_state(restored_projects)}
   end
 
   api(
@@ -152,10 +162,7 @@ defmodule Harness.ProjectRegistry do
 
   @spec lookup(String.t()) :: {:ok, Project.t()} | {:error, error()}
   def lookup(name) when is_binary(name) do
-    case GenServer.call(__MODULE__, {:lookup, name}) do
-      {:ok, project} -> {:ok, LandingSettings.overlay(project)}
-      error -> error
-    end
+    GenServer.call(__MODULE__, {:lookup, name})
   end
 
   api(:list, "List every registered project, sorted by name.",
@@ -168,9 +175,7 @@ defmodule Harness.ProjectRegistry do
 
   @spec list() :: [Project.t()]
   def list do
-    __MODULE__
-    |> GenServer.call(:list)
-    |> LandingSettings.overlay_many()
+    GenServer.call(__MODULE__, :list)
   end
 
   api(:unregister, "Remove a project from the registry by name.",
@@ -198,6 +203,15 @@ defmodule Harness.ProjectRegistry do
   @spec reload_persisted_state() :: :ok
   def reload_persisted_state do
     GenServer.call(__MODULE__, :reload_persisted_state)
+  end
+
+  @doc false
+  @spec refresh_landing_overrides() :: :ok
+  def refresh_landing_overrides do
+    case GenServer.whereis(__MODULE__) do
+      pid when is_pid(pid) -> GenServer.call(pid, :refresh_landing_overrides)
+      nil -> :ok
+    end
   end
 
   @doc false
@@ -235,13 +249,21 @@ defmodule Harness.ProjectRegistry do
 
   def handle_call({:lookup, name}, _from, state) do
     case Map.fetch(state.projects, name) do
-      {:ok, project} -> {:reply, {:ok, project}, state}
-      :error -> {:reply, {:error, {:unknown_project, name}}, state}
+      {:ok, project} ->
+        {:reply, {:ok, LandingSettings.overlay(project, state.landing_overrides)}, state}
+
+      :error ->
+        {:reply, {:error, {:unknown_project, name}}, state}
     end
   end
 
   def handle_call(:list, _from, state) do
-    projects = state.projects |> Map.values() |> Enum.sort_by(& &1.name)
+    projects =
+      state.projects
+      |> Map.values()
+      |> Enum.sort_by(& &1.name)
+      |> LandingSettings.overlay_many(state.landing_overrides)
+
     {:reply, projects, state}
   end
 
@@ -257,7 +279,7 @@ defmodule Harness.ProjectRegistry do
   end
 
   def handle_call(:reset, _from, _state) do
-    {:reply, :ok, %{projects: %{}}}
+    {:reply, :ok, new_state([])}
   end
 
   def handle_call(:reload_persisted_state, _from, _state) do
@@ -265,7 +287,11 @@ defmodule Harness.ProjectRegistry do
 
     Enum.each(restored_projects, &ensure_project_queue/1)
 
-    {:reply, :ok, %{projects: projects_map(restored_projects)}}
+    {:reply, :ok, new_state(restored_projects)}
+  end
+
+  def handle_call(:refresh_landing_overrides, _from, state) do
+    {:reply, :ok, %{state | landing_overrides: LandingSettings.overrides()}}
   end
 
   @spec load_projects() :: [Project.t()]
@@ -286,6 +312,11 @@ defmodule Harness.ProjectRegistry do
   @spec projects_map([Project.t()]) :: %{String.t() => Project.t()}
   defp projects_map(projects) do
     Map.new(projects, fn %Project{name: name} = project -> {name, project} end)
+  end
+
+  @spec new_state([Project.t()]) :: state()
+  defp new_state(projects) do
+    %{projects: projects_map(projects), landing_overrides: LandingSettings.overrides()}
   end
 
   @spec build_project(keyword() | map()) :: {:ok, Project.t()} | {:error, error()}
