@@ -21,6 +21,16 @@ defmodule Harness.ProjectRegistry do
   looked-up struct (the old per-call-site `Landing.Settings.overlay/1` in
   `Harness.Run` / `Harness.Lander.Worker` is gone). Task 171 was a point-fix of one
   forgetful call site; overlaying here makes "forgetting" structurally impossible.
+
+  ## Optional fields are type-checked at every registration seam
+
+  `register/1` and `upsert/1` (attrs map or `%Project{}`) and config-seeded
+  entries reject a value that does not match `%Harness.Project{}`'s `@type`:
+  `concurrency_cap`, `landing_policy`, `target_branch`, `reviewer`,
+  `pollution_allowlist`, `warm_paths`, `test_db_isolation_env`,
+  `tooling_baseline_overrides`. A string `"4"` for `concurrency_cap` is never
+  persisted. An already-persisted row that violates a type is skipped at load
+  rather than handed to callers.
   """
 
   use GenServer
@@ -28,6 +38,7 @@ defmodule Harness.ProjectRegistry do
 
   alias Harness.Landing.Settings, as: LandingSettings
   alias Harness.Project
+  alias Harness.ProjectRegistry.OptionalFields
   alias Harness.ProjectRegistry.Persistence
 
   require Logger
@@ -286,24 +297,20 @@ defmodule Harness.ProjectRegistry do
          {:ok, roadmap_path} <- fetch_roadmap_path(entry),
          {:ok, roadmap_target_branch} <- fetch_roadmap_target_branch(entry),
          {:ok, check_command} <- fetch_check_command(entry),
-         {:ok, languages} <- fetch_languages(entry) do
+         {:ok, languages} <- fetch_languages(entry),
+         {:ok, optional} <- OptionalFields.fetch(entry) do
       {:ok,
-       %Project{
-         name: name,
-         source: source,
-         roadmap_path: roadmap_path,
-         roadmap_target_branch: roadmap_target_branch,
-         check_command: check_command,
-         languages: languages,
-         concurrency_cap: Map.get(entry, :concurrency_cap),
-         pollution_allowlist: Map.get(entry, :pollution_allowlist),
-         warm_paths: Map.get(entry, :warm_paths, []),
-         landing_policy: Map.get(entry, :landing_policy, :manual),
-         target_branch: Map.get(entry, :target_branch),
-         reviewer: Map.get(entry, :reviewer),
-         test_db_isolation_env: Map.get(entry, :test_db_isolation_env),
-         tooling_baseline_overrides: Map.get(entry, :tooling_baseline_overrides, %{})
-       }}
+       struct(
+         Project,
+         Map.merge(optional, %{
+           name: name,
+           source: source,
+           roadmap_path: roadmap_path,
+           roadmap_target_branch: roadmap_target_branch,
+           check_command: check_command,
+           languages: languages
+         })
+       )}
     end
   end
 
@@ -460,9 +467,10 @@ defmodule Harness.ProjectRegistry do
   end
 
   @spec validate_project(Project.t()) :: :ok | {:error, {:invalid_project, term()}}
-  defp validate_project(%Project{languages: languages, roadmap_target_branch: branch}) do
+  defp validate_project(%Project{languages: languages, roadmap_target_branch: branch} = project) do
     with {:ok, ^languages} <- validate_languages(languages),
-         :ok <- validate_roadmap_target_branch(branch) do
+         :ok <- validate_roadmap_target_branch(branch),
+         :ok <- OptionalFields.validate(project) do
       :ok
     else
       {:ok, _normalized} -> {:error, {:invalid_project, {:invalid_languages, languages}}}

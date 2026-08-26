@@ -4,6 +4,7 @@ defmodule Harness.ProjectRegistry.Persistence do
   import Ecto.Query
 
   alias Harness.Project
+  alias Harness.ProjectRegistry.OptionalFields
   alias Harness.ProjectRegistry.Schema.Project, as: ProjectSchema
   alias Harness.Repo
 
@@ -176,7 +177,12 @@ defmodule Harness.ProjectRegistry.Persistence do
           |> Map.delete(:language)
           |> Map.put(:languages, languages)
 
-        {:ok, struct(Project, current_attrs), backfill?}
+        rebuilt = struct(Project, current_attrs)
+
+        case OptionalFields.validate(rebuilt) do
+          :ok -> {:ok, rebuilt, backfill?}
+          {:error, {:invalid_project, reason}} -> {:error, reason}
+        end
 
       {:error, reason} ->
         {:error, reason}

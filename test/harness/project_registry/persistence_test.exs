@@ -62,6 +62,81 @@ defmodule Harness.ProjectRegistry.PersistenceTest do
       assert {:error, {:unknown_project, ^name}} = ProjectRegistry.lookup(name)
     end
 
+    test "skips persisted rows whose payload is missing, mismatched, or not a project" do
+      missing_name = "skip-missing-#{System.unique_integer([:positive])}"
+      mismatch_name = "skip-mismatch-#{System.unique_integer([:positive])}"
+      junk_name = "skip-junk-#{System.unique_integer([:positive])}"
+      term_name = "skip-term-#{System.unique_integer([:positive])}"
+      empty_lang_name = "skip-empty-lang-#{System.unique_integer([:positive])}"
+
+      good_name = "skip-good-#{System.unique_integer([:positive])}"
+      good = ProjectFixture.from_repo("/tmp/#{good_name}", name: good_name)
+      assert :ok = Persistence.upsert(good)
+
+      insert_payload!(missing_name, nil)
+
+      inner = ProjectFixture.from_repo("/tmp/#{mismatch_name}", name: "other-#{mismatch_name}")
+      insert_payload!(mismatch_name, :erlang.term_to_binary(inner))
+
+      insert_payload!(junk_name, :erlang.term_to_binary(%{not: :a_project}))
+      insert_payload!(term_name, "not-an-erlang-term")
+
+      empty_lang = %{
+        ProjectFixture.from_repo("/tmp/#{empty_lang_name}", name: empty_lang_name)
+        | languages: []
+      }
+
+      insert_payload!(empty_lang_name, :erlang.term_to_binary(empty_lang))
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert :ok = ProjectRegistry.reload_persisted_state()
+        end)
+
+      assert {:ok, ^good} = ProjectRegistry.lookup(good_name)
+
+      for name <- [missing_name, mismatch_name, junk_name, term_name, empty_lang_name] do
+        assert {:error, {:unknown_project, ^name}} = ProjectRegistry.lookup(name)
+        assert log =~ name
+      end
+
+      assert log =~ "skipping invalid persisted row"
+    end
+
+    test "a valid integer concurrency_cap round-trips persist -> reload" do
+      name = "cap-roundtrip-#{System.unique_integer([:positive])}"
+      project = ProjectFixture.from_repo("/tmp/#{name}", name: name, concurrency_cap: 4)
+
+      assert :ok = ProjectRegistry.register(project)
+      assert :ok = ProjectRegistry.reset()
+      assert :ok = ProjectRegistry.reload_persisted_state()
+
+      assert {:ok, restored} = ProjectRegistry.lookup(name)
+      assert restored.concurrency_cap == 4
+    end
+
+    test "skips a persisted row whose concurrency_cap is not a positive integer" do
+      good_name = "cap-good-#{System.unique_integer([:positive])}"
+      bad_name = "cap-bad-#{System.unique_integer([:positive])}"
+      good = ProjectFixture.from_repo("/tmp/#{good_name}", name: good_name, concurrency_cap: 4)
+      bad = %{ProjectFixture.from_repo("/tmp/#{bad_name}", name: bad_name) | concurrency_cap: "4"}
+
+      assert :ok = Persistence.upsert(good)
+      assert :ok = Persistence.upsert(bad)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert :ok = ProjectRegistry.reload_persisted_state()
+        end)
+
+      assert {:ok, restored} = ProjectRegistry.lookup(good_name)
+      assert restored.concurrency_cap == 4
+      assert {:error, {:unknown_project, ^bad_name}} = ProjectRegistry.lookup(bad_name)
+      assert log =~ "skipping invalid persisted row"
+      assert log =~ bad_name
+      assert log =~ "invalid_concurrency_cap"
+    end
+
     test "roundtrips complex project fields through term_to_binary" do
       name = "complex-#{System.unique_integer([:positive])}"
 
@@ -205,6 +280,13 @@ defmodule Harness.ProjectRegistry.PersistenceTest do
         assert MapSet.member?(running, HarnessOban.landing_queue_name(project))
       end)
     end
+  end
+
+  @spec insert_payload!(String.t(), binary() | nil) :: :ok
+  defp insert_payload!(name, payload) do
+    attrs = %{name: name, payload: payload, warm_paths: []}
+    assert {:ok, _row} = Repo.insert(ProjectSchema.changeset(%ProjectSchema{name: name}, attrs))
+    :ok
   end
 
   defp assert_eventually(fun, tries \\ @eventually_tries)

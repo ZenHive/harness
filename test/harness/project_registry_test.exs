@@ -85,7 +85,8 @@ defmodule Harness.ProjectRegistryTest do
                  check_command: "mix test",
                  languages: [:typescript],
                  reviewer: :codex,
-                 warm_paths: ["priv/foo"]
+                 warm_paths: ["priv/foo"],
+                 concurrency_cap: 4
                )
 
       assert {:ok, project} = ProjectRegistry.lookup("kw")
@@ -95,8 +96,34 @@ defmodule Harness.ProjectRegistryTest do
       assert project.languages == [:typescript]
       assert project.reviewer == :codex
       assert project.warm_paths == ["priv/foo"]
+      assert project.concurrency_cap == 4
       # build_project defaults landing_policy when attrs omit it.
       assert project.landing_policy == :manual
+    end
+
+    test "register/1 rejects a concurrency_cap that is not a positive integer" do
+      attrs = [
+        name: "bad-cap",
+        source: {:local, "/tmp/bad-cap"},
+        roadmap_path: "/tmp/bad-cap",
+        languages: [:elixir]
+      ]
+
+      for cap <- ["4", 0, -1, 1.5] do
+        assert {:error, {:invalid_project, {:invalid_concurrency_cap, ^cap}}} =
+                 ProjectRegistry.register(Keyword.put(attrs, :concurrency_cap, cap))
+      end
+
+      assert {:error, {:unknown_project, "bad-cap"}} = ProjectRegistry.lookup("bad-cap")
+    end
+
+    test "register/1 rejects a %Project{} whose concurrency_cap is a string" do
+      project = %{sample_project("bad-struct-cap") | concurrency_cap: "4"}
+
+      assert {:error, {:invalid_project, {:invalid_concurrency_cap, "4"}}} =
+               ProjectRegistry.register(project)
+
+      assert {:error, {:unknown_project, "bad-struct-cap"}} = ProjectRegistry.lookup("bad-struct-cap")
     end
 
     test "register/1 returns invalid_project for attrs missing a required field" do
@@ -292,6 +319,21 @@ defmodule Harness.ProjectRegistryTest do
       assert {:error, {:unknown_project, ^name}} = ProjectRegistry.lookup(name)
     end
 
+    test "upsert/1 rejects a string concurrency_cap and does not register the project" do
+      name = "volatile-bad-cap-#{System.unique_integer([:positive])}"
+
+      assert {:error, {:invalid_project, {:invalid_concurrency_cap, "4"}}} =
+               ProjectRegistry.upsert(
+                 name: name,
+                 source: {:local, "/tmp/#{name}"},
+                 roadmap_path: "/tmp/#{name}",
+                 languages: [:elixir],
+                 concurrency_cap: "4"
+               )
+
+      assert {:error, {:unknown_project, ^name}} = ProjectRegistry.lookup(name)
+    end
+
     test "upsert/1 inserts and replaces projects in memory when persistence is disabled" do
       name = "volatile-upsert-#{System.unique_integer([:positive])}"
       original = sample_project(name)
@@ -378,6 +420,23 @@ defmodule Harness.ProjectRegistryTest do
       assert [^replacement] = ProjectRegistry.list()
       assert_persisted_project(replacement)
       assert_queue_limit(name, 4)
+    end
+
+    @tag :integration
+    test "rejects a string concurrency_cap and does not persist the row" do
+      name = "upsert-bad-cap-#{System.unique_integer([:positive])}"
+
+      assert {:error, {:invalid_project, {:invalid_concurrency_cap, "4"}}} =
+               ProjectRegistry.upsert(
+                 name: name,
+                 source: {:local, "/tmp/#{name}"},
+                 roadmap_path: "/tmp/#{name}/roadmap/tasks.toml",
+                 languages: [:elixir],
+                 concurrency_cap: "4"
+               )
+
+      assert {:error, {:unknown_project, ^name}} = ProjectRegistry.lookup(name)
+      assert Repo.get(ProjectSchema, name) == nil
     end
 
     @tag :integration
@@ -579,6 +638,26 @@ defmodule Harness.ProjectRegistryTest do
 
       assert {:ok, %{projects: %{"no-warm-paths" => %Harness.Project{warm_paths: []}}}} =
                ProjectRegistry.init(:noargs)
+    end
+
+    test "skips a config entry whose concurrency_cap is not a positive integer" do
+      bad = [
+        name: "bad-cap-config",
+        source: {:local, "/tmp/x"},
+        languages: [:elixir],
+        roadmap_path: "/tmp/x",
+        concurrency_cap: "4"
+      ]
+
+      Application.put_env(:harness, :projects, [bad])
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert {:ok, %{projects: %{}}} = ProjectRegistry.init(:noargs)
+        end)
+
+      assert log =~ "skipping invalid config entry"
+      assert log =~ "invalid_concurrency_cap"
     end
 
     test "rejects a non-binary check_command" do
