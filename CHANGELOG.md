@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Agent rules no longer modify tracked `AGENTS.md` files during checks (Task 398).** Codex/Pi rule delivery is rerouted through the invocation prompt, while adapters with native rule channels keep their existing behavior. All harness-owned agent launches now pass through the shared policy wrapper.
+
+- **Capped dashboard transcript appends are linear in the incoming chunk size (Task 381).** The raw transcript tail remains chunked until a parse, render, or snapshot boundary, avoiding repeated concatenation of the retained 200 KiB buffer while preserving its existing byte cap and output semantics.
+
+- **Project registration validates optional fields before persistence or queue setup (Task 375).** Invalid values such as a string `concurrency_cap` now return a tagged `:invalid_project` error instead of entering the registry and failing later during batch dispatch.
+
+- **Roadmap mark MCP tools expose and decode their required arguments (Task 391).** The four `roadmap-mark_*` schemas now declare `item_or_id` and keyword-list `opts`; object and JSON-string option payloads are coerced consistently before dispatch.
+
 - **Audit discovery filing stays in the audit worktree (Task 405).** The audit prompt now points `rmap new` at `--tasks-path` inside the detached audit worktree rather than the project's registered source checkout, so filed tasks ride the `audit(<sha>)` commit. A red cold-check follow-up is committed in the same worktree (`audit(<sha>): file cold-check discovery`) before the audit push. Split-roadmap paths that are not descendants of the code repo fall back to the in-worktree `roadmap/tasks.toml` rather than escaping to the operator checkout.
 
 - **`dispatch-register_project` no longer describes Postgres persistence as opt-in.** `:repo_enabled` defaults to `true`; registration survives a BEAM restart unless the operator sets `repo_enabled: false`. `config :harness, :projects` remains first-boot seed-only. The MCP tool description, `ProjectRegistry.register/upsert` copy, and the driver-skill row now match that default.
