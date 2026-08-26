@@ -17062,7 +17062,7 @@
       "phase": 20,
       "bundle": "config-surface",
       "milestone": "v0_16",
-      "status": "in_progress",
+      "status": "pending",
       "title": "Validate optional %Harness.Project{} fields at registration — an uncast concurrency_cap silently kills batch dispatch",
       "scores": {
         "d": 2,

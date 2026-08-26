@@ -263,7 +263,7 @@
 | Task 325 | ⛔ | 🎁 **reviewer-pair** · 🐛 Fix post-merge cold-check red for 1a2a52e [D:3/B:8/U:5 → Eff:2.17?] 🎯 |
 | Task 344 | ✅ | 🎁 **autolanding** · Land-conflict resolver AI cannot spawn: claude adapter has no configured agent_model [D:2/B:6/U:6 → Eff:3.0?] 🎯 |
 | Task 351 `[P]` | ✅ | 🎁 **autolanding** · 🐛 TaskIdRewriter misses unquoted integer task ids — collision reassignment silently no-ops for integer-id projects [D:2/B:5/U:4 → Eff:2.25?] 🎯 |
-| Task 375 | 🔄 | 🎁 **config-surface** · 🚀 **v0_16** · 🐛 Validate optional %Harness.Project{} fields at registration — an uncast concurrency_cap silently kills batch dispatch [D:2/B:6/U:6 → Eff:3.0] 🎯 |
+| Task 375 | ⬜ | 🎁 **config-surface** · 🚀 **v0_16** · 🐛 Validate optional %Harness.Project{} fields at registration — an uncast concurrency_cap silently kills batch dispatch [D:2/B:6/U:6 → Eff:3.0] 🎯 |
 | Task 412 | ⬜ | 🎁 **config-surface** · 🔒 Scope inherited credentials per project — every dispatched agent currently sees every registered project's keys [D:4/B:7/U:6 → Eff:1.62] 🚀 |
 <!-- TASKS:END -->
 
