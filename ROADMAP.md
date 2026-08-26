@@ -322,7 +322,7 @@
 | Task 357 | ✅ | 🎁 **core-loop** · Decompose Harness.Run.Actions (2,575 lines) by lifecycle concern [D:3/B:4/U:4 → Eff:1.33?] 📋 |
 | Task 385 | 🔄 | 🎁 **core-loop** · 🐛 Strip the harness-injected ephemeral AGENTS.md header before committing the delivery [D:3/B:7/U:6 → Eff:2.17] 🎯 |
 | Task 386 | ⬜ | 🎁 **core-loop** · Lander: landing job can complete (landed_sha recorded) without the roadmap advance ever reaching origin [D:5/B:7/U:6 → Eff:1.3] 📋 |
-| Task 392 | 🔄 | 🎁 **core-loop** · 🐛 Terminate the agent process tree, not just the direct PID — orphaned children outlive the kill and share the worktree [D:5/B:9/U:8 → Eff:1.7] 🚀 |
+| Task 392 | ✅ | 🎁 **core-loop** · 🐛 Terminate the agent process tree, not just the direct PID — orphaned children outlive the kill and share the worktree [D:5/B:9/U:8 → Eff:1.7] 🚀 |
 | Task 393 | ✅ | 🎁 **core-loop** · 🐛 Fence .harness/review.json to the reviewer that wrote it — a killed reviewer's stale approve can settle the run :done [D:3/B:9/U:8 → Eff:2.83] 🎯 |
 | Task 396 | ✅ | 🎁 **contract** · Create the harness_agent_adapter package — move the AgentAdapter subsystem into its own repo [D:5/B:6/U:5 → Eff:1.1] 📋 |
 | Task 397 | ✅ | 🎁 **contract** · harness consumes harness_agent_adapter as a dependency — delete the in-repo AgentAdapter subsystem [D:5/B:5/U:4 → Eff:0.9] ⚠️ |

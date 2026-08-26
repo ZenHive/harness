@@ -11897,7 +11897,7 @@ shipped_in = "bd4ac217f96b11e9e10f5fbb9c389c6fea6cd836"
 id = "392"
 phase = 22
 bundle = "core-loop"
-status = "in_progress"
+status = "done"
 title = "Terminate the agent process tree, not just the direct PID — orphaned children outlive the kill and share the worktree"
 scores = { d = 5, b = 9, u = 8 }
 markers = ["bug"]
@@ -11914,9 +11914,16 @@ The sharpest instance is reviewer rotation. In lib/harness/run/actions/reviewing
 
 Idea confirmed against DeepSeek Harness (packages/subprocess: terminate() is tree-scoped on every platform, escalates SIGTERM -> grace -> SIGKILL, is idempotent, and is paired with a waitForExit that observes whole-tree liveness) and its docs/defensive-patterns.md rule "Dispose must reach quiescence, not just request it": a teardown that issues kills and returns before the work stops leaves orphans.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1787719644544-f1e73523, 526901a0efb8edf5be1f2b646994929e4b04fd27)."
+delivered_by = "codex"
+verified = true
+verified_by = "cursor"
+verification_ref = "harness-run:run-1787719644544-f1e73523"
 created_at = "2026-08-23"
 started_at = "2026-08-26"
 scored_at = "2026-08-23"
+done_at = "2026-08-26"
+shipped_in = "526901a0efb8edf5be1f2b646994929e4b04fd27"
 
 [[task]]
 id = "393"
