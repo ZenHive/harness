@@ -46,7 +46,7 @@ config :harness, Oban,
 # to this same map in code when the key is unset.
 config :harness, :audit_review, grader_pairs: %{claude: :codex, codex: :claude}
 
-# Autonomous roadmap polling is opt-in. The Oban.Plugins.Cron entry that runs
+# Autonomous roadmap polling is opt-in. The Oban.Cron entry that runs
 # Harness.Cron.RoadmapPoller is registered unconditionally (Task 109) so the
 # runtime master toggle has a scheduled tick to act on. The master switch,
 # per-project autonomy, dispatch mode, and active `schedule` are all persisted

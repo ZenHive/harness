@@ -15,7 +15,7 @@ defmodule Harness.Cron.SettingsTest do
   alias Harness.ProjectFixture
   alias Harness.SettingsStore
   alias Harness.Test.SettingsStoreMemory
-  alias Oban.Plugins.Cron
+  alias Oban.Cron
 
   @scope :test_default
 

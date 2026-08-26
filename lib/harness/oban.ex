@@ -405,7 +405,7 @@ defmodule Harness.Oban do
 
   @spec enable_cron_plugin(keyword()) :: keyword()
   defp enable_cron_plugin(opts) do
-    plugin = {Oban.Plugins.Cron, crontab: cron_crontab(), timezone: cron_timezone()}
+    plugin = {Oban.Cron, crontab: cron_crontab(), timezone: cron_timezone()}
 
     Keyword.update(opts, :plugins, [plugin], fn
       plugins when is_list(plugins) -> plugins ++ [plugin]

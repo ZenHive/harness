@@ -20,7 +20,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
   alias Harness.Run.Worker
   alias Harness.Test.CaptureSink
   alias Harness.Test.SettingsStoreMemory
-  alias Oban.Plugins.Cron
+  alias Oban.Cron
 
   setup do
     prior_cron_polling = Application.get_env(:harness, :cron_polling)

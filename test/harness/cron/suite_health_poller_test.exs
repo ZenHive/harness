@@ -8,7 +8,7 @@ defmodule Harness.Cron.SuiteHealthPollerTest do
   alias Harness.ProjectRegistry
   alias Harness.SuiteHealth
   alias Harness.SuiteHealthStore.Memory, as: Store
-  alias Oban.Plugins.Cron
+  alias Oban.Cron
 
   setup do
     prev = Application.get_env(:harness, :suite_health_store)

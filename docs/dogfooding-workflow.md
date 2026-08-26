@@ -33,7 +33,7 @@ cannot yet do for itself, and only after filing the gap via `rmap new`.
 
 Tasks 44–51 (`%Harness.CheckStack{}` abstraction, `%Harness.Project{}` registry, Oban +
 Postgres setup, `mix phx.new`-style Phoenix integration, GitHub clone-and-cache,
-LiveView dashboard + embedded Oban Web, `Oban.Plugins.Cron`) were **hand-built in
+LiveView dashboard + embedded Oban Web, `Oban.Cron`) were **hand-built in
 Claude Code sessions, not dispatched through harness** — though five of the eight
 (44, 45, 47, 49, 51) ended up driven through harness anyway because the per-task
 diffs turned out to be small and self-contained after `mix phx.new` set the shape;

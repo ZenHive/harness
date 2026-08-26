@@ -12,7 +12,7 @@ defmodule Harness.Cron.DepFreshnessPoller do
   alias Harness.Cron.Settings
   alias Harness.DepFreshness
   alias Harness.ProjectRegistry
-  alias Oban.Plugins.Cron
+  alias Oban.Cron
 
   require Logger
 

@@ -12,7 +12,7 @@ defmodule Harness.Cron.SuiteHealthPoller do
 
   alias Harness.ProjectRegistry
   alias Harness.SuiteHealth
-  alias Oban.Plugins.Cron
+  alias Oban.Cron
 
   require Logger
 

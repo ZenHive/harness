@@ -50,7 +50,7 @@ defmodule Harness.Cron.RoadmapPoller do
   alias Harness.Roadmap
   alias Harness.Run.Status
   alias Harness.Run.Worker, as: RunWorker
-  alias Oban.Plugins.Cron
+  alias Oban.Cron
 
   require Logger
 
@@ -121,7 +121,7 @@ defmodule Harness.Cron.RoadmapPoller do
   end
 
   # `Oban.Cron.Expression` is internal to Oban and exposes an opaque
-  # `Oban.Plugins.Cron.expression()`; `apply/2` evades the opacity check
+  # `Oban.Cron.expression()`; `apply/2` evades the opacity check
   # without faking knowledge dialyzer can't reach through.
   @spec next_at(term(), DateTime.t()) :: DateTime.t() | :unknown | term()
   # credo:disable-for-next-line Credo.Check.Refactor.Apply

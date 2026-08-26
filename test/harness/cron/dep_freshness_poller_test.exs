@@ -8,7 +8,7 @@ defmodule Harness.Cron.DepFreshnessPollerTest do
   alias Harness.Oban, as: HarnessOban
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
-  alias Oban.Plugins.Cron
+  alias Oban.Cron
 
   setup do
     prev = Application.get_env(:harness, :dep_freshness_store)
