@@ -169,7 +169,9 @@ defmodule Harness.LanderTest do
   setup %{tmp_dir: tmp_dir} do
     %{origin: origin, repo: repo} = GitFixture.init_with_origin()
     worktree_base = Path.join(tmp_dir, "worktrees")
-    Application.put_env(:harness, :worktree, base_dir: worktree_base)
+    previous_worktree = Application.get_env(:harness, :worktree)
+    previous_result_store = Application.get_env(:harness, :result_store)
+    Application.put_env(:harness, :worktree, Keyword.put(previous_worktree || [], :base_dir, worktree_base))
 
     base_sha = sha(repo, "HEAD")
 
@@ -202,8 +204,8 @@ defmodule Harness.LanderTest do
     Application.put_env(:harness, :result_store, store)
 
     on_exit(fn ->
-      Application.delete_env(:harness, :result_store)
-      Application.delete_env(:harness, :worktree)
+      restore_env(:result_store, previous_result_store)
+      restore_env(:worktree, previous_worktree)
       Memory.reset(elem(store, 1))
     end)
 

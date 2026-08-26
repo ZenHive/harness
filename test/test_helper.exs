@@ -8,7 +8,20 @@ fixture_root =
     "harness-test-fixtures-#{System.pid()}-#{System.os_time(:nanosecond)}"
   )
 
+File.mkdir_p!(fixture_root)
 Application.put_env(:harness, :test_fixture_root, fixture_root)
+
+# `Worktree.checkout_existing/3` carves `<base_dir>/<repo-basename>/landing/<id>`
+# and `git worktree remove` leaves the empty parent. Pin the test worktree root
+# under this suite dir so after_suite cleanup is net-zero; do not fall back to
+# the operator worktree root (`~/_DATA/worktrees/.harness`).
+worktree = Application.get_env(:harness, :worktree, [])
+
+Application.put_env(
+  :harness,
+  :worktree,
+  Keyword.put(worktree, :base_dir, Path.join(fixture_root, "worktrees"))
+)
 
 # The default test result store is shared by the suite; start from an empty
 # in-memory scope so stale records from prior runs cannot poison history reads.

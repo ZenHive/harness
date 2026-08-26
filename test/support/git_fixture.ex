@@ -70,7 +70,7 @@ defmodule Harness.GitFixture do
   end
 
   @spec unique_tmp_dir(String.t()) :: String.t()
-  defp unique_tmp_dir(name) do
+  def unique_tmp_dir(name) do
     # Wall-clock nanoseconds keep the path unique across BEAM restarts, where
     # `System.unique_integer/1` resets to 1 and would otherwise collide with a
     # crashed previous run's leftovers in `/tmp` — the original flaky-fixture
@@ -78,6 +78,7 @@ defmodule Harness.GitFixture do
     # run's README.md was already committed at the same path).
     suffix = "#{System.unique_integer([:positive])}-#{System.os_time(:nanosecond)}"
     root = Application.fetch_env!(:harness, :test_fixture_root)
+    File.mkdir_p!(root)
     Path.join(root, "harness-#{name}-#{suffix}")
   end
 end
