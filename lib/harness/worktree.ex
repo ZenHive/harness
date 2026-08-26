@@ -80,7 +80,12 @@ defmodule Harness.Worktree do
   # excluded mechanically so a stale run worktree cannot commit a colliding task
   # id or documentation render.
   @roadmap_paths ["roadmap/tasks.toml", "roadmap/data.json", "ROADMAP.md", "CHANGELOG.md"]
-  @excluded_paths @artifact_paths ++ @roadmap_paths
+  # A bare `git add -A` also stages artifact names when they are symlinks: stock
+  # Mix ignores `/deps/` and `/_build/`, whose trailing slash matches directories
+  # but not symlinks. The old reset only named harness/roadmap artifacts, so a
+  # dependency symlink escaped it and became delivery content.
+  @build_artifact_paths ["deps", "_build", "cover", "node_modules", ".elixir_ls"]
+  @excluded_paths @artifact_paths ++ @roadmap_paths ++ @build_artifact_paths
 
   # The same family as exclude pathspecs, for the read-only `status`/`diff` calls
   # that filter (rather than stage) the artifacts out of the commit measurement.
@@ -460,9 +465,9 @@ defmodule Harness.Worktree do
   Captures the agent's work as a commit on the worktree's branch.
 
   Discards harness-injected rule files, then stages every remaining change in
-  the worktree (`git add -A` — the repo's `.gitignore` still excludes `_build`,
-  `deps`, and friends; the `.harness/` artifact directory holding the reviewer's
-  `review.json` verdict is always excluded) and commits it to the
+  the worktree (`git add -A`; harness then excludes build/dependency paths,
+  external symlinks, and the `.harness/` artifact directory holding the
+  reviewer's `review.json` verdict) and commits it to the
   `harness/<id>` branch. That commit
   is the run's deliverable: it is what survives `finish/3` teardown, since
   `remove/1` deletes only the working directory.
@@ -509,8 +514,9 @@ defmodule Harness.Worktree do
     end
   end
 
-  # Stage every agent change while keeping the harness artifact family
-  # (`@excluded_paths`) out of the index. Two moves are required, not one:
+  # Stage every agent change while keeping the harness/build artifact family
+  # (`@excluded_paths`) and destructive external symlinks out of the index.
+  # Three moves are required:
   # `git add` exits 1 whenever an *explicit* pathspec (even an `:(exclude)` one)
   # matches a gitignored path, so a target repo that gitignores `.harness/` (with
   # the reviewer's `.harness/review.json` present) fatals the whole stage. A
@@ -522,9 +528,45 @@ defmodule Harness.Worktree do
   # absent/unstaged path, so the call is a no-op when no artifact was staged.
   @spec stage_worktree(String.t()) :: {:ok, String.t()} | {:error, error()}
   defp stage_worktree(path) do
-    with {:ok, _added} <- Git.run(["add", "-A"], path) do
-      Git.run(["reset", "-q", "--" | @excluded_paths], path)
+    with {:ok, _added} <- Git.run(["add", "-A"], path),
+         {:ok, _reset} <- Git.run(["reset", "-q", "--" | @excluded_paths], path) do
+      unstage_external_symlinks(path)
     end
+  end
+
+  @spec unstage_external_symlinks(String.t()) :: {:ok, String.t()} | {:error, error()}
+  defp unstage_external_symlinks(path) do
+    with {:ok, entries} <- Git.run(["ls-files", "--stage", "-z"], path) do
+      external = external_symlink_paths(path, entries)
+
+      case external do
+        [] -> {:ok, ""}
+        paths -> Git.run(["reset", "-q", "--" | paths], path)
+      end
+    end
+  end
+
+  @spec external_symlink_paths(String.t(), String.t()) :: [String.t()]
+  defp external_symlink_paths(root, entries) do
+    entries
+    |> String.split(<<0>>, trim: true)
+    |> Enum.flat_map(fn entry ->
+      with [metadata, relative] <- String.split(entry, "\t", parts: 2),
+           true <- String.starts_with?(metadata, "120000 "),
+           {:ok, target} <- File.read_link(Path.join(root, relative)),
+           resolved = Path.expand(target, Path.dirname(Path.join(root, relative))),
+           true <- outside_root?(resolved, root) do
+        [relative]
+      else
+        _ -> []
+      end
+    end)
+  end
+
+  @spec outside_root?(String.t(), String.t()) :: boolean()
+  defp outside_root?(path, root) do
+    expanded_root = Path.expand(root)
+    path != expanded_root and not String.starts_with?(path, expanded_root <> "/")
   end
 
   @spec retry_substrate(keyword(), (-> term())) :: term()
@@ -818,6 +860,11 @@ defmodule Harness.Worktree do
 
   @spec prepare_for_staging(String.t()) :: :ok | {:error, error()}
   defp prepare_for_staging(path) do
+    # Adapter-side rerouting alone cannot enforce delivery cleanliness: a
+    # cross-family reviewer may use a different injection channel than the
+    # implementer (the cursor-run recurrence), or leave a stale injected file.
+    # Cleanup therefore remains a commit-layer invariant and preserves any
+    # repository-owned AGENTS.md remainder.
     with :ok <- assert_worktree_dir(path),
          :ok <- remove_marker(Path.join(path, @active_marker)) do
       cleanup_injected_rules(path)
