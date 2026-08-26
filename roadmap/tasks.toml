@@ -11357,7 +11357,7 @@ shipped_in = "120528769dc9d0b18114fba63965d93ecc4b06e8"
 id = "376"
 phase = 23
 bundle = "test-suite-perf"
-status = "pending"
+status = "in_progress"
 title = "Landing tests leak an empty temp repo dir per run into the shared worktree root"
 scores = { d = 2, b = 4, u = 5 }
 acceptance_criteria = ["Running the full suite twice leaves the same number of entries in the configured test worktree root as before the first run", "No new `harness-repo-*` or `harness-suite-health-*` directory remains after the suite exits", "Scratch repositories use a test-dedicated temporary root or a shared fixture with guaranteed on_exit cleanup; production worktree-root behavior is unchanged", "Focused regression coverage proves cleanup on both successful and failing test paths without Process.sleep"]
@@ -11397,6 +11397,7 @@ prefixes leak identically, so fix the shared scratch-root helper rather than
 one test's cleanup.
 """
 created_at = "2026-08-03"
+started_at = "2026-08-26"
 scored_at = "2026-08-07"
 
 [[task]]
