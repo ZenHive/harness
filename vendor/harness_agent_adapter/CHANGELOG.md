@@ -35,4 +35,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   quiescent. `c:Harness.AgentAdapter.terminate/1` delegates here, so every
   Driver timeout and host-orchestrator teardown shares one implementation.
 
+### Fixed
+
+- **Cursor rule injection no longer destroys a project-owned file at the same
+  path.** `install_cursor_rules/1` wrote `.cursor/rules/harness-operational.mdc`
+  unconditionally and `cleanup_injected_rules/1` removed it unconditionally, so
+  a target repo that tracks that path lost the file on every run — surfacing as
+  a spurious deletion in the delivery diff that downstream reviewers kept
+  "restoring". The displaced file is now backed up to
+  `.harness/cursor-rules-operational.mdc.orig` at install time and restored at
+  cleanup; with no backup the injected file is harness's alone and is still
+  removed. Mirrors the existing preserve-the-remainder handling of Codex's
+  `AGENTS.md`.
+
 No release has been cut yet.

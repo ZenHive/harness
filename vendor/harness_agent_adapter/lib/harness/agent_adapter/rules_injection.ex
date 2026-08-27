@@ -11,6 +11,7 @@ defmodule Harness.AgentAdapter.RulesInjection do
 
   @system_prompt_rel ".harness/agent-rules.md"
   @cursor_rules_rel ".cursor/rules/harness-operational.mdc"
+  @cursor_rules_backup_rel ".harness/cursor-rules-operational.mdc.orig"
   @codex_agents_filename "AGENTS.md"
   @codex_agents_marker "<!-- harness-injected: canonical agent rules — ephemeral, do not commit -->"
   @codex_agents_separator "\n\n---\n\n"
@@ -47,10 +48,30 @@ defmodule Harness.AgentAdapter.RulesInjection do
   @spec install_cursor_rules(Invocation.t()) :: :ok | {:error, term()}
   def install_cursor_rules(%Invocation{cwd: cwd, rule_content: rule_content}) do
     root = worktree_root!(cwd)
+    backup_preexisting_cursor_rules(root)
     write_file!(root, @cursor_rules_rel, cursor_rules_body(rule_content))
     :ok
   rescue
     error in File.Error -> {:error, {:rule_injection_failed, error.reason}}
+  end
+
+  @spec backup_preexisting_cursor_rules(String.t()) :: :ok
+  # A project may already own a file at the Cursor rules path (harness's own
+  # rules file has been committed into target repos by accident). Cleanup
+  # removes what harness wrote, so without this the project's file is destroyed
+  # by every run and shows up as a spurious deletion in the delivery diff.
+  # Preserve it here; `restore_cursor_rules/1` puts it back. The backup is taken
+  # once per worktree: the reviewer installs into the same worktree after the
+  # implementer, and a second backup would capture the injected body.
+  defp backup_preexisting_cursor_rules(root) do
+    existing = read_optional(root, @cursor_rules_rel)
+    backup = read_optional(root, @cursor_rules_backup_rel)
+
+    if is_binary(existing) and is_nil(backup) do
+      write_file!(root, @cursor_rules_backup_rel, existing)
+    end
+
+    :ok
   end
 
   @doc """
@@ -66,19 +87,46 @@ defmodule Harness.AgentAdapter.RulesInjection do
 
   Callers (worktree reuse / pre-delivery reset) invoke this so a stale
   injection from an earlier attempt never leaks into the next agent. The
-  Claude system-prompt file and Cursor rules file live at fixed harness-owned
-  paths and are simply removed; Codex's `AGENTS.md` may hold merged repo
-  content after the injected block, so only the marker-prefixed harness block
-  is stripped and any remainder is preserved. A marker-prefixed file with no
-  separator is entirely harness-written and is removed.
+  Claude system-prompt file lives at a fixed harness-owned path and is simply
+  removed. The Cursor rules path may be owned by the project, so a file
+  displaced at install time is restored rather than deleted. Codex's
+  `AGENTS.md` may hold merged repo content after the injected block, so only
+  the marker-prefixed harness block is stripped and any remainder is preserved.
+  A marker-prefixed file with no separator is entirely harness-written and is
+  removed.
   """
   @spec cleanup_injected_rules(String.t()) :: :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
   def cleanup_injected_rules(cwd) when is_binary(cwd) do
     root = worktree_root!(cwd)
 
     with :ok <- remove_file(root, @system_prompt_rel),
-         :ok <- remove_file(root, @cursor_rules_rel) do
+         :ok <- restore_cursor_rules(root) do
       cleanup_codex_agents(root)
+    end
+  end
+
+  @spec restore_cursor_rules(String.t()) ::
+          :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  # Puts back the project-owned file `install_cursor_rules/1` displaced. With no
+  # backup the injected file is harness's alone and is simply removed.
+  # `@cursor_rules_backup_rel` is a fixed harness-owned path; `cwd` is validated
+  # by `worktree_file!/2`.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp restore_cursor_rules(root) do
+    path = worktree_file!(root, @cursor_rules_backup_rel)
+
+    case File.read(path) do
+      {:ok, body} -> write_restored_cursor_rules(root, path, body)
+      {:error, :enoent} -> remove_file(root, @cursor_rules_rel)
+      {:error, reason} -> {:error, {:rule_cleanup_failed, path, reason}}
+    end
+  end
+
+  @spec write_restored_cursor_rules(String.t(), String.t(), String.t()) ::
+          :ok | {:error, {:rule_cleanup_failed, String.t(), File.posix()}}
+  defp write_restored_cursor_rules(root, backup_path, body) do
+    with :ok <- write_path(worktree_file!(root, @cursor_rules_rel), body) do
+      remove_path(backup_path)
     end
   end
 

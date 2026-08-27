@@ -489,6 +489,27 @@ defmodule Harness.WorktreeTest do
       refute GitFixture.git!(repo, ["show", "#{wt.branch}:AGENTS.md"]) =~ "harness-injected"
     end
 
+    test "restores a project-tracked file at the Cursor rules path instead of deleting it" do
+      repo = GitFixture.init_repo()
+      rel = ".cursor/rules/harness-operational.mdc"
+      repo_rules = Path.join(repo, rel)
+      File.mkdir_p!(Path.dirname(repo_rules))
+      File.write!(repo_rules, "project cursor rules\n")
+      GitFixture.git!(repo, ["add", rel])
+      GitFixture.git!(repo, ["commit", "-q", "-m", "add cursor rules"])
+      {:ok, wt} = Worktree.create(ProjectFixture.from_repo(repo), base_dir: GitFixture.tmp_base())
+
+      assert {:ok, {"cursor-agent", _argv, _env}} = Cursor.build_command(invocation(wt.path))
+      refute File.read!(Path.join(wt.path, rel)) == "project cursor rules\n"
+      File.write!(Path.join(wt.path, "delivery.txt"), "agent work\n")
+
+      assert {:ok, :committed} = Worktree.commit(wt, "agent delivery")
+
+      assert GitFixture.git!(repo, ["show", "#{wt.branch}:#{rel}"]) == "project cursor rules\n"
+      assert File.read!(Path.join(wt.path, rel)) == "project cursor rules\n"
+      refute File.exists?(Path.join(wt.path, ".harness/cursor-rules-operational.mdc.orig"))
+    end
+
     test "does not commit Cursor's injected rules file alongside a delivery" do
       {repo, wt} = create_worktree()
 
