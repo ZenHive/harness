@@ -66,6 +66,7 @@ defmodule Harness.Cron.Orchestrator do
   alias Harness.AgentRules
   alias Harness.Artifact
   alias Harness.CapabilityScore
+  alias Harness.Config
   alias Harness.Project
   alias Harness.Roadmap
 
@@ -152,6 +153,10 @@ defmodule Harness.Cron.Orchestrator do
       log_tag: "cron-orchestrator-#{project.name}",
       rule_content: AgentRules.render_for_languages(project.languages),
       permission_mode: :autonomous,
+      # Model-capable adapters reject a nil model at the driver gate, so the
+      # orchestrator call must carry the agent's standing model like every other
+      # harness invocation does.
+      model: Config.agent_model(agent),
       env: Map.get(@subscription_scrubs, agent, %{})
     }
   end

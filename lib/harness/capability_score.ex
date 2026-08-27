@@ -222,8 +222,9 @@ defmodule Harness.CapabilityScore do
     scratch = scratch_dir(opts)
 
     try do
-      with {:ok, _agent, adapter} <- resolve_scout_adapter(opts),
-           {:ok, %Outcome{}} <- AgentDriver.run(adapter, scout_invocation(context, scratch), driver_opts(opts)) do
+      with {:ok, agent, adapter} <- resolve_scout_adapter(opts),
+           {:ok, %Outcome{}} <-
+             AgentDriver.run(adapter, scout_invocation(context, scratch, agent), driver_opts(opts)) do
         read_scout_artifact(scratch)
       end
     after
@@ -231,14 +232,16 @@ defmodule Harness.CapabilityScore do
     end
   end
 
-  @spec scout_invocation(map(), String.t()) :: Invocation.t()
-  defp scout_invocation(context, scratch) do
+  @spec scout_invocation(map(), String.t(), atom()) :: Invocation.t()
+  defp scout_invocation(context, scratch, agent) do
     %Invocation{
       prompt: scout_prompt(context),
       cwd: scratch,
       log_tag: "facet-scout",
       rule_content: AgentRules.render(),
-      permission_mode: :autonomous
+      permission_mode: :autonomous,
+      # Model-capable adapters reject a nil model at the driver gate.
+      model: Config.agent_model(agent)
     }
   end
 
