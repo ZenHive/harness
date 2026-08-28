@@ -18,10 +18,12 @@
 #   $MKT/plugins/harness/skills/harness-workflow/SKILL.md   (body synced; dest frontmatter preserved)
 #   $MKT/plugins/harness/skills/harness-driver/SKILL.md     (body synced; dest frontmatter preserved)
 #
-# $MKT = $CLAUDE_MARKETPLACE_DIR (default ~/_DATA/code/claude-marketplace). The
-# marketplace legs are skipped with a notice when that dir is absent (e.g. a fresh
-# public clone without the private marketplace checkout); the ~/.claude/includes leg
-# always runs.
+# $MKT is $CLAUDE_MARKETPLACE_DIR when set, else the first candidate code root that
+# holds a claude-marketplace checkout carrying plugins/harness. An explicitly-set
+# CLAUDE_MARKETPLACE_DIR that does not resolve is a HARD ERROR: the operator named a
+# destination and the script must not silently sync two of three legs. Only the
+# unconfigured case skips (e.g. a fresh public clone without the private marketplace
+# checkout), and it names every path it searched. The ~/.claude/includes leg always runs.
 #
 # Usage:
 #   scripts/sync-harness-skills.sh            # propagate
@@ -30,7 +32,25 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-MKT="${CLAUDE_MARKETPLACE_DIR:-$HOME/_DATA/code/claude-marketplace}"
+# Resolve the marketplace checkout. A candidate counts only if it carries the harness
+# plugin — a name match alone would happily target the managed plugin cache clone,
+# whose commits are discarded on the next /plugin reload.
+MKT_CANDIDATES=(
+  "$HOME/_DATA/code/claude-marketplace"
+  "$HOME/code/claude-marketplace"
+  "$(dirname "$REPO_ROOT")/claude-marketplace"
+  "$(dirname "$(dirname "$REPO_ROOT")")/code/claude-marketplace"
+)
+MKT=""
+MKT_EXPLICIT=false
+if [[ -n "${CLAUDE_MARKETPLACE_DIR:-}" ]]; then
+  MKT_EXPLICIT=true
+  MKT="$CLAUDE_MARKETPLACE_DIR"
+else
+  for c in "${MKT_CANDIDATES[@]}"; do
+    if [[ -d "$c/plugins/harness" ]]; then MKT="$c"; break; fi
+  done
+fi
 INCLUDES_DIR="$HOME/.claude/includes"
 
 DRY_RUN=false
@@ -103,7 +123,13 @@ mkdir -p "$INCLUDES_DIR"
 write_if_changed "$INCLUDES_DIR/harness-workflow.md" "$(cat "$WF_SRC")"
 
 # Legs 2 & 3: marketplace skills (skipped gracefully when the marketplace isn't checked out).
-if [[ -d "$MKT" ]]; then
+if [[ "$MKT_EXPLICIT" == true && ! -d "$MKT/plugins/harness" ]]; then
+  echo "ERROR: CLAUDE_MARKETPLACE_DIR is set to '$MKT' but that is not a marketplace checkout" >&2
+  echo "       (expected $MKT/plugins/harness). Refusing to sync only the includes leg." >&2
+  exit 1
+fi
+
+if [[ -n "$MKT" && -d "$MKT/plugins/harness" ]]; then
   sync_skill_body "$WF_SRC" \
     "$MKT/plugins/harness/skills/harness-workflow/SKILL.md" false \
     "priv/includes/harness-workflow.md"
@@ -111,7 +137,9 @@ if [[ -d "$MKT" ]]; then
     "$MKT/plugins/harness/skills/harness-driver/SKILL.md" true \
     "skills/harness-driver/SKILL.md"
 else
-  echo "SKIP marketplace legs: \$CLAUDE_MARKETPLACE_DIR not found ($MKT)"
+  echo "SKIP marketplace legs: no claude-marketplace checkout found. Searched:"
+  for c in "${MKT_CANDIDATES[@]}"; do echo "         $c"; done
+  echo "       Set CLAUDE_MARKETPLACE_DIR to sync them (an unresolvable value is an error, not a skip)."
 fi
 
 echo ""
