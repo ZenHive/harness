@@ -140,15 +140,26 @@ defmodule Harness.GitTest do
       %{origin: origin, repo: repo} = GitFixture.init_with_origin()
       advance_origin(origin, 2)
       local_head = rev(repo, "HEAD")
+      File.write!(Path.join(repo, "scratch.txt"), "local\n")
 
       assert {:error, {:checkout_behind, "main", 2}} = TargetSync.ensure_current(repo, "main")
       assert rev(repo, "HEAD") == local_head
+      assert File.read!(Path.join(repo, "scratch.txt")) == "local\n"
     end
 
-    test "accepts a checkout at the fetched remote target" do
+    test "accepts a dirty checkout that is not behind origin without touching the dirty file" do
       %{repo: repo} = GitFixture.init_with_origin()
+      File.write!(Path.join(repo, "scratch.txt"), "local\n")
 
       assert :current = TargetSync.ensure_current(repo, "main")
+      assert File.read!(Path.join(repo, "scratch.txt")) == "local\n"
+    end
+
+    test "wraps a fetch failure rather than guessing that the checkout is current" do
+      repo = GitFixture.init_repo()
+
+      assert {:error, {:currency_check_failed, {:fetch_remote_target_failed, _reason}}} =
+               TargetSync.ensure_current(repo, "main")
     end
   end
 

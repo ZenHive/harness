@@ -32,6 +32,22 @@ defmodule Harness.Cron.RoadmapPoller do
   silently burned Opus on unrouted work). An assignee/adapter that names no
   harness adapter, or one the operator has disabled / that is quota-unavailable,
   is likewise logged and skipped via `AgentRegistry.select/2`.
+
+  ## Sources of truth (was this task landed?)
+
+  The **write path** (lander + durable roadmap commits) consults **origin**: it
+  ff-pushes the delivery and the rmap advance to `origin/<target>`, then
+  best-effort `TargetSync.ff_local/2` (witnessed skip, never `--force`, never a
+  dirty/self-host working-tree write).
+
+  The **read path** (this poller's ready set) consults the **local**
+  `project.roadmap_path` checkout, but only after `TargetSync.ensure_current/2`
+  proves that checkout's HEAD is not behind `origin/<target>`. A TargetSync skip
+  is therefore not silent here: the next poll refuses with
+  `{:roadmap_checkout_behind, project, target, n}` (named project, branch, and
+  behind count) or `{:roadmap_currency_unproven, ...}` if currency cannot be
+  proven, and dispatches nothing. Origin wins the landed-or-not question; this
+  poller never fast-forwards or otherwise writes the operator's working tree.
   """
 
   use Oban.Worker, queue: :cron, max_attempts: 1
@@ -453,9 +469,14 @@ defmodule Harness.Cron.RoadmapPoller do
     with {:ok, repo} <- git_root(project.roadmap_path),
          {:ok, target} <- roadmap_target(project, repo) do
       case TargetSync.ensure_current(repo, target) do
-        :current -> :ok
-        {:error, {:checkout_behind, ^target, count}} -> {:error, {:roadmap_checkout_behind, project.name, target, count}}
-        {:error, reason} -> {:error, {:roadmap_currency_unproven, project.name, target, reason}}
+        :current ->
+          :ok
+
+        {:error, {:checkout_behind, ^target, count}} ->
+          {:error, {:roadmap_checkout_behind, project.name, target, count}}
+
+        {:error, reason} ->
+          {:error, {:roadmap_currency_unproven, project.name, target, reason}}
       end
     else
       :not_durable -> :ok

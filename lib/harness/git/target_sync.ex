@@ -12,7 +12,11 @@ defmodule Harness.Git.TargetSync do
   transition (the exact failure that motivated making roadmap writes durable in
   the first place). This is the shared, notification-free core of that local
   sync; callers decide how to surface a `{:skipped, reason}` (the lander emits a
-  witness event, durable writes log).
+  witness event, durable writes log). `ensure_current/2` is the read-side
+  companion: it fetches `origin/<target>` and reports whether HEAD is behind,
+  without merging, fast-forwarding, or otherwise writing the working tree.
+  Callers that would *read* a checkout this module could not refresh (the cron
+  poller) use it to refuse rather than consume a stale `tasks.toml`.
 
   Mechanical only — four cases:
 
@@ -33,7 +37,17 @@ defmodule Harness.Git.TargetSync do
   @typedoc "Whether a local checkout is safe to use as a read source for a remote target."
   @type currency_result :: :current | {:error, term()}
 
-  @doc "Fetches `origin/target` and verifies that the checked-out commit is not behind it."
+  @doc """
+  Fetches `origin/<target>` and verifies that HEAD is not behind it.
+
+  Returns `:current` when the checkout has every commit on `origin/<target>`
+  (local-ahead is allowed). Returns `{:error, {:checkout_behind, target, n}}`
+  when it does not, or `{:error, {:currency_check_failed, reason}}` when
+  currency cannot be proven (fetch failed, unexpected `rev-list` output).
+
+  Never `--force`, never merges, never touches the working tree — a dirty or
+  self-host checkout is left exactly as found.
+  """
   @spec ensure_current(String.t(), String.t()) :: currency_result()
   def ensure_current(repo, target) when is_binary(repo) and is_binary(target) do
     with :ok <- fetch_remote_target(repo, target),

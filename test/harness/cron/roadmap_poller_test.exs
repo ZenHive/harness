@@ -137,6 +137,100 @@ defmodule Harness.Cron.RoadmapPollerTest do
     assert File.read!(Path.join(repo, "operator-settings.txt")) == "dirty\n"
   end
 
+  test "a current dirty checkout still dispatches — dirty is not a refusal reason" do
+    parent = self()
+    %{repo: repo} = GitFixture.init_with_origin(name: "cron-current-roadmap")
+    File.write!(Path.join(repo, "operator-settings.txt"), "dirty\n")
+
+    project =
+      ProjectFixture.from_repo(repo,
+        name: "cron-current-roadmap",
+        target_branch: "main",
+        roadmap_target_branch: "main"
+      )
+
+    assert :ok = ProjectRegistry.register(project)
+    enable_project(project.name)
+
+    Application.put_env(:harness, :roadmap_ready, fn _project ->
+      send(parent, :current_roadmap_read)
+      {:ok, [task("52", "codex")]}
+    end)
+
+    capture_inserts(parent)
+    assert :ok = RoadmapPoller.perform(%Oban.Job{})
+
+    assert_received :current_roadmap_read
+    assert_received {:inserted, %{item_id: "52"}}
+    assert File.read!(Path.join(repo, "operator-settings.txt")) == "dirty\n"
+  end
+
+  test "refuses dispatch when the roadmap checkout cannot be proven current" do
+    parent = self()
+    repo = GitFixture.init_repo(name: "cron-unproven-roadmap")
+    project = ProjectFixture.from_repo(repo, name: "cron-unproven-roadmap", target_branch: "main")
+    assert :ok = ProjectRegistry.register(project)
+    enable_project(project.name)
+
+    Application.put_env(:harness, :roadmap_ready, fn _project ->
+      send(parent, :unproven_roadmap_read)
+      {:ok, [task("52", "codex")]}
+    end)
+
+    capture_inserts(parent)
+    log = capture_log(fn -> assert :ok = RoadmapPoller.perform(%Oban.Job{}) end)
+
+    assert log =~ "roadmap ready refused"
+    assert log =~ "roadmap_currency_unproven"
+    refute_received :unproven_roadmap_read
+    refute_received {:inserted, _args}
+  end
+
+  test "refuses dispatch when the roadmap path is not a git checkout" do
+    parent = self()
+    dir = GitFixture.tmp_base(name: "cron-nongit-roadmap")
+    project = ProjectFixture.from_repo(dir, name: "cron-nongit-roadmap", target_branch: "main")
+    assert :ok = ProjectRegistry.register(project)
+    enable_project(project.name)
+
+    Application.put_env(:harness, :roadmap_ready, fn _project ->
+      send(parent, :nongit_roadmap_read)
+      {:ok, [task("52", "codex")]}
+    end)
+
+    capture_inserts(parent)
+    log = capture_log(fn -> assert :ok = RoadmapPoller.perform(%Oban.Job{}) end)
+
+    assert log =~ "roadmap ready refused"
+    assert log =~ "roadmap_currency_unproven"
+    refute_received :nongit_roadmap_read
+    refute_received {:inserted, _args}
+  end
+
+  test "a github-source project without a durable roadmap branch is not blocked by the currency gate" do
+    parent = self()
+    %{repo: repo} = GitFixture.init_with_origin(name: "cron-github-roadmap")
+
+    project =
+      repo
+      |> ProjectFixture.from_repo(name: "cron-github-roadmap", target_branch: "main")
+      |> Map.put(:source, {:github, "https://github.com/example/demo.git"})
+
+    assert :ok = ProjectRegistry.register(project)
+    enable_project(project.name)
+
+    Application.put_env(:harness, :roadmap_ready, fn _project ->
+      send(parent, :github_roadmap_read)
+      {:ok, [task("52", "codex")]}
+    end)
+
+    capture_inserts(parent)
+    assert :ok = RoadmapPoller.perform(%Oban.Job{})
+
+    assert_received :github_roadmap_read
+    assert_received {:inserted, %{item_id: "52"}}
+  end
+
   test "N>=2 dispatchable tasks route through the orchestrator; only its plan is enqueued" do
     parent = self()
     project = ProjectFixture.from_repo("/tmp/harness-cron-enabled", name: "cron-enabled", concurrency_cap: 10)
