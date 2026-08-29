@@ -11,6 +11,8 @@ defmodule Harness.Cron.RoadmapPollerTest do
   alias Harness.Cron.PendingDispatch
   alias Harness.Cron.RoadmapPoller
   alias Harness.Cron.Settings
+  alias Harness.Git.TargetSync
+  alias Harness.GitFixture
   alias Harness.ModelAvailability
   alias Harness.Notification.Event
   alias Harness.Oban, as: HarnessOban
@@ -90,6 +92,49 @@ defmodule Harness.Cron.RoadmapPollerTest do
     assert :ok = RoadmapPoller.perform(%Oban.Job{})
     refute_received :read
     refute_received {:inserted, _job}
+  end
+
+  test "a dirty checkout skipped by TargetSync cannot redispatch a task already landed on origin" do
+    parent = self()
+    %{origin: origin, repo: repo} = GitFixture.init_with_origin(name: "cron-stale-roadmap")
+    tasks_path = Path.join(repo, "roadmap/tasks.toml")
+    File.mkdir_p!(Path.dirname(tasks_path))
+    File.write!(tasks_path, "task 688 pending\n")
+    GitFixture.git!(repo, ["add", "roadmap/tasks.toml"])
+    GitFixture.git!(repo, ["commit", "-q", "-m", "add pending task"])
+    GitFixture.git!(repo, ["push", "-q", "origin", "main"])
+
+    lander = GitFixture.tmp_base(name: "cron-stale-lander")
+    {_output, 0} = System.cmd("git", ["clone", "-q", origin, lander], stderr_to_stdout: true)
+    GitFixture.git!(lander, ["config", "user.email", "lander@example.com"])
+    GitFixture.git!(lander, ["config", "user.name", "Lander"])
+    File.write!(Path.join(lander, "roadmap/tasks.toml"), "task 688 done\n")
+    GitFixture.git!(lander, ["add", "roadmap/tasks.toml"])
+    GitFixture.git!(lander, ["commit", "-q", "-m", "land task 688"])
+    GitFixture.git!(lander, ["push", "-q", "origin", "main"])
+
+    File.write!(Path.join(repo, "operator-settings.txt"), "dirty\n")
+    assert {:skipped, "local main behind origin by 1; sync manually"} = TargetSync.ff_local(repo, "main")
+    assert File.read!(tasks_path) == "task 688 pending\n"
+    assert GitFixture.git!(repo, ["show", "origin/main:roadmap/tasks.toml"]) == "task 688 done\n"
+
+    project = ProjectFixture.from_repo(repo, name: "cron-stale-roadmap", target_branch: "main")
+    assert :ok = ProjectRegistry.register(project)
+    enable_project(project.name)
+
+    Application.put_env(:harness, :roadmap_ready, fn _project ->
+      send(parent, :stale_roadmap_read)
+      {:ok, [task("688", "codex")]}
+    end)
+
+    capture_inserts(parent)
+    log = capture_log(fn -> assert :ok = RoadmapPoller.perform(%Oban.Job{}) end)
+
+    assert log =~ "roadmap ready refused"
+    assert log =~ ~s({:roadmap_checkout_behind, "cron-stale-roadmap", "main", 1})
+    refute_received :stale_roadmap_read
+    refute_received {:inserted, _args}
+    assert File.read!(Path.join(repo, "operator-settings.txt")) == "dirty\n"
   end
 
   test "N>=2 dispatchable tasks route through the orchestrator; only its plan is enqueued" do

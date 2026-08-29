@@ -42,6 +42,8 @@ defmodule Harness.Cron.RoadmapPoller do
   alias Harness.Cron.PendingDispatch
   alias Harness.Cron.Settings
   alias Harness.Dispatch.WriteSetPlan
+  alias Harness.Git
+  alias Harness.Git.TargetSync
   alias Harness.ModelAvailability
   alias Harness.Notification
   alias Harness.Notification.Event
@@ -436,11 +438,54 @@ defmodule Harness.Cron.RoadmapPoller do
 
   @spec ready_tasks(Project.t()) :: {:ok, [map()]} | {:error, term()}
   defp ready_tasks(%Project{} = project) do
-    case Application.get_env(:harness, :roadmap_ready) do
-      fun when is_function(fun, 1) -> fun.(project)
-      _other -> Roadmap.ready(project_root: project.roadmap_path, fields: @orchestrator_ready_fields)
+    with :ok <- ensure_roadmap_current(project) do
+      case Application.get_env(:harness, :roadmap_ready) do
+        fun when is_function(fun, 1) -> fun.(project)
+        _other -> Roadmap.ready(project_root: project.roadmap_path, fields: @orchestrator_ready_fields)
+      end
     end
   end
+
+  @spec ensure_roadmap_current(Project.t()) :: :ok | {:error, term()}
+  defp ensure_roadmap_current(%Project{roadmap_target_branch: nil, target_branch: nil}), do: :ok
+
+  defp ensure_roadmap_current(%Project{} = project) do
+    with {:ok, repo} <- git_root(project.roadmap_path),
+         {:ok, target} <- roadmap_target(project, repo) do
+      case TargetSync.ensure_current(repo, target) do
+        :current -> :ok
+        {:error, {:checkout_behind, ^target, count}} -> {:error, {:roadmap_checkout_behind, project.name, target, count}}
+        {:error, reason} -> {:error, {:roadmap_currency_unproven, project.name, target, reason}}
+      end
+    else
+      :not_durable -> :ok
+      {:error, reason} -> {:error, {:roadmap_currency_unproven, project.name, reason}}
+    end
+  end
+
+  @spec git_root(String.t()) :: {:ok, String.t()} | {:error, term()}
+  defp git_root(path) do
+    case Git.run(["rev-parse", "--show-toplevel"], Path.expand(path)) do
+      {:ok, output} -> {:ok, output |> String.trim() |> Path.expand()}
+      {:error, reason} -> {:error, {:roadmap_git_root_failed, reason}}
+    end
+  end
+
+  @spec roadmap_target(Project.t(), String.t()) :: {:ok, String.t()} | :not_durable
+  defp roadmap_target(%Project{roadmap_target_branch: target}, _repo) when is_binary(target) and target != "",
+    do: {:ok, target}
+
+  defp roadmap_target(%Project{target_branch: target} = project, roadmap_repo) when is_binary(target) and target != "" do
+    with {:ok, source_repo} <- Project.local_repo_path(project),
+         {:ok, source_root} <- git_root(source_repo),
+         true <- source_root == roadmap_repo do
+      {:ok, target}
+    else
+      _ -> :not_durable
+    end
+  end
+
+  defp roadmap_target(%Project{}, _repo), do: :not_durable
 
   # A ready task with no autonomous dispatch intent (human / missing / unknown
   # assignee). Logged so an unrouted task is observable, never silently dropped.
@@ -474,7 +519,7 @@ defmodule Harness.Cron.RoadmapPoller do
 
   @spec log_ingest_error(Project.t(), term()) :: :ok
   defp log_ingest_error(%Project{} = project, reason) do
-    Logger.debug("harness cron poller: #{project.name} roadmap ready skipped: #{inspect(reason)}")
+    Logger.warning("harness cron poller: #{project.name} roadmap ready refused: #{inspect(reason)}")
   end
 
   @spec log_dispatch_skip(Project.t(), String.t(), term()) :: :ok

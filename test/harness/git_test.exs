@@ -135,6 +135,23 @@ defmodule Harness.GitTest do
     end
   end
 
+  describe "TargetSync.ensure_current/2" do
+    test "fetches and names how far the checkout is behind without modifying it" do
+      %{origin: origin, repo: repo} = GitFixture.init_with_origin()
+      advance_origin(origin, 2)
+      local_head = rev(repo, "HEAD")
+
+      assert {:error, {:checkout_behind, "main", 2}} = TargetSync.ensure_current(repo, "main")
+      assert rev(repo, "HEAD") == local_head
+    end
+
+    test "accepts a checkout at the fetched remote target" do
+      %{repo: repo} = GitFixture.init_with_origin()
+
+      assert :current = TargetSync.ensure_current(repo, "main")
+    end
+  end
+
   describe "non_fast_forward?/5 — deterministic ancestry signal" do
     setup do
       # A bare origin + working clone, both at the same `main` tip. Tests then

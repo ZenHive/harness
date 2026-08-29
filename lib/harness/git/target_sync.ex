@@ -30,6 +30,21 @@ defmodule Harness.Git.TargetSync do
   @typedoc "The outcome of a local fast-forward attempt."
   @type result :: :synced | {:skipped, String.t()}
 
+  @typedoc "Whether a local checkout is safe to use as a read source for a remote target."
+  @type currency_result :: :current | {:error, term()}
+
+  @doc "Fetches `origin/target` and verifies that the checked-out commit is not behind it."
+  @spec ensure_current(String.t(), String.t()) :: currency_result()
+  def ensure_current(repo, target) when is_binary(repo) and is_binary(target) do
+    with :ok <- fetch_remote_target(repo, target),
+         {:ok, counts} <- Git.run(["rev-list", "--left-right", "--count", "HEAD...origin/" <> target], repo),
+         {:ok, behind} <- parse_behind_count(counts) do
+      if behind == 0, do: :current, else: {:error, {:checkout_behind, target, behind}}
+    else
+      {:error, reason} -> {:error, {:currency_check_failed, reason}}
+    end
+  end
+
   @doc """
   Fast-forwards `repo`'s local `target` branch to `origin/<target>`.
 
@@ -149,6 +164,14 @@ defmodule Harness.Git.TargetSync do
     case Git.run(["rev-list", "--count", "#{target}..origin/#{target}"], repo) do
       {:ok, output} -> output |> String.trim() |> String.to_integer()
       {:error, _reason} -> "unknown"
+    end
+  end
+
+  @spec parse_behind_count(String.t()) :: {:ok, non_neg_integer()} | {:error, term()}
+  defp parse_behind_count(output) do
+    case output |> String.split() |> Enum.map(&Integer.parse/1) do
+      [{_ahead, ""}, {behind, ""}] when behind >= 0 -> {:ok, behind}
+      _ -> {:error, {:unexpected_rev_list_output, output}}
     end
   end
 end
