@@ -294,7 +294,7 @@
 | Task 326 | ⬜ | 🎁 **core-loop** · 🚀 **v0_16** · 🐛 Stabilize residual erl_child_setup spawn flake in worktree-heavy suite (Harness.AuditTest noop) [D:4/B:4/U:3 → Eff:0.88] ⚠️ |
 | Task 327 `[P]` | ✅ | 🎁 **contract** · Invert the rule-content seam + make Invocation agent-agnostic (AgentAdapter no longer names Harness.AgentRules) [D:4/B:5/U:5 → Eff:1.25?] 📋 |
 | Task 328 `[P]` | ✅ | 🎁 **contract** · Break the Driver -> Run.Reflex -> Worktree.Isolation -> AgentAdapter dependency cycle [D:4/B:6/U:5 → Eff:1.38?] 📋 |
-| Task 329 | ⛔ | 🎁 **contract** · Decision spike: extract the decoupled AgentAdapter subsystem to its own hex package? [D:2/B:5/U:4 → Eff:2.25] 🎯 |
+| Task 329 | ⛔ | 🎁 **contract** · Decision spike: extract the decoupled AgentAdapter subsystem to its own hex package? [D:2/B:5/U:4 → Eff:2.25?] 🎯 |
 | Task 330 | ✅ | 🎁 **operator-surface** · Widen over-tight mix.exs dep constraints + guard against regression [D:3/B:5/U:6 → Eff:1.83?] 🚀 |
 | Task 331 | ✅ | 🎁 **operator-surface** · Dependency-freshness fact source (per-language provider; hex.outdated first) + dashboard panel [D:4/B:6/U:7 → Eff:1.62?] 🚀 |
 | Task 332 | ✅ | 🎁 **operator-surface** · Operator 'update deps' action: dispatch a dep-bump through the agent-gate [D:5/B:7/U:7 → Eff:1.4?] 📋 |
@@ -352,7 +352,7 @@
 | Task 363 | ✅ | 🎁 **audit-hygiene** · 🚀 **v0_16** · 📝 🔒 Document the mountable-consumer auth boundary for the dashboard / Oban Web / MCP router [D:1/B:5/U:4 → Eff:4.5?] 🎯 |
 | Task 364 | ⬜ | 🎁 **audit-hygiene** · Decision: resolve the anubis_mcp LGPL-3.0 runtime-dependency licensing exposure on the public repo [D:2/B:5/U:4 → Eff:2.25?] 🎯 |
 | Task 365 | ✅ | 🎁 **run-history** · 🐛 ResultStore.Postgres list/aggregate path fails whole query on atom decode — tolerant row decode like the File store [D:3/B:7/U:7 → Eff:2.33?] 🎯 |
-| Task 372 | ⛔ | 🎁 **dashboard-observability** · Persist witness events as a shared, queryable human+agent timeline [D:3/B:5/U:4 → Eff:1.5] 🚀 |
+| Task 372 | ⛔ | 🎁 **dashboard-observability** · Persist witness events as a shared, queryable human+agent timeline [D:3/B:5/U:4 → Eff:1.5?] 🚀 |
 | Task 373 | ⬜ | 🎁 **run-history** · 🚀 **v0_17** · Per-adapter/model activity trail across runs and agent seats [D:5/B:6/U:6 → Eff:1.2] 📋 |
 | Task 374 | ⬜ | 🎁 **run-history** · 🚀 **v0_17** · Unified append-only lifecycle event log (harness_events) — every run action becomes a durable, queryable fact [D:8/B:7/U:4 → Eff:0.69] ⚠️ |
 | Task 376 | ✅ | 🎁 **test-suite-perf** · Landing tests leak an empty temp repo dir per run into the shared worktree root [D:2/B:4/U:5 → Eff:2.25] 🎯 |

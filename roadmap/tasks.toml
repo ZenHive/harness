@@ -12988,3 +12988,67 @@ Observed 2026-08-26 on the post-merge audit of 2af446e. CLAUDE.md / AGENTS.md / 
 """
 created_at = "2026-08-26"
 scored_at = "2026-08-26"
+
+[[task]]
+id = "419"
+phase = 25
+bundle = "core-loop"
+status = "pending"
+title = "Dispatch reads a local checkout the lander never syncs, so a landed task stays pending and re-dispatches forever"
+scores = { d = 5, b = 9, u = 9 }
+markers = ["bug"]
+acceptance_criteria = ["The dispatch read path cannot select a task from a roadmap checkout that is behind its remote target: the ready set is computed from a checkout proven current, or dispatch refuses with a named error saying which project is behind and by how much", "A TargetSync skip is not silent to the dispatch loop. Whatever surfaces it - a persisted fact, a witness notification, a poller precondition - a subsequent poll can tell that the local roadmap is untrustworthy, and a regression test drives the dirty-worktree skip and asserts the next poll does not dispatch the already-landed task", "A regression test reproduces the loop end to end: land a task so origin reads done, leave the operator checkout dirty so the fast-forward skips, run the poller, and assert it dispatches nothing for that task", "Neither fix reintroduces a force or a clobber of the operator's working tree: TargetSync keeps its witnessed, never-force contract, and the new behaviour is refusal or notification, never a write", "Where the two sources of truth disagree, origin wins for the question was this task landed. State in the delivery which source each of the read path and the write path consults after the change"]
+out_of_scope = ["The inverse failure where the advance never reaches origin, which is task 386", "Changing landing_policy semantics or the witness sink format", "Auto-committing or discarding an operator's uncommitted files to make a checkout clean"]
+touches = ["lib/harness/cron/roadmap_poller.ex", "lib/harness/roadmap.ex", "lib/harness/git/target_sync.ex", "lib/harness/lander.ex"]
+assignee = "codex"
+model = "gpt-5.6-sol"
+body = """
+Observed on bourse 2026-08-28/29: tasks 687, 688 and 690 each landed four to five times on
+origin/main, every landing with its own shipped SHA, over roughly eight hourly cron polls.
+Twenty-odd implementer and reviewer invocations were spent redoing work that was already on
+origin, and the duplicate history is permanent.
+
+The mechanism is that the loop's two halves consult different sources of truth and nothing
+checks that they agree.
+
+The write path is correct. The lander rebases the run branch onto origin, ff-pushes, and pushes
+the rmap advance, so origin/main carries task 688 -> done (shipped ...) exactly as designed. Then
+Git.TargetSync tries to fast-forward the operator's local checkout, and clean_worktree?/1 refuses
+because the tree is dirty - correctly, per its own witnessed, never-force contract. It returns
+{:skipped, reason} and that is the end of it.
+
+The read path then dispatches from that unsynced checkout. Harness.Roadmap shells rmap in
+project.roadmap_path, which for bourse is the operator's checkout at /data/postgresql/code/bourse,
+and Harness.Cron.RoadmapPoller performs no fetch and no behind-check before computing the ready
+set. So the poller reads a tasks.toml that still says pending for work that shipped hours ago,
+dispatches it again, the run forks off origin (where the work exists), the implementer adds an
+increment, the reviewer approves, and it lands a second time. The local file never advances, so
+the next poll repeats it. Measured at the moment of diagnosis: the checkout was 75 commits behind
+origin/main, its tasks.toml read pending for all six of 685 to 690, and origin read blocked,
+in_progress, in_progress for 685, 688, 690.
+
+The trigger was one modified tracked file that had been sitting in the operator's working tree
+since the session began - a settings rewrite the plugin manager itself had made. A single dirty
+file silently disabled roadmap synchronisation for a whole day, and nothing anywhere said so. That
+is the defect worth fixing: not the dirty file, and not TargetSync's refusal, but that the
+dispatch loop keeps consuming a source it has been told it could not refresh.
+
+Sibling, and deliberately not the same task: 386 is the inverse - there the advance never reached
+origin, so origin itself was the stale side and no fetch could disprove did not land. Here origin
+is correct throughout and the local read side is stale. Both produce the duplicate-land trap the
+workflow include warns about, from opposite directions, which is the argument for fixing the
+disagreement rather than either side.
+
+Premises verified live 2026-08-29 while stopping the loop: git rev-list --left-right --count
+HEAD...origin/main returned 0 75; the two tasks.toml copies were read and compared; the landing
+commits and their distinct run ids were enumerated from origin/main; clean_worktree?/1 was read in
+lib/harness/git/target_sync.ex; and roadmap_poller.ex was grepped for a fetch or behind-check and
+has neither.
+
+Immediate operator mitigation already applied, so this task is not urgent-blocking: bourse's cron
+dispatch_mode is set to manual, the three in-flight duplicate runs were cancelled, and the local
+checkout was rebased onto origin. Setting the mode back to auto before this is fixed re-arms the
+loop for any project whose checkout goes dirty.
+"""
+created_at = "2026-08-29"
+scored_at = "2026-08-29"
