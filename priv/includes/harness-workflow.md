@@ -184,19 +184,42 @@ working:
 ```bash
 # one notification per landed task, exits when the whole wave is in
 cd <source-checkout>
-WAVE="615 623 569 619"; seen=""
+WAVE="615 623 569 619"; seen=""; BASE=$(git rev-parse origin/<target>)
+DEADLINE=$(($(date +%s) + 10800))  # bound the wait; tune to the wave's slowest run
 while true; do
   git fetch -q origin <target> || true
   for t in $WAVE; do
     case " $seen " in *" $t "*) continue;; esac
-    if git log --oneline origin/<target> | grep -q "task $t -> done"; then
+    if git log --oneline "$BASE"..origin/<target> | grep -q "task $t -> done"; then
       echo "LANDED task $t"; seen="$seen $t"
     fi
   done
   [ "$(echo $seen | wc -w)" -eq "$(echo $WAVE | wc -w)" ] && { echo "WAVE COMPLETE"; break; }
+  [ "$(date +%s)" -gt "$DEADLINE" ] && {
+    echo "DEADLINE EXCEEDED — wave incomplete"
+    git log --oneline "$BASE"..origin/<target> | grep "task.*-> done" | sed 's/.*task \([0-9]*\).*/  landed: \1/' || echo "  (no tasks landed in range)"
+    for t in $WAVE; do
+      case " $seen " in *" $t "*) continue;; esac
+      echo "  missing: $t"
+    done
+    break
+  }
   sleep 60
 done
 ```
+
+🚨 **The baseline is load-bearing — grep the range, never the whole log.** A task that
+landed before already carries `roadmap: task <id> -> done (shipped …)` in the history, and a
+task that was reset and re-dispatched carries one per attempt. Without `BASE`, the watcher
+matches those stale commits on its first iteration and reports `LANDED` before the implementer
+has written a line — the same false-green this whole section exists to prevent, wearing the
+costume of the fix. Observed 2026-08-29 on bourse task 687, which had landed and been reset four
+times: the unbaselined watcher exited successfully within a second of arming.
+
+The deadline branch is the other half. A run that fails review or blocks on a land conflict never
+produces a landing commit, so a watcher with no bound waits forever on a wave that is already
+dead; on expiry it must print what did land in the range and name what did not, so the missing
+tasks get reconciled through `dispatch-status` instead of assumed.
 
 Poll `dispatch-status <run-id>` only to diagnose a run that the watcher shows as *not*
 landing — a `:failed` verdict, a rebase conflict that retained the branch, a hung
