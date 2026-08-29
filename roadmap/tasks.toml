@@ -13060,3 +13060,19 @@ started_at = "2026-08-29"
 scored_at = "2026-08-29"
 done_at = "2026-08-29"
 shipped_in = "9c5f279ed62dcc5826937f7f4f5615fd44fc7a1c"
+
+[[task]]
+id = "420"
+phase = 25
+bundle = "core-loop"
+status = "pending"
+title = "Gate every dispatch ready-set read on checkout currency, not only the cron poller"
+scores = { d = 4, b = 6, u = 4 }
+markers = ["parallel"]
+acceptance_criteria = ["Every harness path that selects dispatchable work from a local roadmap checkout (dispatch-bundle / Roadmap.ready / Roadmap.next_bundle / dashboard ready view) refuses with the same named error contract as the cron poller ({:roadmap_checkout_behind, project, target, n} or the currency-unproven variant) when the checkout is behind origin/<target>", "Regression test: dispatch-bundle against a dirty, behind checkout whose origin already reads the task done enqueues nothing and surfaces the named error", "A current (even dirty) checkout is NOT refused — currency is the gate, cleanliness is not (mirrors the poller's :current branch test from 419)", "TargetSync remains never-force; the new behaviour is refusal, never a working-tree write", "landing_policy semantics and the witness sink format are unchanged"]
+out_of_scope = ["Task 386 (lander advance never reaching origin — the write-path mirror)", "Changing TargetSync's ff/skip rules", "Any auto-sync of the operator checkout"]
+assignee = "cursor"
+model = "cursor-grok-4.6-high"
+body = "Task 419 (shipped 9c5f279) proved the local roadmap checkout current before Harness.Cron.RoadmapPoller computes the ready set, so a dirty TargetSync skip can no longer silently re-dispatch an already-landed task via cron. But other ready-set consumers still shell rmap against project.roadmap_path with no behind-check: Harness.Dispatch bundle/next_bundle, the dashboard roadmap ready view, and direct Roadmap.ready/next_bundle callers — an operator or MCP caller can still select a stale pending task from a checkout that origin already reads as done. Evidence: reviewer verification in run run-1787967223882-60cd1ce9 (verdict concerns) — RoadmapPoller.ready_tasks/1 now calls TargetSync.ensure_current/2, while Dispatch.next_bundle and the dashboard ready path carry no currency gate. Extend the 419 invariant to every path that selects work from a local roadmap checkout, reusing the same named-error contract."
+created_at = "2026-08-29"
+scored_at = "2026-08-29"
