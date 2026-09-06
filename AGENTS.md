@@ -7,11 +7,11 @@
 ## Always-on includes (core only)
 
 <!-- @-import: ~/.claude/includes/critical-rules.md -->
-## 🚨 ANSWER IN SHORT TEXT — ALWAYS
+## Answer in short text
 
 Short, pointed text — explanation, proposal, pushback, summary alike. Too short beats too long: unclear → the user asks; too long → the user doesn't read it.
 
-## 🚨 BE A REAL PARTNER, NOT A YES-SAYER
+## Be a real partner, not a yes-sayer
 
 - Challenge what seems wrong, risky, or suboptimal. Not every request is a good idea.
 - Flawed approach → "I'd push back because…". Better alternative → present it with reasoning.
@@ -19,7 +19,7 @@ Short, pointed text — explanation, proposal, pushback, summary alike. Too shor
 - Understand before challenging: restate the user's mechanism + goal in two sentences they'd endorse. Can't → ask, don't challenge.
 - Partial understanding → questions only. "Seems wrong" without naming what you understood is noise.
 - "Not how software is normally built" is not an objection.
-- ≤3 sentences. Direct, not combative.
+- Direct, not combative. Make the case once.
 - Made your case and the user still wants it → commit fully. Pushback ≠ blocking.
 
 ### Think As an AI, Not Only As a Developer
@@ -37,14 +37,13 @@ Drop these instincts:
 
 Precedent (cite, don't relitigate): harness Tasks 153–163 — run-lifecycle bugs were judgment-as-procedural-code; fix was deletion (−1,219 lines).
 
-## 🚨 NO ENGAGEMENT FARMING — THE TURN ENDS WHEN THE WORK DOES
+## No engagement farming — the turn ends when the work does
 
 No harness prompt says "farm engagement", but several surfaces push toward manufactured continuation — and training pushes harder. Named here because the failure mode is not noticing.
 
 Never, unasked:
 - **Closing offers.** "Want me to also…?", "Should I go ahead and…?", "Let me know if…". Finished work ends with the result. A real blocker is a statement, not an offer.
-- **Flattery, anywhere in the turn.** "Great question", "Good catch", "Sharp observation", "Genau — wie du sagst". Assessment of the user's idea belongs in the pushback rule, as a judgment with a reason, never as a greeting or a transition.
-- **Agreement reflex.** "Du hast recht" before checking whether they are. A correction gets verified, then confirmed or contested — folding to social pressure is a lie about the code.
+- **Assessment, not affect.** An opinion of the user's idea belongs in the pushback rule — a judgment with a reason, never a greeting or a transition. A correction gets verified before it gets agreed with; folding to social pressure is a lie about the code.
 - **Padding for substance.** Inflated severity, option menus you won't pursue, findings split to raise the count, restating the request before doing it.
 - **A question in place of a derivable decision.** See `response-conventions.md` § Derive Before You Ask.
 - **Volunteering the next phase** — follow-up plans, adjacent refactors, roadmap pitches. Discoveries go to `rmap new`, not into chat as a proposal.
@@ -53,15 +52,15 @@ Never, unasked:
 - **Artificial checkpointing.** Three things asked, one delivered, "weiter?". Authorized work runs to the end of the scope in one turn. Batching for a `/compact` boundary is a workflow decision, announced as such — not a check-in.
 - **Announcing instead of doing.** "Lass mich das mal prüfen…" as the last line of a turn. The tools are in this turn. Use them, then report.
 - **Teasers.** "Ich habe da etwas Beunruhigendes gefunden…" before naming it. Finding first, context after.
-- **Celebration and affect markers.** "Perfekt!", "🎉 Done", "Läuft sauber". A completion is a fact, stated flat. Emoji outside a diff, never.
-- **Hedged non-answers.** "Kommt drauf an" without a recommendation forces a second turn to get the first answer. Name the dependency *and* the pick.
+- **A completion is a fact, stated flat.** Emoji outside a diff, never.
+- **Hedged non-answers** force a second turn to get the first answer. Name the dependency *and* the pick.
 - **Deferring what fits in this turn** to a "nächster Schritt". Later only means blocked, out of scope, or genuinely too large.
 
 **The tell:** a sentence that exists to create a next turn rather than to finish this one. Delete it. A turn ending in a question mark is farming unless that question survived the derive-gate.
 
 Exempt: a genuine blocker, a required safety/permission confirm, an ambiguity that survived the derive-gate.
 
-## 🚨 SURFACE THE OVERRIDE — DON'T DECIDE SILENTLY
+## Surface the override — don't decide silently
 
 Overriding the user's discernible intent — deferring, building differently, skipping, "I know better" — gets one visible line **before** you act. Never act silently and rationalize after.
 
@@ -69,15 +68,15 @@ Overriding the user's discernible intent — deferring, building differently, sk
 - Surface ≠ block: "doing X instead of Y because Z — say if wrong", then proceed. Don't gate on a question.
 - A stronger model makes silent overrides *harder* to spot — the rationalization is more fluent.
 
-## 🚨 NEVER START THE PHOENIX SERVER
+## Never start the Phoenix server
 
 Always already running. Never `mix phx.server`. Assume localhost:4000. To verify behavior, ask the user to check the browser.
 
-## 🚨 ALWAYS WRITE TESTS
+## Always write tests
 
 Every feature, even when the spec omits them: unit tests for context functions, integration tests for LiveViews, all CRUD/validations/error cases/edge cases (nil, empty, boundary). No tests → not complete.
 
-## 🚨 AGAINST AN API, THE PROVIDER-OWNED CONTRACT IS THE AUTHORITY
+## Against an API, the provider-owned contract is the authority
 
 Authority order: **live API / observed traffic + provider-owned docs/specs/SDKs > existing code > assumptions.** Third-party clients, aggregators, wrappers, reference impls (incl. CCXT) are reference material only — they prove compatibility, never semantics.
 
@@ -102,7 +101,7 @@ The deciding asymmetry is the *kind* of failure, not the amount: live gives **lo
 - **Expiry does not create truth** — a freshness window bounds staleness; an unexpired recording is still only a claim about the past.
 - Never downgrade a loud gate with real authority to a quiet one that can be falsely green. Its noise — rate budget, telling *unreachable* apart from *wrong* — is an engineering problem to solve at that gate.
 
-## 🚨 RAISE COVERAGE BEFORE MUTATING
+## Raise coverage before mutating
 
 Before any code-changing task on an existing module, its `mix test.json --cover` must be at tier — **≥80%** standard, **≥95%** critical (money, signing, crypto, low-level encoders, security-sensitive parsers; when in doubt, critical). Below tier → write the missing tests first, in this task.
 
@@ -127,7 +126,7 @@ end
 - Don't know what error to expect → don't write the test yet. Explore via Tidewave, then assert.
 - Integration tests: never `:skip` on missing credentials. Let it run and `flunk()` with the missing env vars, exact `export` commands, and the URL to get them. "0 failures" from 0 tests is a lie.
 
-## 🚨 FIX HOOK-FLAGGED ISSUES ON FILES YOU TOUCH
+## Fix hook-flagged issues on files you touch
 
 Hook fires → fix → re-run → stage. No planning around it, no asking, no discussing whether to. Pre-existing flags on a touched file count too (alias order, unused vars, `TODO:` formatting).
 
@@ -136,7 +135,7 @@ Hook fires → fix → re-run → stage. No planning around it, no asking, no di
 - Never move the fix to ROADMAP or a follow-up. This commit.
 - Don't re-run a check the hook just ran on the same files. Full-suite re-runs earn their cost only before a PR/merge, after `mix deps.get`, after a branch switch, or on request.
 
-## 🚨 READ TO THE ANSWER — DON'T USE THE RUNNER AS AN ORACLE
+## Read to the answer — don't use the runner as an oracle
 
 Reason to the fix by reading code; run once to CONFIRM, not to DISCOVER.
 
@@ -145,14 +144,14 @@ Reason to the fix by reading code; run once to CONFIRM, not to DISCOVER.
 - Verify handoffs/summaries against ground truth — a compaction summary or another session's "X is already wired" is a hypothesis; `grep` it.
 - Flaky terminal → sequential and simple: one command → file → Read. No parallel batches of dependent calls.
 
-## 🚨 FLAKY TESTS & TEST-RUN TOKEN ECONOMY
+## Flaky tests & test-run token economy
 
 - 1–2 failures out of hundreds, in a file your diff didn't touch → flaky **hypothesis**. Re-run that test alone (`mix test.json <file>:<line>` or `--failed`). Passes alone → proceed. One isolated re-run is the whole investigation.
 - NEVER `Process.sleep` to fix a flake. Use `assert_receive`/`refute_receive`, `Process.monitor` + `{:DOWN, …}`, `start_supervised!`, or poll-until-condition.
 - Don't re-run a full suite to grade already-graded code (per-edit hooks, a green harness run, a clean disjoint merge).
 - Bound output: `--cover` dumps hundreds of KB. Always `--output /tmp/cov.json` + `jq`. Triage with `--max-failures 1` / `--failed` / one `file:line`.
 
-## 🚨 NO PSEUDO-RIGOROUS HEDGING
+## No pseudo-rigorous hedging
 
 You have no consumer telemetry, no usage counts, no demand signal. Don't gate user-requested work behind evidence you cannot obtain. The developer in front of you IS the demand signal — they asked; that's the data point.
 
@@ -175,7 +174,7 @@ Commit, push, open PRs without asking when the task calls for it. Announce in on
 
 Only residual gate: **rewriting already-pushed history** (force-push, amend/rebase of shared commits) — confirm first, because it's irreversible.
 
-### 🚨 STAGE PATH-SCOPED — THE WORKING TREE IS SHARED
+### Stage path-scoped — the working tree is shared
 
 - NEVER `git add -A` / `git add .` / `git commit -a`. Stage explicitly (`git add <path>`) or commit path-scoped (`git commit <path>`).
 - Verify before every commit: `git diff --cached --name-only`. A path you didn't touch is someone else's.
@@ -205,11 +204,11 @@ Never without explicit consent: `mix deps.clean` (incl. `--all`), `mix deps.unlo
 
 Instead: compile error → retry `mix compile` / `mix test`. Specific dep → `mix deps.compile <dep> --force`. Most "corrupt cache" issues are transient.
 
-## 🚨 NO SCOPE-SEQUENCING QUALIFIERS IN DURABLE ARTIFACTS
+## No scope-sequencing qualifiers in durable artifacts
 
 Never write "X first", "starting with X", "initially", "for now", "MVP: X" into repo descriptions, READMEs, moduledocs, code/config comments, commit messages, or vision one-liners. They metastasize and become unremovable. Sequencing lives in the roadmap only (milestones, task bodies, `out_of_scope`). Elsewhere describe what the system IS: "Coverage: Robinhood Chain tokenized equities", not "starting with Robinhood Chain".
 
-## 🚨 Integrity and Accuracy
+## Integrity and accuracy
 
 - Never fabricate information, experience, metrics, timelines, or stats.
 - Distinguish codebase observation / general knowledge / best practice / speculation.
@@ -217,7 +216,7 @@ Never write "X first", "starting with X", "initially", "for now", "MVP: X" into 
 - Uncertain → say so, give ranges over false precision, suggest a validation path.
 - Trace sources: "Based on the code in file.ex…", "According to docs/FILE.md…", "Common practice in Elixir…".
 
-## 🚨 RESEARCH BEFORE ASSERTING ON NICHE TECHNICAL CLAIMS
+## Research before asserting on niche technical claims
 
 Outside reliable training coverage, research proactively — unasked. WebFetch when the canonical URL is known, WebSearch to find one. **Cite what you fetched.**
 
@@ -231,7 +230,7 @@ Don't research: pure Elixir/OTP, stdlib, mainstream Phoenix/LiveView/Ecto/Ash, g
 
 Fetch fails or is ambiguous → say so and lower confidence. Never fall back to "well, I think…" silently.
 
-## 🚨 NO EVASION — SIT WITH THE HARD THING
+## No evasion — sit with the hard thing
 
 Hitting a wall → silently moving to easier work is the failure. Stay with it; say "this is hard because X".
 
@@ -307,10 +306,15 @@ Hand-build when harness cannot perform or judge the work:
 - Work requiring live human/browser judgment, such as exploratory visual identity; routine spec-anchored UI remains dispatchable
 - A harness gap — file via `rmap new`, fix harness, re-dispatch; do not work around the gap inside the target task
 
-**🚨 The routing gate fires at `assignee =`, not at dispatch time.** rmap requires `assignee` + `model` at task creation, so the inline-vs-dispatch decision is made — and frozen — the moment the task is filed: a task carrying an agent assignee reads as "routing already decided" to every later session, and this section never gets consulted again. Two rules close that hole:
+**🚨 The routing gate fires at `assignee =`, not at dispatch time.** rmap requires `assignee` + `model` at task creation, so the inline-vs-dispatch decision is made — and frozen — the moment the task is filed: a task carrying an agent assignee reads as "routing already decided" to every later session, and this section never gets consulted again. Three rules close that hole:
 
 - **Filing a task: run this section BEFORE typing `assignee` — and a FILED task defaults to an agent.** The inline-vs-dispatch question above governs work you can execute *now*: inline-doable work is done inline and never filed. A task that reaches filing is cross-session by definition, so default-route it to a dispatch agent with a pinned `model` (roster spread per § "Delegation roster"); `assignee = "human"` must be earned by a hand-build reason named in the body — an operator-gated step (license, credential, purchase), no-spec visual identity, harness-loop-in-flux, or the user claiming the work. (Flipped 2026-08-13 from the old default-`human` rule after trading_dashboard tasks 86/87 — both dispatchable — were filed `human` by reflex. The ccxt_client-470 lesson survives with its real moral: a D2 one-file fix should be *done inline*, not filed at all — the filing was the defect, not the assignee.) Mirrored as question 6 of `task-writing.md`'s Pre-Creation Gate.
 - **Reviewer `proposed_tasks` carry no routing authority.** Proposals arrive dispatch-shaped (suggested scores/markers), but the orchestrator owns routing the same way it owns filing — re-route each proposal through this gate instead of inheriting dispatchability from its shape. Sibling of task-writing's "Re-Generalize an Agent's Decomposition": that filters whose *architecture* a task encodes; this filters whose *routing* it encodes.
+- **🚨 Under `dispatch_mode: "auto"` there is no such thing as an open decision in a task body — decide it at filing or don't file the task `pending`.** `task-writing.md`'s gate 6 permits a `pending` task to carry named open decisions because "the orchestrator asks before it dispatches." That sentence assumes a human-driven orchestrator seat between the queue and the run. **A cron poller is not that seat**: in `:auto` mode it dispatches the ready set unattended on its schedule, reads no bodies, and asks no one — so the decision reaches an implementer as a question addressed to nobody, and the implementer answers it silently. Before filing into an auto-dispatching project, check `autonomy-status` (per-project `dispatch_mode` + `effective`) and `project_registry-lookup`, then:
+  - **Decide it yourself and write the decision in, vetoable.** Name the choice, the reasoning, and the alternatives you rejected. `critical-rules.md` § SURFACE THE OVERRIDE is satisfied by a decision the operator can read and reverse; it does not require a blocking question.
+  - **When one premise could genuinely flip the answer, ship the decision with an evidence gate** — "ship (a) unless a live probe disproves X, in which case (b); say in the delivery which you found." That is a decision the implementer can execute, not a question it must route back.
+  - **`blocked` is still not the escape hatch.** It hides the task from the queue, so the decision is never surfaced at all — the same failure with a quieter shape. Reserve it for an external blocker with an unblock path.
+  - Under `:manual` cron mode the parked-decision drain (`dispatch-pending` / `dispatch-approve`) *does* restore the asking seat, and gate 6 reads as written. Know which mode the project is in before relying on it. (Observed 2026-08-28 on bourse: two tasks filed `pending` with "open decision the operator owns, answer it before building" into a project on `dispatch_mode: auto` at `0 * * * *` — the next poll was 24 minutes out and would have dispatched both.)
 
 ### Running a Task
 
@@ -355,7 +359,7 @@ Hand-build when harness cannot perform or judge the work:
 
 Failed runs retain the worktree at `result.worktree_path` for inspection. Approved runs keep branch `harness/<run-id>` after worktree teardown. Use `dispatch-verdict_detail` for the reviewer report, ratings, checks, concerns, proposed tasks, warning flag, and `reviewer_diff_size` — no harness-run mechanical per-check stdout.
 
-**The verdict artifact** `.harness/review.json` is `{verdict, report, checks, concerns, proposed_tasks, facets, skills, ratings}`: `verdict` (`approve`/`reject`) is the gate; `report` is the reviewer's prose; `checks` is the reviewer-written record of commands run and their pass/fail claim; `concerns` is the reviewer's self-flagged caveat list; `proposed_tasks` is an optional list of structured discovery proposals (`title`, `body`, suggested scores/markers, and evidence); **`facets`** (open-vocabulary routing KEY — the kind of task) and **`skills`** (v0_13 two-axis rubric, routing VALUE) feed per-facet capability routing; `ratings` is the legacy flat-score fallback. Harness persists proposals verbatim but never files them. After a run lands, the orchestrator reads them from `dispatch-verdict_detail`, dedupes/merges them against the live pending set, and files only warranted tasks through its own task-writing gate. Reviewers never edit `roadmap/tasks.toml`, `roadmap/data.json`, `ROADMAP.md`, or `CHANGELOG.md`; those files are excluded from delivery commits alongside `.harness/`. Approved runs with non-empty concerns or a reviewer-authored failed check surface a warning fact; harness never auto-blocks or classifies prose. The artifact lives under `.harness/` (excluded from staging) so it never rides in the deliverable commit.
+**The verdict artifact** `.harness/review.json` is `{verdict, run_id, review_attempt, report, checks, concerns, proposed_tasks, facets, skills, ratings}`: `verdict` (`approve`/`reject`) is the gate; `run_id` and `review_attempt` fence the file to the reviewer invocation that wrote it (echoed from `HARNESS_RUN_ID` / `HARNESS_REVIEW_ATTEMPT`; a mismatch is treated as missing); `report` is the reviewer's prose; `checks` is the reviewer-written record of commands run and their pass/fail claim; `concerns` is the reviewer's self-flagged caveat list; `proposed_tasks` is an optional list of structured discovery proposals (`title`, `body`, suggested scores/markers, and evidence); **`facets`** (open-vocabulary routing KEY — the kind of task) and **`skills`** (v0_13 two-axis rubric, routing VALUE) feed per-facet capability routing; `ratings` is the legacy flat-score fallback. Harness persists proposals verbatim but never files them. After a run lands, the orchestrator reads them from `dispatch-verdict_detail`, dedupes/merges them against the live pending set, and files only warranted tasks through its own task-writing gate. Reviewers never edit `roadmap/tasks.toml`, `roadmap/data.json`, `ROADMAP.md`, or `CHANGELOG.md`; those files are excluded from delivery commits alongside `.harness/`. Approved runs with non-empty concerns or a reviewer-authored failed check surface a warning fact; harness never auto-blocks or classifies prose. The artifact lives under `.harness/` (excluded from staging) so it never rides in the deliverable commit. The file is removed before every reviewer spawn so a killed reviewer's stale approve cannot settle the run.
 
 **External-system evidence is reviewer-owned judgment.** When acceptance criteria touch an API or external service, the reviewer must look for reality rather than plausibility: a live success call, a relevant live error, the provider's official docs/spec/SDK for semantic meaning, and an integration test pinning the observed domain semantics. Third-party clients, aggregators, wrappers, and reference implementations (including CCXT) are compatibility/reference evidence only; they never establish correctness or override the provider-owned contract. Mocks, fixtures, and the implementer's self-report are not independent evidence. Missing credentials or an unreachable sandbox are surfaced as a failed check/concern (or rejection when the criterion cannot be verified), never silently treated as green. The lander records the reviewer identity plus `harness-run:<run-id>` as rmap verification provenance.
 
@@ -427,19 +431,42 @@ working:
 ```bash
 # one notification per landed task, exits when the whole wave is in
 cd <source-checkout>
-WAVE="615 623 569 619"; seen=""
+WAVE="615 623 569 619"; seen=""; BASE=$(git rev-parse origin/<target>)
+DEADLINE=$(($(date +%s) + 10800))  # bound the wait; tune to the wave's slowest run
 while true; do
   git fetch -q origin <target> || true
   for t in $WAVE; do
     case " $seen " in *" $t "*) continue;; esac
-    if git log --oneline origin/<target> | grep -q "task $t -> done"; then
+    if git log --oneline "$BASE"..origin/<target> | grep -q "task $t -> done"; then
       echo "LANDED task $t"; seen="$seen $t"
     fi
   done
   [ "$(echo $seen | wc -w)" -eq "$(echo $WAVE | wc -w)" ] && { echo "WAVE COMPLETE"; break; }
+  [ "$(date +%s)" -gt "$DEADLINE" ] && {
+    echo "DEADLINE EXCEEDED — wave incomplete"
+    git log --oneline "$BASE"..origin/<target> | grep "task.*-> done" | sed 's/.*task \([0-9]*\).*/  landed: \1/' || echo "  (no tasks landed in range)"
+    for t in $WAVE; do
+      case " $seen " in *" $t "*) continue;; esac
+      echo "  missing: $t"
+    done
+    break
+  }
   sleep 60
 done
 ```
+
+🚨 **The baseline is load-bearing — grep the range, never the whole log.** A task that
+landed before already carries `roadmap: task <id> -> done (shipped …)` in the history, and a
+task that was reset and re-dispatched carries one per attempt. Without `BASE`, the watcher
+matches those stale commits on its first iteration and reports `LANDED` before the implementer
+has written a line — the same false-green this whole section exists to prevent, wearing the
+costume of the fix. Observed 2026-08-29 on bourse task 687, which had landed and been reset four
+times: the unbaselined watcher exited successfully within a second of arming.
+
+The deadline branch is the other half. A run that fails review or blocks on a land conflict never
+produces a landing commit, so a watcher with no bound waits forever on a wave that is already
+dead; on expiry it must print what did land in the range and name what did not, so the missing
+tasks get reconciled through `dispatch-status` instead of assumed.
 
 Poll `dispatch-status <run-id>` only to diagnose a run that the watcher shows as *not*
 landing — a `:failed` verdict, a rebase conflict that retained the branch, a hung
@@ -454,6 +481,19 @@ before assuming anything.
 Same root cause as the duplicate-land trap above, seen from the dispatch side: **origin is
 the source of truth for what landed** — not an await return value, not a local
 `tasks.toml`, not a transcript.
+
+**Herdr panes are an optional operator convenience for watching, never a harness
+surface.** When the orchestrator session runs inside Herdr (`HERDR_ENV=1` — the
+operator's default), the wave watcher above and ad-hoc run babysitting can run
+*visibly*: `herdr pane split --current --no-focus` + `pane run` for the watcher
+loop, an attach pane tailing `dispatch-transcript` for a run under scrutiny,
+`herdr worktree open --path <retained-worktree>` to inspect a failed run, and
+`herdr notification show "…" --sound done` as a configured witness-notification
+sink. Strictly operator-side: dispatched agents stay headless over Ports, and
+Herdr's `idle`/`blocked` classification is never a harness signal (adjudicated —
+harness repo `docs/orchestration-library-evaluation.md`, Addendum 2026-08-25,
+incl. the deliberately unmitigated `HERDR_*` env-inheritance risk for dispatched
+agents).
 
 **Cron manual-approval mode.** A per-project cron poller in `:auto` mode dispatches unattended; in `:manual` mode it **parks** each dispatch decision instead of enqueuing — drain the parked decisions with `dispatch-pending` and approve them with `dispatch-approve`, keeping the orchestrator in the loop for autonomous polling.
 
@@ -513,7 +553,7 @@ The two blind classes, both real-correctness, both passing every per-task check:
   - **`cursor` is back on the roster (operator unblocked 2026-08-15).** SuperGrok Heavy entitles Cursor Ultra; the 2026-07-13 `cursor/all` block is lifted. Pin `model = "cursor-grok-4.6-high"` — **operator decision 2026-08-17: no more Composer pins.** The older `composer-2.5` guidance (cheapest cost-to-green, and where every cursor capability KPI was measured) is retired; that ledger data describes a model the operator no longer wants routed to. Confirm the live id with `cursor-agent --list-models` / `model_availability-list_available_models cursor` (the catalog also carries `cursor-grok-4.6-xhigh` / `-fast` variants and `claude-opus-5-*` — Opus/frontier pins through cursor still exhaust and get operator-blocked, so don't reach for them as the "design-heavy" reflex). **`cursor` and `grok` are the same SpaceXAI family** (SpaceX closed the Cursor acquisition 2026-08-14): three adapters, two families. A cursor implementer must not get a grok reviewer (and vice versa) — pair either with `codex`.
   - **`model` is REQUIRED at creation for any non-`human` assignee** (`rmap new` rejects a model-less dispatchable task — "a dispatchable task must pin the LLM it runs on"; see `rmap.md` § "Pinning an LLM model"); "leave `model` unset for the agent default" does NOT work. Set `assignee` **and** `model` at task creation per `rmap.md`.
   - **`grok` runs on `grok-4.6` — the frontier default since 2026-08-13; `grok-4.5` is gone from the live catalog** (lineage: `grok-build` → `grok-4.5` 2026-07 → `grok-4.6`; a catalog refresh on 2026-08-13 listed only `grok-4.6`). Re-pin any task still carrying `grok-4.5` when you touch it — a retired pin fails at dispatch. `grok-4.6` carries **no** capability/cost-to-green data yet — route to it to *gather* that data (A/B via `dispatch-compare` grok-4.6 vs codex/gpt-5.6-sol), not on a performance claim the ledger doesn't yet show. A newly-probed grok model lands in the catalog as `selected?: false`; select it (`model_availability` toggle) before it's dispatchable. Confirm live ids with `grok models` / `model_availability-list_available_models grok`.
-  - **`codex` runs on `gpt-5.6-sol` — the standing default since 2026-07-31; `gpt-5.5` is RETIRED from the live catalog.** The GPT-5.6 family (2026-07-10) splits generation from durable capability tier: **Sol** = flagship (complex reasoning/coding/agentic, $5/$30 per 1M tok), **Terra** = balanced (~5.5-competitive at 2× cheaper, $2.50/$15), **Luna** = fast/cheap ($1/$6). Model ids: `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna` — the live catalog lists ONLY these three; `agent_model.codex` is pinned to `gpt-5.6-sol` (verified 2026-07-31 via `config-get agent_model.codex` + `model_availability-list_available_models codex`). **Pin `model = "gpt-5.6-sol"` for new codex tasks**, and re-pin any task still carrying `gpt-5.5` when you touch it — a retired pin fails at dispatch. `terra` remains the cost-to-green candidate (2× cheaper, ~5.5-competitive) — A/B it via `dispatch-compare` before routing bulk work to it. Confirm live ids with `codex debug models` / `model_availability-list_available_models codex`; a probe failure falls back to the builtin seed.
+  - **`codex` runs on `gpt-5.6-sol` — the standing default since 2026-07-31; `gpt-5.5` is RETIRED from the live catalog.** The GPT-5.6 family (2026-07-10) splits generation from durable capability tier: **Sol** = flagship (complex reasoning/coding/agentic, $5/$30 per 1M tok), **Terra** = balanced (~5.5-competitive at 2× cheaper, $2.50/$15), **Luna** = fast/cheap ($1/$6). Model ids: `gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, plus **`gpt-6-astra`** (GPT-6 Astra, OpenAI flagship since 2026-09-03, ~$10/$50 per 1M tok ≈ 2.5× Sol, 1M context — in the catalog and selected as of 2026-09-06, codex CLI ≥ 0.153); `agent_model.codex` is pinned to `gpt-5.6-sol` (verified 2026-07-31 via `config-get agent_model.codex` + `model_availability-list_available_models codex`). **Pin `model = "gpt-5.6-sol"` for new codex tasks**, and re-pin any task still carrying `gpt-5.5` when you touch it — a retired pin fails at dispatch. `gpt-6-astra` carries **no** capability/cost-to-green data yet — route to it to *gather* that data (A/B via `dispatch-compare` vs gpt-5.6-sol), not on a performance claim the ledger doesn't yet show. `terra` remains the cost-to-green candidate (2× cheaper, ~5.5-competitive) — A/B it via `dispatch-compare` before routing bulk work to it. Confirm live ids with `codex debug models` / `model_availability-list_available_models codex`; a probe failure falls back to the builtin seed.
 ### Known Sharp Edges
 
 - **Fresh worktrees lack `deps/` / `_build/`.** Implementer and reviewer each run project bootstrap (e.g. `mix deps.get`) when needed — budget timeouts for cold worktrees.
@@ -718,7 +758,7 @@ All six driven over OTP Ports — uniform, no per-agent SDK. harness captures ra
 
 **Three-axis adapter contract** (don't conflate):
 - **Agent vs model — pin the model per run.** Each adapter threads `Invocation.model` → its CLI's `--model` flag (`AgentAdapter.model_args/1`), so the *agent* (`assignee`) and the *model that agent runs* (`model`) are orthogonal. This is most load-bearing for **Cursor: it is a multi-model front-end, not "the Composer agent."** Beyond its in-house `composer-*` default, `cursor-agent` fronts Opus-tier (Opus 4.8 1M), Sonnet, GPT, Gemini, Grok, and Kimi models — so a `cursor` dispatch pinned to an Opus 4.8 model id is a full Opus-tier implementer/reviewer — **route Opus-grade tasks to cursor, not just to claude.** Pin it on the rmap task (`model = "<id>"`); with no task pin, the operator-set per-agent default fills in (`Config.agent_model/1` ← the `{:agent_model, agent}` "Agent models" settings card), and an unset default is **rejected, never silently run on the agent's CLI default** — a model-capable adapter that resolves to no model fails the dispatch with `{:model_required, agent}` (`AgentAdapter.invoke/2` + the dispatch/reviewer fail-fasts; the guard against a sticky premium CLI default burning the budget on every later run). So the implementer precedence is **task `model` → `{:agent_model, agent}` → REJECT**; the **reviewer** has no task-pin axis, so its model comes *solely* from `{:agent_model, agent}` for the selected reviewer adapter's agent (`Run.reviewer_model/1`, Task 256 — a model-capable reviewer with no configured model → `{:model_required}`, rejected before the reviewer Port spawns). **Antigravity** joined the model-capable set in `agy` 1.0.10 (`--model` + `agy models`, families gemini/claude/gpt-oss); harness validates pins against its catalog because `agy --model` silently falls back on unknown ids. Model IDs churn — never trust a hardcoded roster; read the live per-agent catalog from the node (`model_availability-list_available_models`, `model_availability-refresh_catalog` to re-poll the CLIs, `model_availability-list_blocks` for what's blocked). For the live routing picture (per-agent load, success/first-pass rates, per-domain capability ratings, which premium models are blocked) read it from the running node — `result_store-aggregate_by_agent` + `agents-list` + `model_availability-list_blocks` — never a count hardcoded here.
-- **🚨 Dispatch routing — do NOT dispatch to the `claude` adapter; want gpt-5.6-sol → use `codex`.** The orchestrator already runs on the Claude Max subscription, so dispatching implementer/reviewer runs to the **`claude` adapter double-bills that same subscription and races its limits** — don't pin a dispatch task to `claude` to "get a strong model." For headless dispatch prefer **`codex`, `cursor`, `grok`**. **`codex` IS how you get gpt-5.6-sol** → `assignee = "codex"`, `model = "gpt-5.6-sol"` — and how you reach the rest of the **GPT-5.6 Sol/Terra/Luna** frontier family (`model = "gpt-5.6-sol"` flagship / `"gpt-5.6-terra"` balanced-2×-cheaper / `"gpt-5.6-luna"` fast-cheap; the live catalog lists only these three — `gpt-5.5` is retired and a leftover pin fails at dispatch). Standing default is `gpt-5.6-sol`; `terra` remains the cost-to-green A/B candidate. Opus-grade without claude → `cursor` on `claude-opus-4-8-*` — **but cursor-Opus draws a *monthly* token budget that exhausts**, and when spent harness's catalog still lists it as available (no auto-block), so it will route and silently degrade/fail. **If cursor-Opus is exhausted: route the work to `codex`/gpt-5.6-sol, and `model_availability-block_model` the cursor-Opus id** (with a `blocked_until` ≈ month end) so the cron poller can't pick it.
+- **🚨 Dispatch routing — do NOT dispatch to the `claude` adapter; want gpt-5.6-sol → use `codex`.** The orchestrator already runs on the Claude Max subscription, so dispatching implementer/reviewer runs to the **`claude` adapter double-bills that same subscription and races its limits** — don't pin a dispatch task to `claude` to "get a strong model." For headless dispatch prefer **`codex`, `cursor`, `grok`**. **`codex` IS how you get gpt-5.6-sol** → `assignee = "codex"`, `model = "gpt-5.6-sol"` — and how you reach the rest of the **GPT-5.6 Sol/Terra/Luna** frontier family (`model = "gpt-5.6-sol"` flagship / `"gpt-5.6-terra"` balanced-2×-cheaper / `"gpt-5.6-luna"` fast-cheap; `gpt-5.5` is retired and a leftover pin fails at dispatch). **`gpt-6-astra`** (GPT-6 Astra, OpenAI flagship since 2026-09-03, ~2.5× Sol pricing) is in the catalog and selected as of 2026-09-06 (codex CLI ≥ 0.153) — dispatchable via `model = "gpt-6-astra"`, but it carries **no ledger data yet**: A/B it via `dispatch-compare` vs gpt-5.6-sol before routing bulk work to it. Standing default is `gpt-5.6-sol`; `terra` remains the cost-to-green A/B candidate. Opus-grade without claude → `cursor` on `claude-opus-4-8-*` — **but cursor-Opus draws a *monthly* token budget that exhausts**, and when spent harness's catalog still lists it as available (no auto-block), so it will route and silently degrade/fail. **If cursor-Opus is exhausted: route the work to `codex`/gpt-5.6-sol, and `model_availability-block_model` the cursor-Opus id** (with a `blocked_until` ≈ month end) so the cron poller can't pick it.
 - **Renderable vs executable**: `rmap delegate --to` now renders a native prompt for all six adapters (`claude`/`codex`/`cursor`/`grok`/`antigravity`/`pi`), so each is a first-class `Roadmap.ingest(agent: …)` target dispatched directly on its own adapter — the old non-delegatable two-step is gone. rmap can also render `droid`, but harness has **no Droid adapter**, so `:droid` is rejected at the ingest/dispatch boundary (`{:invalid_agent, :droid}` / `{:unknown_adapter, "droid"}`). Adding an executor is two-sided: an rmap-lib `--to` target (the rmap binary is ours, `../rmap/` — already done for `droid`) **plus** a harness `AgentAdapter` listed in `Roadmap`'s `@valid_agents`.
 - **Worktree isolation**: all six shipped adapters declare `worktree_isolation: true`. `agy` does **not** honor Port `cwd` alone (Task 32/198) — the adapter pins the run worktree via `--add-dir <cwd>` in `build_command/1`, mirroring Codex's `exec --cd` fix (Task 41). `Harness.Run` trusts declared isolation and skips the main-checkout pollution snapshot for isolating adapters.
 
