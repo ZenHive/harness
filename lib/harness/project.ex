@@ -29,6 +29,8 @@ defmodule Harness.Project do
     pollution diff (`Harness.Worktree.Isolation`); `nil` inherits app defaults.
   - `warm_paths` — repo-relative gitignored directories to seed into fresh
     worktrees in addition to the default warm paths.
+  - `cache_preparation` — optional string-keyed preparation recipe; see
+    `Harness.ProjectCache` and `docs/project-cache.md`.
   - `landing_policy` — `:manual` by default; `:auto` means reviewer-approved
     runs are eligible for autonomous landing.
   - `target_branch` — branch in the code repository (`source`) where the
@@ -58,6 +60,7 @@ defmodule Harness.Project do
     concurrency_cap: nil,
     pollution_allowlist: nil,
     warm_paths: [],
+    cache_preparation: nil,
     landing_policy: :manual,
     target_branch: nil,
     reviewer: nil,
@@ -82,6 +85,7 @@ defmodule Harness.Project do
           concurrency_cap: pos_integer() | nil,
           pollution_allowlist: [String.t()] | nil,
           warm_paths: [String.t()],
+          cache_preparation: map() | nil,
           landing_policy: landing_policy(),
           target_branch: String.t() | nil,
           reviewer: atom() | nil,
