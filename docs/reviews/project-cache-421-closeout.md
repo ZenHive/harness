@@ -1,40 +1,42 @@
 # Task 421 follow-up (PR3 / ec761bd close-out) — Independent Review
 
-**Verdict: APPROVE.** The three defects from the prior round are correctly fixed, the new tests
-are real regression guards that fail on the pre-patch code, and the repo's dispatch gate plus the
-focused suite are green on the final staged patch.
+**Verdict: APPROVE.** All three defects from the prior round are fixed, the new tests are real
+regression guards that fail on the pre-patch code, my one recorded non-blocking defect is now
+closed, and every gate I ran on the final staged patch is green.
 
 Reviewer: independent evaluator (Cursor / `claude-opus-5-high`), read-only on source — I made
 **no source, test, roadmap, or doc edits** at any point.
 Checkout: `/data/postgresql/harness/cache-preparation`, branch `feat/project-cache-preparation`.
-Graded: 2026-09-08 03:37–03:47 UTC against the staged patch (`git diff HEAD`), 6 files.
+Graded: 2026-09-08 03:37–03:50 UTC against the final staged patch (`git diff HEAD`): 6 files,
+218 insertions / 24 deletions.
 
 This supersedes my 03:43 reject, which was blocked solely on two credo `--strict` nesting
-findings in the patch's own hunks. Both are now cleared by the `execute_owned/5` /
-`finish_failure/2` extractions, verified behavior-preserving by reading the diff: each lifts an
-existing branch into a named private with a `@spec`, same conditions, same return values, still
-evaluated inside the lock.
+findings in the patch's own hunks.
 
 ---
 
-## 1. Evidence
+## 1. Evidence (all on the final staged bytes)
 
 | Check | Artifact | Result |
 |---|---|---|
-| `mix check.dispatch` (final) | `/tmp/cache-close-check-dispatch-2.log` | **exit 0** — format, `compile --warnings-as-errors`, `credo --strict` ("5821 mods/funs, found no issues"), Doctor (100.0% doc / moduledoc / spec, "validation has passed"), Sobelow ("SCAN COMPLETE") |
-| Focused suite, final patch, 5 files `--no-retry` | `/tmp/cache-close-final-focused.json` | **96 passed, 0 failed**, 0 excluded, exit 0, 25.7 s |
-| `mix check.dispatch` (pre-extraction) | `/tmp/cache-close-check-dispatch.log` | exit 8 — the two nesting findings, now fixed |
-| Focused suite, pre-extraction (mine) | `/tmp/cache-close-review-focused.json` | 96 passed, 0 failed, 25.9 s |
-| New-coverage files only, pre-extraction | `/tmp/cache-close-new-only.json` | 10 passed, 0 failed, 1.56 s |
-| Focused suite (operator run) | `/tmp/cache-close-focused.json` | 124 passed, 0 failed, 1 excluded, 26.4 s |
+| `mix check.dispatch` | `/tmp/cc-gate3.log` | **exit 0** — format, `compile --warnings-as-errors`, `credo --strict` ("5821 mods/funs, found no issues"), Doctor (100.0% doc / moduledoc / spec, "validation has passed"), Sobelow ("SCAN COMPLETE") |
+| `mix dialyzer.json` | `/tmp/cc-dialyzer3.log` | **exit 0** — `"warnings": []`, `total: 0`, `skipped: 0`; PLT up to date, `.dialyzer_ignore.exs` in effect |
+| Focused suite, 5 files, `--no-retry` | `/tmp/cc-tests3.json` | **96 passed, 0 failed**, 0 excluded, exit 0, 26.3 s |
 
-The final focused run's 96 total is identical to the pre-extraction run's 96, which confirms the
-extraction changed neither test collection nor behavior; 0 failures across 96 means the new cases
-pass post-extraction. Both JSON artifacts are `--quiet` (summary-only, `tests: []`) by design, so
-per-test names are not recoverable from them; the new-coverage run resolves that by arithmetic
-instead — 10 collected = `copy_cancellation_test.exs` 3 (the `for` loop over `:remove` /
-`:retain` / `:crash_cleanup`) + `command_test.exs` 7 (6 pre-existing + 1 new startup test), so
-all three lock-serialization cases and the new startup test were genuinely collected and passed.
+Earlier artifacts, retained for the audit trail: `/tmp/cache-close-check-dispatch.log` (exit 8,
+the two nesting findings that blocked at 03:43), `/tmp/cache-close-check-dispatch-2.log` (exit 0
+after the extractions), `/tmp/cache-close-review-focused.json` and
+`/tmp/cache-close-final-focused.json` (96/0 both), `/tmp/cache-close-new-only.json` (10/0), and
+the operator run `/tmp/cache-close-focused.json` (124/0, 1 excluded).
+
+Two details that make the counts load-bearing rather than decorative. The `mix test.json`
+artifacts are `--quiet` (summary-only, `tests: []`) by design, so per-test names are not
+recoverable from them; the new-coverage-only run resolves that by arithmetic — 10 collected =
+`copy_cancellation_test.exs` 3 (the `for` loop over `:remove` / `:retain` / `:crash_cleanup`) +
+`command_test.exs` 7 (6 pre-existing + 1 new startup test), so all three lock-serialization cases
+and the new startup test were genuinely collected and passed. And the focused total held at
+exactly 96 across the pre-extraction, post-extraction, and post-`:aborted`-fix runs, which
+confirms neither follow-up edit changed test collection or behavior.
 
 Credo's function count rising 5819 → 5821 accounts for exactly the two extracted privates, and
 Doctor holding 100% spec coverage confirms both carry specs.
@@ -74,56 +76,47 @@ Doctor holding 100% spec coverage confirms both carry specs.
    `worktree.path` while `cleanup_for_run/2` locks the path parsed from `git worktree list
    --porcelain`, and a mismatch would have let finalization through immediately and failed the
    `refute_receive`.
+6. **The two extractions are behavior-preserving.** `execute_owned/5` and `finish_failure/2` each
+   lift an existing branch into a named private with a `@spec` — same conditions, same return
+   values, still evaluated inside the lock. Confirmed by reading the diff and by the unchanged
+   96-test result.
+7. **`:aborted` is now handled, mirroring the module's own precedent.** `with_write_lock/2` wraps
+   `:global.trans/3` in `case … do :aborted -> {:error, {:worktree_lock_aborted, path}}; result ->
+   result end`, exactly the shape `locked_worktree_add/2` already uses, and
+   `{:worktree_lock_aborted, String.t()}` was already a member of `t:error/0`. So `finish/3`'s and
+   `remove/1`'s `:ok | {:error, error()}` contracts are accurate again, and
+   `Settlement.finish_worktree/2`'s `{:error, reason}` branch catches the case that would
+   otherwise have raised `CaseClauseError` inside `settle/2` in the gen_statem's terminal `:enter`
+   handler. The widened spec (`result | {:error, error()} when result: var`) type-checks — dialyzer
+   is clean at 0 warnings.
 
-Withdrawn from my prior round: **generation cancellation semantics.** The operator explicitly
-requires interrupted builders not to publish; the pre-`rename` `Command.check/2` implements that,
-and my suggestion to publish the finished generation is void.
+## 3. Positions I withdrew or corrected during the review
 
-Corrected from my prior round: my "up to 30 minutes of gen_statem stall" figure does not apply.
-With the handshake and the pre-`Port.command` check, no new command starts after cancellation, so
-`recipe["timeout_ms"]` (1,800,000 ms default) no longer bounds the lock hold. The residual hold is
-one in-flight non-`Command` operation — the `git clone` / `git checkout`, the `publishable`
-`lstat` walk, or the `cp -R` — seconds to tens of seconds, and the new test asserts that wait
-deliberately. That is a design trade chosen over the race; I raised it once and it is the
-operator's call, so it forms no part of this verdict.
-
-## 3. One non-blocking defect, recorded not fixed (operator declined further edits)
-
-`:global.trans/3` is specced `Res | aborted` by OTP, and `with_write_lock/2` neither handles nor
-declares that:
-
-- `@spec with_write_lock(String.t(), (-> result)) :: result when result: var` claims the return is
-  exactly the fun's return, and `finish/3` / `remove/1` / `finish_failure/2` keep
-  `:ok | {:error, error()}`.
-- `Settlement.finish_worktree/2` matches only `:ok` and `{:error, reason}`, so an `:aborted` would
-  raise `CaseClauseError` inside `settle/2` — in the gen_statem's `:failed` / `:done` `:enter`
-  handler, i.e. a run crash at settle.
-- The module already treats this as reachable elsewhere: `locked_worktree_add/2` matches
-  `:aborted -> {:error, {:worktree_lock_aborted, repo}}`, and `t:error/0` carries a
-  `{:worktree_lock_aborted, String.t()}` member for exactly this.
-
-Not reachable on the deployment target — `trans/3` defaults `Retries` to `infinity` and `Nodes` is
-`[node()]`, so `set_lock` loops until acquired rather than returning `false`. Cheapest consistent
-fix, whenever this file is next touched, is to mirror the existing `locked_worktree_add/2` shape
-inside `with_write_lock/2`.
+- **Generation cancellation semantics — withdrawn.** The operator explicitly requires interrupted
+  builders not to publish; the pre-`rename` `Command.check/2` implements that, and my earlier
+  suggestion to publish the finished generation is void.
+- **"Up to 30 minutes of gen_statem stall" — corrected.** With the handshake and the
+  pre-`Port.command` check, no new command starts after cancellation, so `recipe["timeout_ms"]`
+  (1,800,000 ms default) no longer bounds the lock hold. The residual hold is one in-flight
+  non-`Command` operation — the `git clone` / `git checkout`, the `publishable` `lstat` walk, or
+  the `cp -R` — seconds to tens of seconds, and the new test asserts that wait deliberately. That
+  is a design trade chosen over the race; I raised it once and it is the operator's call, so it
+  forms no part of this verdict.
 
 ## 4. Scope — what I did not do
 
 - No source, test, roadmap, or doc edits; read-only throughout.
-- No full suite, no `mix precommit.full`, no live service, no foreign worktrees, no unrelated
+- No full suite and no `mix precommit.full`; no live service, no foreign worktrees, no unrelated
   processes or config. I inspected no baseline outside the two credo findings, both of which were
   in the patch and are now cleared.
-- `mix dialyzer.json` not run. It is the one gate that would most likely speak to §3's contract,
-  and it is not part of `check.dispatch`; §3 is unreachable on this target, so this does not
-  affect the verdict. Worth taking on the next `precommit.full` pass.
 - `docs/project-cache.md` (1 line) not independently diffed — two `git diff` invocations for that
   path returned empty output on a flaky shell, and it is a doc line with no bearing on the verdict.
 
 ## 5. Bottom line
 
-Behavior was already right at 03:43; the only blocker was a red dispatch gate from two credo
-nesting findings in the patch's own hunks, and the two extractions clear them without touching
-behavior. `mix check.dispatch` exits 0 with credo, Doctor, and Sobelow all clean, and the focused
-suite is 96/96 with zero failures on the final staged patch.
+Behavior was already right at 03:43. The credo blocker is cleared by two behavior-preserving
+extractions, and the `:aborted` contract gap is closed against the module's own precedent.
+`mix check.dispatch` exits 0 with credo, Doctor, and Sobelow clean; `mix dialyzer.json` reports
+zero warnings; the focused suite is 96/96 with zero failures on the final staged bytes.
 
 **Approve. Ready to commit.**
