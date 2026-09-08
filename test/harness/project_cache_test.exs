@@ -251,6 +251,171 @@ defmodule Harness.ProjectCacheTest do
     end
   end
 
+  test "recipe validation covers optional contracts and literal path bytes", c do
+    for field <- ["commands", "identity_commands", "restore_commands", "inputs", "paths"] do
+      for value <- [nil, false, "value", [nil], [" "], ["a" <> <<0>>]] do
+        assert {:error, :invalid_cache_preparation} = Recipe.normalize(Map.put(recipe(c), field, value))
+      end
+    end
+
+    for {field, value} <- [
+          {"paths", ["complete.json"]},
+          {"paths", ["deps", "deps"]},
+          {"paths", [".harness/cache"]},
+          {"inputs", ["../bad"]},
+          {"env", %{"" => "x"}},
+          {"env", %{"A=B" => "x"}},
+          {"env", %{"A" => "x" <> <<0>>}},
+          {"env", %URI{}},
+          {"timeout_ms", "10"},
+          {"version", 1}
+        ] do
+      assert {:error, :invalid_cache_preparation} = Recipe.normalize(Map.put(recipe(c), field, value))
+    end
+
+    assert {:error, :invalid_cache_preparation} = Recipe.normalize(%URI{})
+
+    for env_inputs <- [[], ["PATH"]] do
+      assert {:ok, _} = Recipe.normalize(Map.put(recipe(c), "env_inputs", env_inputs))
+    end
+
+    assert {:ok, normalized} = Recipe.normalize(Map.put(recipe(c), "inputs", ["file\tname\n"]))
+    assert normalized["inputs"] == ["file\tname\n"]
+  end
+
+  test "excluded additions, changes and deletions reuse the generation; build inputs invalidate", c do
+    exclusions = ["ROADMAP.md", "roadmap/data.json", "roadmap/tasks.toml"]
+    recipe = Map.put(recipe(c), "exclude_inputs", exclusions)
+    assert {:ok, cold} = ProjectCache.prepare(c.wt, recipe, cache_root: c.cache)
+
+    for content <- ["one", "two", nil], path <- exclusions do
+      absolute = Path.join(c.repo, path)
+      File.mkdir_p!(Path.dirname(absolute))
+      if content, do: File.write!(absolute, content), else: File.rm!(absolute)
+      commit(c.repo, path)
+      assert {:ok, %{state: :hit, key: key}} = ProjectCache.prepare(new_tree(c), recipe, cache_root: c.cache)
+      assert key == cold.key
+    end
+
+    Enum.reduce(["lib/app.ex", "config/config.exs", "mix.lock"], cold.key, fn path, previous ->
+      absolute = Path.join(c.repo, path)
+      File.mkdir_p!(Path.dirname(absolute))
+      File.write!(absolute, "changed build input")
+      commit(c.repo, path)
+      assert {:ok, %{state: :built, key: key}} = ProjectCache.prepare(new_tree(c), recipe, cache_root: c.cache)
+      refute key == previous
+      key
+    end)
+  end
+
+  test "exclusions are literal and directory matches respect slash boundaries and path bytes", c do
+    excluded = ["roadmap", "trailing/", "tab\tfile\n", " spaced ", "literal*"]
+    recipe = Map.put(recipe(c), "exclude_inputs", excluded)
+    assert {:ok, cold} = ProjectCache.prepare(c.wt, recipe, cache_root: c.cache)
+
+    for path <- ["roadmap/nested/file", "trailing/file", "tab\tfile\n", " spaced ", "literal*"] do
+      absolute = Path.join(c.repo, path)
+      File.mkdir_p!(Path.dirname(absolute))
+      File.write!(absolute, "excluded")
+      commit(c.repo, path)
+      assert {:ok, %{state: :hit, key: key}} = ProjectCache.prepare(new_tree(c), recipe, cache_root: c.cache)
+      assert key == cold.key
+    end
+
+    Enum.reduce(
+      ["roadmap-old/file", "roadmap.txt", "trailing-sibling", "tab\tfile", "spaced", "literal-other", "kept\tfile\n"],
+      cold.key,
+      fn path, previous ->
+        absolute = Path.join(c.repo, path)
+        File.mkdir_p!(Path.dirname(absolute))
+        File.write!(absolute, "included")
+        commit(c.repo, path)
+        assert {:ok, %{state: :built, key: key}} = ProjectCache.prepare(new_tree(c), recipe, cache_root: c.cache)
+        refute key == previous
+        key
+      end
+    )
+  end
+
+  test "empty and omitted exclusions preserve the independently reconstructed legacy key", c do
+    path = "kept\tfile\n"
+    File.write!(Path.join(c.repo, path), "retained bytes")
+    commit(c.repo, path)
+    wt = new_tree(c)
+    recipe = Map.put(recipe(c), "env_inputs", [])
+    # These are the pre-exclusion defaults and key tuple, independent of normalize/1.
+    legacy =
+      Map.merge(
+        %{
+          "inputs" => ["."],
+          "env" => %{},
+          "env_inputs" => nil,
+          "timeout_ms" => 1_800_000,
+          "version" => "1",
+          "restore_commands" => []
+        },
+        recipe
+      )
+
+    {tree, 0} = System.cmd("git", ["ls-tree", "-r", "-z", wt.base_sha, "--", "."], cd: c.repo)
+
+    identity =
+      {1, Path.expand(c.repo), tree, legacy, [:crypto.hash(:sha256, "tool-one")], :os.type(),
+       :erlang.system_info(:system_architecture), %{}}
+
+    expected = :sha256 |> :crypto.hash(:erlang.term_to_binary(identity, [:deterministic])) |> Base.encode16(case: :lower)
+    assert {:ok, %{state: :built, key: ^expected}} = ProjectCache.prepare(wt, recipe, cache_root: c.cache)
+
+    assert {:ok, %{state: :hit, key: ^expected}} =
+             ProjectCache.prepare(new_tree(c), Map.put(recipe, "exclude_inputs", []), cache_root: c.cache)
+
+    for policy <- [["absent"], ["another-absent"]] do
+      assert {:ok, %{state: :built, key: key}} =
+               ProjectCache.prepare(new_tree(c), Map.put(recipe, "exclude_inputs", policy), cache_root: c.cache)
+
+      policy_identity = put_elem(identity, 3, Map.put(legacy, "exclude_inputs", policy))
+
+      policy_key =
+        :sha256 |> :crypto.hash(:erlang.term_to_binary(policy_identity, [:deterministic])) |> Base.encode16(case: :lower)
+
+      assert key == policy_key
+      refute key == expected
+    end
+  end
+
+  test "exclusion validation rejects malformed and unsafe paths without normalizing valid bytes", c do
+    for value <- [
+          nil,
+          false,
+          "roadmap",
+          %{},
+          [nil],
+          [1],
+          [""],
+          [" \t\n"],
+          ["/abs"],
+          ["."],
+          ["./"],
+          [".."],
+          ["a/../b"],
+          [".git"],
+          ["a/.git/config"],
+          [".harness/cache"],
+          [".harness-active"],
+          ["nested/.harness-active"],
+          ["a" <> <<0>>]
+        ] do
+      assert {:error, :invalid_cache_preparation} = Recipe.normalize(Map.put(recipe(c), "exclude_inputs", value))
+    end
+
+    for paths <- [[], ["roadmap"], [" file\t\n"], ["literal*"]] do
+      assert {:ok, normalized} = Recipe.normalize(Map.put(recipe(c), "exclude_inputs", paths))
+      assert normalized["exclude_inputs"] == paths
+    end
+
+    assert {:error, :invalid_cache_preparation} = Recipe.normalize(Map.put(recipe(c), :exclude_inputs, []))
+  end
+
   defp recipe(c, command \\ "mkdir -p deps; printf prepared > deps/value") do
     %{
       "commands" => [command],

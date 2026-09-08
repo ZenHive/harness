@@ -48,7 +48,6 @@ defmodule Harness.ProjectCachePltTest do
     GitFixture.git!(repo, ["commit", "-qm", "real Elixir cache fixture"])
     project = ProjectFixture.from_repo(repo)
     {:ok, first} = Worktree.create(project, base_dir: base)
-    {:ok, second} = Worktree.create(project, base_dir: base)
     helper = Application.app_dir(:harness, "priv/cache/relocate_plt.exs")
     elixir_ebin = :elixir |> :code.lib_dir() |> List.to_string() |> Path.join("ebin")
     env = %{"ERL_FLAGS" => "+S 2:2"}
@@ -65,11 +64,17 @@ defmodule Harness.ProjectCachePltTest do
       "identity_commands" => ["elixir --version", "dialyzer --version"],
       "restore_commands" => ["elixir '#{helper}' priv/plts/project.plt"],
       "paths" => ["_build", "priv/plts"],
+      "exclude_inputs" => ["ROADMAP.md"],
       "env" => env
     }
 
     refute File.exists?(Path.join(repo, "priv/plts/project.plt"))
     assert {:ok, %{state: :built} = cold} = ProjectCache.prepare(first, recipe, cache_root: cache)
+    File.write!(Path.join(repo, "ROADMAP.md"), "roadmap-only revision")
+    GitFixture.git!(repo, ["add", "ROADMAP.md"])
+    GitFixture.git!(repo, ["commit", "-qm", "roadmap revision"])
+    {:ok, second} = Worktree.create(project, base_dir: base)
+    refute first.base_sha == second.base_sha
     assert {:ok, %{state: :hit} = warm} = ProjectCache.prepare(second, recipe, cache_root: cache)
     assert cold.key == warm.key
 

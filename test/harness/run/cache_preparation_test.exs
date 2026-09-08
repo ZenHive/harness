@@ -15,15 +15,20 @@ defmodule Harness.Run.CachePreparationTest do
     %{cache_root: root}
   end
 
-  test "preparation precedes agent dispatch and reviewer remains mandatory" do
+  test "roadmap revisions share one preparation, isolated copies and mandatory review", %{cache_root: root} do
     repo = GitFixture.init_repo()
     File.write!(Path.join(repo, ".gitignore"), "prepared/\n")
     GitFixture.git!(repo, ["add", ".gitignore"])
     GitFixture.git!(repo, ["commit", "-qm", "ignore cache outputs"])
     base = GitFixture.tmp_base()
 
+    counter = Path.join(base, "build-count")
+    File.mkdir_p!(base)
+
     recipe = %{
-      "commands" => ["mkdir -p prepared; printf bytes > prepared/value"],
+      "commands" => [~s(printf build >> "$COUNTER"; mkdir -p prepared; printf bytes > prepared/value)],
+      "env" => %{"COUNTER" => counter},
+      "exclude_inputs" => ["ROADMAP.md", "roadmap/data.json", "roadmap/tasks.toml"],
       "paths" => ["prepared"],
       "identity_commands" => ["printf tool"]
     }
@@ -36,10 +41,30 @@ defmodule Harness.Run.CachePreparationTest do
       |> Keyword.put(:retain_on_failure, true)
       |> Keyword.put(:reviewer_adapter_opts, command: {:review, "reject"})
 
-    {:ok, run_id, pid} = Run.Supervisor.start_run(item(), project, FakeAdapter, opts)
-    assert %Result{state: :failed} = result = await_result(run_id, pid)
-    assert File.read!(Path.join(result.worktree_path, "prepared/value")) == "bytes"
-    assert File.exists?(Path.join(result.worktree_path, ".harness/review.json"))
+    results =
+      for revision <- ["one", "two"] do
+        for path <- recipe["exclude_inputs"] do
+          absolute = Path.join(repo, path)
+          File.mkdir_p!(Path.dirname(absolute))
+          File.write!(absolute, revision)
+        end
+
+        GitFixture.git!(repo, ["add", "--" | recipe["exclude_inputs"]])
+        GitFixture.git!(repo, ["commit", "-qm", "roadmap revision"])
+        {:ok, run_id, pid} = Run.Supervisor.start_run(item(), project, FakeAdapter, opts)
+        assert %Result{state: :failed, reason: {:review_rejected, _report}} = result = await_result(run_id, pid)
+        assert File.read!(Path.join(result.worktree_path, "prepared/value")) == "bytes"
+        assert File.exists?(Path.join(result.worktree_path, ".harness/review.json"))
+        result
+      end
+
+    assert File.read!(counter) == "build"
+    assert [generation] = Path.wildcard(Path.join(root, "*/prepared/value"))
+    [first, second] = results
+    refute first.worktree_path == second.worktree_path
+    File.write!(Path.join(first.worktree_path, "prepared/value"), "agent edit")
+    assert File.read!(Path.join(second.worktree_path, "prepared/value")) == "bytes"
+    assert File.read!(generation) == "bytes"
   end
 
   test "cancel remains responsive while preparation runs", %{cache_root: root} do

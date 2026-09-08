@@ -7,6 +7,7 @@ defmodule Harness.ProjectCache.Recipe do
 
   @defaults %{
     "inputs" => ["."],
+    "exclude_inputs" => [],
     "env" => %{},
     "env_inputs" => nil,
     "timeout_ms" => 1_800_000,
@@ -42,7 +43,7 @@ defmodule Harness.ProjectCache.Recipe do
     Enum.sort(Map.keys(recipe)) == Enum.sort(Map.keys(@defaults) ++ @required) and
       strings?(recipe["commands"]) and strings?(recipe["identity_commands"]) and
       (recipe["restore_commands"] == [] or strings?(recipe["restore_commands"])) and
-      paths?(recipe["paths"]) and inputs?(recipe["inputs"]) and
+      paths?(recipe["paths"]) and inputs?(recipe["inputs"]) and exclusions?(recipe["exclude_inputs"]) and
       options?(recipe)
   end
 
@@ -73,6 +74,14 @@ defmodule Harness.ProjectCache.Recipe do
 
   @spec inputs?(term()) :: boolean()
   defp inputs?(inputs), do: strings?(inputs) and Enum.all?(inputs, &(&1 == "." or relative_path?(&1)))
+
+  @spec exclusions?(term()) :: boolean()
+  defp exclusions?([]), do: true
+
+  defp exclusions?(paths) do
+    strings?(paths) and
+      Enum.all?(paths, &(relative_path?(&1) and ".harness-active" not in Path.split(&1)))
+  end
 
   @spec environment?(term()) :: boolean()
   defp environment?(env) when is_map(env) and not is_struct(env) do

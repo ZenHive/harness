@@ -91,9 +91,105 @@ changes the key. Untracked operator configuration must be reflected in `env`,
 `version`, or an identity command that prints its digest. Preparation clones
 committed source, never uncommitted operator files or an active run's edits.
 
+`exclude_inputs` defaults to `[]`. It removes explicit repository-relative literal
+files or directories from the selected tracked inputs. Directory matches stop at
+slash boundaries: `roadmap` excludes `roadmap/tasks.toml`, but not `roadmap-old`
+or `roadmap.md`. Wildcards have no special meaning. Valid path bytes, including
+spaces, tabs and newlines, are preserved. Empty/whitespace entries, absolute
+paths, traversal, repository root, NUL and git/harness metadata are rejected.
+There is no automatic roadmap exclusion.
+
+Filtering reads NUL-delimited `git ls-tree -r -z` entries, separates metadata at
+the first tab, and preserves retained entry bytes and order. Exclusion policy is
+part of recipe identity, even for paths absent from the tree. Omitted and empty
+exclusions retain exactly the pre-exclusion cache key. This is the existing
+registry payload contract with one optional field; no migration is required.
+
 Bump `version` to force a new generation, including after changing an external
 restore helper. Different keys never mutate existing generations. A cache hit
 means a preparation completed for that key; it makes no claim about product tests.
+
+## Tapakly recipe and operational acceptance
+
+The operator snapshot `/tmp/tapakly-cache-recipe.json` read on 2026-09-08 supplies
+the following complete recipe, with only `exclude_inputs` added. Commands,
+output paths, toolchain probes, environment and restore helper are unchanged:
+
+```json
+{
+  "commands": [
+    "MIX_ENV=dev mix deps.get",
+    "MIX_ENV=dev mix deps.compile",
+    "MIX_ENV=test mix deps.get",
+    "MIX_ENV=test mix deps.compile",
+    "MIX_ENV=dev mix dialyzer --plt",
+    "npm ci --prefix assets --no-audit --no-fund"
+  ],
+  "env": {
+    "MIX_ENV": "dev"
+  },
+  "env_inputs": [
+    "PATH",
+    "MIX_ENV",
+    "MIX_TARGET",
+    "MIX_HOME",
+    "HEX_HOME",
+    "ERL_LIBS",
+    "ERL_FLAGS",
+    "ELIXIR_ERL_OPTIONS",
+    "CC",
+    "CFLAGS",
+    "CXXFLAGS",
+    "LDFLAGS"
+  ],
+  "identity_commands": [
+    "elixir --version",
+    "dialyzer --version",
+    "node --version",
+    "npm --version"
+  ],
+  "inputs": [
+    "."
+  ],
+  "paths": [
+    "deps",
+    "_build",
+    "assets/node_modules"
+  ],
+  "restore_commands": [
+    "elixir '/data/postgresql/harness/base/_build/dev/lib/harness/priv/cache/relocate_plt.exs' _build/dev/*.plt"
+  ],
+  "timeout_ms": 1800000,
+  "version": "tapakly-1",
+  "exclude_inputs": [
+    "ROADMAP.md",
+    "roadmap/data.json",
+    "roadmap/tasks.toml"
+  ]
+}
+```
+
+This full-build recipe keeps `inputs: ["."]`. Application source, configuration
+and lockfile changes still invalidate and can block agent start while preparation
+runs. Dialyxir's application discovery compiles the application even when the
+task receives `--no-compile`; a lockfile-only key would be incorrect.
+
+After implementation and independent review land, the orchestrator owns runtime
+module loading, real Tapakly prewarming and registry activation. Before activating,
+prepare the recipe against a real committed Tapakly base and record a cold
+`:built` result, key and elapsed time. Prepare a second isolated checkout at a
+revision differing only in the three excluded files: require `:hit`, the same
+key, one published generation and independent copied outputs. Run Tapakly's
+normal PLT checks in the consuming checkout with checking enabled and record
+exact command results. A preparation success never substitutes for reviewer
+approval. The automated real Elixir/PLT fixture also requires normal checks on
+both copies and a failing unrelocated-copy negative control.
+
+Record production evidence separately from fixture evidence. This implementation
+does not change the running service, registered recipe, active runs or Tapakly
+source. Roll back activation by upserting the project with
+`cache_preparation: nil`; this restores legacy warming. No generation deletion or
+destructive dependency command is needed.
 
 ## Publication, interruption and copies
 

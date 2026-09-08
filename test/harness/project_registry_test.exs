@@ -34,6 +34,7 @@ defmodule Harness.ProjectRegistryTest do
   alias Harness.GitFixture
   alias Harness.Landing.Settings, as: LandingSettings
   alias Harness.Oban, as: HarnessOban
+  alias Harness.ProjectCache.Recipe
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
   alias Harness.ProjectRegistry.Schema.Project, as: ProjectSchema
@@ -108,6 +109,8 @@ defmodule Harness.ProjectRegistryTest do
       assert :ok = ProjectRegistry.register(project)
       assert {:ok, restored} = ProjectRegistry.lookup("cache-project")
       assert restored.cache_preparation["commands"] == recipe["commands"]
+      assert {:ok, normalized} = Recipe.normalize(restored.cache_preparation)
+      assert normalized["exclude_inputs"] == []
 
       assert {:error, {:invalid_project, {:invalid_cache_preparation, _}}} =
                ProjectRegistry.upsert(%{project | cache_preparation: %{"paths" => ["../outside"]}})
@@ -500,6 +503,32 @@ defmodule Harness.ProjectRegistryTest do
 
       assert_queue_limit(name, 3)
       assert_queue_exists(HarnessOban.landing_queue_name(name))
+    end
+
+    @tag :integration
+    test "cache exclusion recipe persists and reloads through the existing payload" do
+      name = "cache-exclusions-#{System.unique_integer([:positive])}"
+
+      recipe = %{
+        "commands" => ["mix compile"],
+        "paths" => ["_build"],
+        "identity_commands" => ["elixir --version"],
+        "exclude_inputs" => ["ROADMAP.md", "roadmap", "tab\tfile\n"]
+      }
+
+      assert :ok = ProjectRegistry.upsert(%{sample_project(name) | cache_preparation: recipe})
+      assert {:ok, project} = ProjectRegistry.lookup(name)
+      assert_persisted_project(project)
+      assert :ok = ProjectRegistry.reset()
+      assert :ok = ProjectRegistry.reload_persisted_state()
+      assert {:ok, restored} = ProjectRegistry.lookup(name)
+      assert restored.cache_preparation == project.cache_preparation
+      assert restored.cache_preparation["exclude_inputs"] == recipe["exclude_inputs"]
+
+      assert {:error, {:invalid_project, {:invalid_cache_preparation, _}}} =
+               ProjectRegistry.upsert(%{restored | cache_preparation: Map.put(recipe, "exclude_inputs", ["../escape"])})
+
+      assert_persisted_project(restored)
     end
 
     @tag :integration

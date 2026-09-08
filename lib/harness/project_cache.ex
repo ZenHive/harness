@@ -113,8 +113,8 @@ defmodule Harness.ProjectCache do
       identity = {
         1,
         Path.expand(worktree.repo),
-        inputs,
-        recipe,
+        filter_inputs(inputs, recipe["exclude_inputs"]),
+        recipe_identity(recipe),
         tools,
         :os.type(),
         :erlang.system_info(:system_architecture),
@@ -123,6 +123,29 @@ defmodule Harness.ProjectCache do
 
       {:ok, :sha256 |> :crypto.hash(:erlang.term_to_binary(identity, [:deterministic])) |> Base.encode16(case: :lower)}
     end
+  end
+
+  @spec recipe_identity(map()) :: map()
+  defp recipe_identity(%{"exclude_inputs" => []} = recipe), do: Map.delete(recipe, "exclude_inputs")
+  defp recipe_identity(recipe), do: recipe
+
+  @spec filter_inputs(binary(), [String.t()]) :: binary()
+  defp filter_inputs(inputs, []), do: inputs
+
+  defp filter_inputs(inputs, exclusions) do
+    inputs
+    |> :binary.split(<<0>>, [:global, :trim_all])
+    |> Enum.reject(fn entry ->
+      [_metadata, path] = :binary.split(entry, "\t")
+      Enum.any?(exclusions, &excluded_path?(path, &1))
+    end)
+    |> Enum.map_join(&(&1 <> <<0>>))
+  end
+
+  @spec excluded_path?(binary(), binary()) :: boolean()
+  defp excluded_path?(path, exclusion) do
+    directory = if String.ends_with?(exclusion, "/"), do: exclusion, else: exclusion <> "/"
+    path == exclusion or String.starts_with?(path, directory)
   end
 
   @spec identity_env(map(), [String.t()] | nil) :: map()
