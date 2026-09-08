@@ -62,6 +62,7 @@ defmodule Harness.Run.CachePreparationTest do
     assert [generation] = Path.wildcard(Path.join(root, "*/prepared/value"))
     [first, second] = results
     refute first.worktree_path == second.worktree_path
+    refute worktree_head(first.worktree_path) == worktree_head(second.worktree_path)
     File.write!(Path.join(first.worktree_path, "prepared/value"), "agent edit")
     assert File.read!(Path.join(second.worktree_path, "prepared/value")) == "bytes"
     assert File.read!(generation) == "bytes"
@@ -89,6 +90,12 @@ defmodule Harness.Run.CachePreparationTest do
     assert :ok = Run.cancel(pid)
     assert %Result{state: :failed} = await_result(run_id, pid)
     assert Path.wildcard(Path.join(root, "*/complete.json")) == []
+  end
+
+  @spec worktree_head(String.t()) :: String.t()
+  defp worktree_head(path) do
+    {sha, 0} = System.cmd("git", ["-C", path, "rev-parse", "HEAD"])
+    String.trim(sha)
   end
 
   defp await_file(path, attempts \\ 500)

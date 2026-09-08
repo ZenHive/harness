@@ -2,10 +2,59 @@
 
 ## Evaluator status
 
-Independent harness review is pending. The observations below were produced by
-the implementer (Codex), not by the evaluator, and are not an approval. The
-harness reviewer must run the focused suite and `mix check.dispatch`, then append
-its identity, exact results and verdict here before approving.
+**Verdict: APPROVE** (harness run `run-1788858693817-9d7b2db7`, review attempt 1).
+
+Independent reviewer: Cursor/Grok 4.6, cross-family gate on the implementer
+delivery at `8433651`. Production Tapakly prewarm/registry activation was not
+performed in this worktree (orchestrator-owned after land).
+
+Reviewer fix committed in this worktree: the RunCase regression now also asserts
+the two retained worktrees are at distinct `HEAD` SHAs, so a stale-base create
+cannot silently share one build.
+
+## Independent reviewer checks — 2026-09-08
+
+Focused suite (including `:integration`):
+
+```sh
+mix test.json test/harness/project_cache_test.exs test/harness/project_cache_plt_test.exs test/harness/run/cache_preparation_test.exs test/harness/project_registry_test.exs --include integration --no-retry --quiet --cover --output /tmp/review-423-focused-1788858693817.json
+```
+
+Exit 0: 82 passed, 0 failed/invalid/excluded/skipped; 52.512 seconds.
+`Harness.ProjectCache`: 100% (70/70); `Harness.ProjectCache.Recipe`: 100% (31/31).
+
+Real Elixir/PLT fixture evidence from that execution:
+
+```json
+{"copied":["_build","priv/plts"],"cold_ms":44904,"warm_ms":1676,"plt_bytes":2308425,"dependency_modules":1,"normal_plt_checks":2,"unrelocated_negative_control_status":1}
+```
+
+After pinning distinct lifecycle SHAs:
+
+```sh
+mix test.json test/harness/run/cache_preparation_test.exs --include integration --no-retry --quiet --output /tmp/review-423-lifecycle.json
+```
+
+Exit 0: 2 passed, 0 failed.
+
+Dispatch gate:
+
+```sh
+mix check.dispatch > /tmp/harness-check-dispatch-review-423.log 2>&1
+mix check.dispatch > /tmp/harness-check-dispatch-review-423-final.log 2>&1
+```
+
+Both exit 0. Format, `compile --warnings-as-errors`, Credo strict (no issues),
+Doctor 242/242 modules at 100% doc/spec coverage, Sobelow scan complete with no
+findings. `git diff --check` clean on the delivery plus reviewer edit.
+
+The logged `FunctionClauseError` in `Path.expand/1` is the existing
+`cache_root: nil` crash-path test, not a new defect.
+
+Tapakly recipe documented in `docs/project-cache.md` matches
+`/tmp/tapakly-cache-recipe.json` with only `exclude_inputs` added
+(`ROADMAP.md`, `roadmap/data.json`, `roadmap/tasks.toml`). Generic recipe
+defaults were not replaced with Tapakly.
 
 ## Implementer checks — 2026-09-08
 
