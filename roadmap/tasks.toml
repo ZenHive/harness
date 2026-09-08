@@ -13119,3 +13119,30 @@ Tapakly required operator-installed vector/PostGIS for test databases. Current T
 """
 created_at = "2026-09-08"
 scored_at = "2026-09-08"
+
+[[task]]
+id = "423"
+phase = 4
+bundle = "multi-agent"
+status = "pending"
+title = "Preserve project cache generations across explicit non-build input changes"
+scores = { d = 4, b = 7, u = 7 }
+acceptance_criteria = ["Explicit exclude_inputs preserves cache hits across roadmap-only commits while code/config/lock changes invalidate", "Omitted/empty exclusions retain pre-change cache keys; validation and byte-safe path filtering are tested", "Two real run-lifecycle tests share one build across roadmap revisions and retain isolated copies plus reviewer gating", "Independent reviewer runs focused tests and dispatch checks and records evidence"]
+touches = ["lib/harness/project_cache.ex", "lib/harness/project_cache/recipe.ex", "test/harness/project_cache_test.exs", "test/harness/run/cache_preparation_test.exs", "test/harness/project_cache_plt_test.exs", "test/harness/project_registry_test.exs", "docs/project-cache.md"]
+assignee = "codex"
+model = "gpt-6-astra"
+body = """
+Implement the user-approved cache regression fix. This is a harness runtime/recipe contract change, hence dispatch + independent reviewer. User explicitly accepts blocking agent start on genuine build-input changes. Do not replace this task with a background builder or split-cache redesign.
+
+Evidence: PR3 13f2261 introduced preparation. Live Tapakly recipe inputs=["."] hashes all tracked content. Bases fd58653dacfde7088749047499ed072a65adfb74 and 78a68e5793cee4c677566950884856521768a1b2 differ ONLY in ROADMAP.md, roadmap/data.json, roadmap/tasks.toml. Cache builds took 545520 and 653285 ms; the waiting run was executing mix dialyzer --plt, not deadlocked. Removing those exact three entries from real git ls-tree bytes gives identical SHA256 381e64d3d7147fd454117ef4f197520654a26bc6d9ca928ad99e7fe2b9b21336. Local Dialyxir Project.cons_apps/0 compiles the application, even with --no-compile at task level, so application source must remain in the key. No lockfile-only shortcut.
+
+Add optional string-keyed recipe exclude_inputs default []. It is a list of explicit repo-relative literal files or directory paths (no wildcard interpretation). Reject invalid types, empty/whitespace entries, absolute paths, traversal, NUL, repository root and git/harness metadata, using existing path validation where appropriate. Directory matching only at slash boundaries. No global automatic roadmap exclusion. Keep inputs default ["."]. In key/5 read git ls-tree -r -z as today, split NUL entries and metadata/path at FIRST tab; filter excluded paths, preserve retained bytes and order exactly. git ls-tree DOES NOT support exclude pathspec magic on this host: do not use it. Exclusions participate in recipe identity. When empty remove the new field from the hashed recipe, preserving old cache keys exactly. Do not trim or normalize actual valid path bytes, including tabs/newlines. Recipe schema travels through existing registry validation/persistence; no migration.
+
+Before mutating existing modules obey coverage gate (mix test.json --cover --quiet --output unique /tmp path, standard >=80%, critical parsers >=95%; add missing coverage first). Re-read existing code/tests. Add meaningful regression tests for changing/adding/removing excluded entries; included application source/config/lock changes; exclusion policy changes; omitted/empty legacy key compatibility (independently compute old key or pin old implementation evidence); directory sibling boundaries, tab/newline names, invalid inputs, registry round trip. Extend RunCase regression to two roadmap-only revisions, build once, isolated copied output, reviewer still required. Extend real Elixir/PLT test to a roadmap-only revision between cold and warm; normal PLT checks and negative control remain mandatory. No mock replacing live Elixir/PLT semantics. Do not start another driver BEAM or Phoenix server; mix test is allowed. No destructive dependency/cache commands.
+
+Document in docs/project-cache.md the semantics, exact full Tapakly recipe (existing commands, paths, toolchain/env unchanged, inputs=["."], exclude_inputs=["ROADMAP.md","roadmap/data.json","roadmap/tasks.toml"]), and cold/hit/normal-PLT live acceptance and rollback cache_preparation:nil. Preserve existing generic recipes rather than hardcoding Tapakly into defaults. Docs explain source changes still invalidate with this full-build recipe. Source current live recipe read-only via Tidewave on 4018, or /tmp/tapakly-cache-recipe.json (operator host). The orchestrator owns production Tapakly prewarming, registry activation and runtime module loading AFTER this implementation/review lands; do not change registry, running service, active runs, or consuming source. Save independent review evidence in a tracked docs/reviews file with exact check results.
+
+The user requested full execution including operational activation. Your delivery is the implementation/review portion; orchestrator completes real Tapakly prewarm and activation. Do not spawn recursive harness runs for this assigned implementation. Fix hook flags on your touched files, run focused tests and mix check.dispatch, commit only your paths. No unrelated cleanup.
+"""
+created_at = "2026-09-08"
+scored_at = "2026-09-08"

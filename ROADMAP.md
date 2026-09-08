@@ -79,6 +79,7 @@
 | Task 366 `[P]` | ⬜ | 🎁 **multi-agent** · Add Kimi Code headless adapter + full roster wiring [D:5/B:7/U:6 → Eff:1.3?] 📋 |
 | Task 421 | ✅ | 🎁 **multi-agent** · Prepare keyed project caches before agent fan-out [D:6/B:8/U:8 → Eff:1.33] 📋 |
 | Task 422 | ⬜ | 🎁 **multi-agent** · Consume explicitly prepared test database templates for isolated runs [D:5/B:6/U:5 → Eff:1.1] 📋 |
+| Task 423 | ⬜ | 🎁 **multi-agent** · Preserve project cache generations across explicit non-build input changes [D:4/B:7/U:7 → Eff:1.75] 🚀 |
 <!-- TASKS:END -->
 
 ---
