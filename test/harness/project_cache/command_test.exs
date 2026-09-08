@@ -24,6 +24,7 @@ defmodule Harness.ProjectCache.CommandTest do
              Command.run("true", System.tmp_dir!(), %{"PATH" => "/nonexistent"}, owner, deadline)
 
     original = System.fetch_env!("PATH")
+    on_exit(fn -> System.put_env("PATH", original) end)
 
     try do
       System.put_env("PATH", "/nonexistent")
@@ -62,6 +63,11 @@ defmodule Harness.ProjectCache.CommandTest do
     original = System.get_env("CACHE_TEST_SHELL")
     build = System.get_env("CACHE_TEST_BUILD")
 
+    on_exit(fn ->
+      restore_env("CACHE_TEST_SHELL", original)
+      restore_env("CACHE_TEST_BUILD", build)
+    end)
+
     try do
       {:ok, one} = Harness.Worktree.create(project, base_dir: base)
       assert {:ok, a} = Harness.ProjectCache.prepare(one, recipe, cache_root: root)
@@ -82,6 +88,7 @@ defmodule Harness.ProjectCache.CommandTest do
   test "a command cannot inherit environment values added after the snapshot" do
     key = "CACHE_TEST_LATE_ENV"
     original = System.get_env(key)
+    on_exit(fn -> restore_env(key, original) end)
     snapshot = Map.delete(System.get_env(), key)
     owner = Process.monitor(self())
 
@@ -122,6 +129,69 @@ defmodule Harness.ProjectCache.CommandTest do
     after
       Port.close(holder)
     end
+  end
+
+  test "startup honors short deadlines and owner cancellation before running user code" do
+    base = GitFixture.tmp_base()
+    File.mkdir_p!(base)
+    fifo = Path.join(base, "start")
+    ready = Path.join(base, "ready")
+    assert {_, 0} = System.cmd("mkfifo", [fifo])
+    wrapper = Path.join(base, "setsid")
+    File.write!(wrapper, ~s(#!/bin/sh\nprintf ready > "$READY"\nread permit < "$FIFO"\n))
+    File.chmod!(wrapper, 0o755)
+    original = System.fetch_env!("PATH")
+    on_exit(fn -> System.put_env("PATH", original) end)
+    System.put_env("PATH", base <> ":" <> original)
+
+    try do
+      for mode <- [:timeout, :cancel] do
+        File.rm(ready)
+
+        owner =
+          spawn(fn ->
+            receive do
+              :stop -> :ok
+            end
+          end)
+
+        task =
+          Task.async(fn ->
+            ref = Process.monitor(owner)
+            budget = if mode == :timeout, do: 100, else: 5000
+
+            Command.run(
+              "touch must-not-run",
+              base,
+              %{"READY" => ready, "FIFO" => fifo},
+              ref,
+              System.monotonic_time(:millisecond) + budget
+            )
+          end)
+
+        await_ready(ready)
+        if mode == :cancel, do: send(owner, :stop)
+        expected = if mode == :timeout, do: :timeout, else: :interrupted
+        assert {:error, ^expected} = Task.await(task, 500)
+        send(owner, :stop)
+        refute File.exists?(Path.join(base, "must-not-run"))
+      end
+    after
+      System.put_env("PATH", original)
+    end
+  end
+
+  defp await_ready(path, attempts \\ 500)
+  defp await_ready(_path, 0), do: flunk("startup did not reach barrier")
+
+  defp await_ready(path, attempts) do
+    if File.exists?(path),
+      do: :ok,
+      else:
+        (receive do
+         after
+           10 -> await_ready(path, attempts - 1)
+         end)
   end
 
   defp restore_env(key, nil), do: System.delete_env(key)

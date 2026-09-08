@@ -56,12 +56,22 @@ defmodule Harness.ProjectCache do
     task =
       Task.Supervisor.async_nolink(Harness.Run.TaskSupervisor, fn ->
         owner = Process.monitor(caller)
-        execute(worktree, recipe, opts, owner)
+
+        Worktree.with_write_lock(worktree.path, fn ->
+          execute_owned(caller, worktree, recipe, opts, owner)
+        end)
       end)
 
     Task.await(task, :infinity)
   catch
     :exit, reason -> {:error, {:preparation_crashed, reason}}
+  end
+
+  @spec execute_owned(pid(), Worktree.t(), map(), keyword(), reference()) :: {:ok, map()} | {:error, term()}
+  defp execute_owned(caller, worktree, recipe, opts, owner) do
+    if Process.alive?(caller),
+      do: execute(worktree, recipe, opts, owner),
+      else: {:error, :interrupted}
   end
 
   # Root is operator configuration; descendants use a digest and generated stage id.

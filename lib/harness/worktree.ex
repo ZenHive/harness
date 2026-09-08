@@ -653,15 +653,20 @@ defmodule Harness.Worktree do
   def finish(worktree, outcome, opts \\ [])
 
   def finish(%__MODULE__{} = worktree, :success, _opts) do
-    with :ok <- deactivate(worktree) do
-      remove(worktree)
-    end
+    with_write_lock(worktree.path, fn ->
+      with :ok <- deactivate(worktree), do: remove(worktree)
+    end)
   end
 
   def finish(%__MODULE__{} = worktree, :failure, opts) do
-    with :ok <- deactivate(worktree) do
-      if retain_on_failure?(opts), do: retain(worktree), else: remove(worktree)
-    end
+    with_write_lock(worktree.path, fn ->
+      with :ok <- deactivate(worktree), do: finish_failure(worktree, opts)
+    end)
+  end
+
+  @spec finish_failure(t(), keyword()) :: :ok | {:error, error()}
+  defp finish_failure(worktree, opts) do
+    if retain_on_failure?(opts), do: retain(worktree), else: remove(worktree)
   end
 
   @doc """
@@ -702,9 +707,20 @@ defmodule Harness.Worktree do
   """
   @spec remove(t()) :: :ok | {:error, error()}
   def remove(%__MODULE__{path: path, repo: repo}) do
-    with {:ok, _removed} <- Git.run(["worktree", "remove", "--force", path], repo),
-         {:ok, _pruned} <- Git.run(["worktree", "prune"], repo) do
-      :ok
+    with_write_lock(path, fn ->
+      with {:ok, _removed} <- Git.run(["worktree", "remove", "--force", path], repo),
+           {:ok, _pruned} <- Git.run(["worktree", "prune"], repo) do
+        :ok
+      end
+    end)
+  end
+
+  @doc "Serializes preparation writes and finalization for one worktree on this node."
+  @spec with_write_lock(String.t(), (-> result)) :: result | {:error, error()} when result: var
+  def with_write_lock(path, fun) do
+    case :global.trans({{__MODULE__, :writes, Path.expand(path)}, self()}, fun, [node()]) do
+      :aborted -> {:error, {:worktree_lock_aborted, path}}
+      result -> result
     end
   end
 
@@ -752,7 +768,7 @@ defmodule Harness.Worktree do
     branch = @branch_prefix <> run_id
 
     Enum.each(worktree_paths_for_branch(repo, branch), fn path ->
-      _ = Git.run(["worktree", "remove", "--force", path], repo)
+      with_write_lock(path, fn -> Git.run(["worktree", "remove", "--force", path], repo) end)
     end)
 
     _ = Git.run(["worktree", "prune"], repo)

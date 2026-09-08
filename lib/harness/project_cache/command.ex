@@ -13,22 +13,29 @@ defmodule Harness.ProjectCache.Command do
       "--wait",
       "sh",
       "-c",
-      ~S(printf '__HARNESS_CACHE_PGID__=%s\n' "$$"; exec sh -c "$1"),
+      ~S(printf '__HARNESS_CACHE_PGID__=%s\n' "$$"; IFS= read -r permit || exit; exec sh -c "$1"),
       "cache-command",
       command
     ]
 
     with {:ok, port} <- open("setsid", args, cwd, env) do
       try do
-        case started(port, deadline, "") do
+        case started(port, owner, deadline, "") do
           {:ok, group, output} ->
             result =
-              collect(port, owner, deadline, output, :crypto.hash_update(:crypto.hash_init(:sha256), output), capture)
+              with :ok <- check(owner, deadline) do
+                Port.command(port, "go\n")
+                collect(port, owner, deadline, output, :crypto.hash_update(:crypto.hash_init(:sha256), output), capture)
+              end
 
             if result in [{:error, :timeout}, {:error, :interrupted}], do: stop_group(port, group)
             result
 
-          {:error, _} = error ->
+          {:error, reason} = error ->
+            if reason in [:timeout, :interrupted] do
+              if pid = OSProcess.os_pid(port), do: OSProcess.sigkill(pid)
+            end
+
             error
         end
       after
@@ -174,8 +181,8 @@ defmodule Harness.ProjectCache.Command do
     end
   end
 
-  @spec started(port(), integer(), binary()) :: {:ok, pos_integer(), binary()} | {:error, term()}
-  defp started(port, deadline, buffer) do
+  @spec started(port(), reference(), integer(), binary()) :: {:ok, pos_integer(), binary()} | {:error, term()}
+  defp started(port, owner, deadline, buffer) do
     case String.split(buffer, "\n", parts: 2) do
       ["__HARNESS_CACHE_PGID__=" <> pid, rest] ->
         case Integer.parse(pid) do
@@ -184,20 +191,21 @@ defmodule Harness.ProjectCache.Command do
         end
 
       [_diagnostic, rest] ->
-        started(port, deadline, rest)
+        started(port, owner, deadline, rest)
 
       [partial] ->
-        await_start(port, deadline, partial)
+        await_start(port, owner, deadline, partial)
     end
   end
 
-  @spec await_start(port(), integer(), binary()) :: {:ok, pos_integer(), binary()} | {:error, term()}
-  defp await_start(port, deadline, buffer) do
+  @spec await_start(port(), reference(), integer(), binary()) :: {:ok, pos_integer(), binary()} | {:error, term()}
+  defp await_start(port, owner, deadline, buffer) do
     receive do
-      {^port, {:data, data}} -> started(port, deadline, tail(buffer <> data))
+      {^port, {:data, data}} -> started(port, owner, deadline, tail(buffer <> data))
       {^port, {:exit_status, status}} -> {:error, {:command_start_exit, status}}
+      {:DOWN, ^owner, :process, _pid, _reason} -> {:error, :interrupted}
     after
-      max(remaining(deadline), 1000) -> {:error, :timeout}
+      remaining(deadline) -> {:error, :timeout}
     end
   end
 

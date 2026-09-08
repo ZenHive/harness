@@ -130,7 +130,7 @@ A later request retries. Waiters share their own end-to-end deadline; if a
 builder exhausts a waiter's budget, that run proceeds cold for the declared
 paths instead of starting an agent against an unfinished generation. The deadline covers lock waiting and commands and is
 checked before publication/installation; filesystem operations already executing
-finish before cleanup. The run state machine stays responsive during preparation.
+finish before cleanup. The run state machine stays responsive during preparation. A per-worktree write lock on the owning node serializes preparation with finalization and crash cleanup. Cancellation can acknowledge promptly, but settlement waits for an already-running filesystem copy to finish and its stage to be removed; it cannot remove or retain a worktree while the preparation worker is still writing. A worker whose caller died before acquiring the lock does no preparation.
 
 A hard host/BEAM crash may leave an abandoned `.building-*` directory. No command
 can publish it: publication is owned by the BEAM, and retries use a new stage.
