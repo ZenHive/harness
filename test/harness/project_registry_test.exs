@@ -102,6 +102,20 @@ defmodule Harness.ProjectRegistryTest do
       assert project.landing_policy == :manual
     end
 
+    test "cache preparation is validated and normalized through project registration" do
+      recipe = %{"commands" => ["mix deps.compile"], "paths" => ["_build"], "identity_commands" => ["elixir --version"]}
+      project = %{sample_project("cache-project") | cache_preparation: recipe}
+      assert :ok = ProjectRegistry.register(project)
+      assert {:ok, restored} = ProjectRegistry.lookup("cache-project")
+      assert restored.cache_preparation["commands"] == recipe["commands"]
+
+      assert {:error, {:invalid_project, {:invalid_cache_preparation, _}}} =
+               ProjectRegistry.upsert(%{project | cache_preparation: %{"paths" => ["../outside"]}})
+
+      assert {:ok, unchanged} = ProjectRegistry.lookup("cache-project")
+      assert unchanged.cache_preparation == restored.cache_preparation
+    end
+
     test "register/1 rejects a concurrency_cap that is not a positive integer" do
       attrs = [
         name: "bad-cap",

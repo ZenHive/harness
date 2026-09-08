@@ -2,11 +2,13 @@ defmodule Harness.ProjectRegistry.OptionalFields do
   @moduledoc false
 
   alias Harness.Project
+  alias Harness.ProjectCache.Recipe
 
   @fields [
     {:concurrency_cap, nil},
     {:pollution_allowlist, nil},
     {:warm_paths, []},
+    {:cache_preparation, nil},
     {:landing_policy, :manual},
     {:target_branch, nil},
     {:reviewer, nil},
@@ -18,6 +20,7 @@ defmodule Harness.ProjectRegistry.OptionalFields do
     concurrency_cap: :invalid_concurrency_cap,
     pollution_allowlist: :invalid_pollution_allowlist,
     warm_paths: :invalid_warm_paths,
+    cache_preparation: :invalid_cache_preparation,
     landing_policy: :invalid_landing_policy,
     target_branch: :invalid_target_branch,
     reviewer: :invalid_reviewer,
@@ -58,6 +61,13 @@ defmodule Harness.ProjectRegistry.OptionalFields do
   defp cast(:pollution_allowlist, list), do: string_list(:pollution_allowlist, list)
 
   defp cast(:warm_paths, list), do: string_list(:warm_paths, list)
+
+  defp cast(:cache_preparation, recipe) do
+    case Recipe.normalize(recipe) do
+      {:ok, normalized} -> {:ok, normalized}
+      {:error, _} -> invalid(:cache_preparation, recipe)
+    end
+  end
 
   defp cast(:landing_policy, policy) when policy in [:manual, :auto], do: {:ok, policy}
   defp cast(:landing_policy, other), do: invalid(:landing_policy, other)

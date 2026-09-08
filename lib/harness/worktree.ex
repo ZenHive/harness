@@ -258,7 +258,8 @@ defmodule Harness.Worktree do
 
   Which directories to seed starts with the `:harness, :worktree, :warm_paths`
   app config, else `#{inspect(@default_warm_paths)}`. `opts[:warm_paths]` adds
-  project-specific directories to that base list.
+  project-specific directories to that base list. `opts[:exclude_paths]` withholds
+  paths owned by a keyed preparation recipe, including overlapping ancestors.
   """
   @spec warm(t(), keyword()) :: :ok
   def warm(%__MODULE__{path: path, repo: repo}, opts \\ []) do
@@ -276,7 +277,14 @@ defmodule Harness.Worktree do
 
   @spec warm_paths(keyword()) :: [String.t()]
   defp warm_paths(opts) do
-    Enum.uniq(resolved_default_warm_paths() ++ Keyword.get(opts, :warm_paths, []))
+    (resolved_default_warm_paths() ++ Keyword.get(opts, :warm_paths, []))
+    |> Enum.uniq()
+    |> Enum.reject(fn path ->
+      Enum.any?(Keyword.get(opts, :exclude_paths, []), fn excluded ->
+        path == excluded or String.starts_with?(path, excluded <> "/") or
+          String.starts_with?(excluded, path <> "/")
+      end)
+    end)
   end
 
   @spec resolved_default_warm_paths() :: [String.t()]

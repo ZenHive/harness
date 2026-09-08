@@ -19417,6 +19417,97 @@
       "created_at": "2026-08-29",
       "scored_at": "2026-08-29",
       "cross_repo": []
+    },
+    {
+      "id": "421",
+      "phase": 4,
+      "bundle": "multi-agent",
+      "status": "done",
+      "title": "Prepare keyed project caches before agent fan-out",
+      "scores": {
+        "d": 6,
+        "b": 8,
+        "u": 8
+      },
+      "eff": 1.33,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-6-astra",
+      "acceptance_criteria": [
+        "Real cold-to-warm command execution, concurrent deduplication and input/toolchain/environment invalidation are tested",
+        "Failed and interrupted preparation cannot publish partial artifacts; retries recover",
+        "Each run receives isolated copies without replacing existing agent state; legacy warming and cold audits remain compatible",
+        "Preparation runs off the run state machine and does not obstruct cancellation",
+        "Document Elixir dev/test deps, PLTs, frontend and browser path recipes and explicit invalidation ownership",
+        "Record elapsed/copy evidence for a real Elixir/PLT scenario when feasible and independent review evidence"
+      ],
+      "touches": [
+        "lib/harness/project.ex",
+        "lib/harness/project_registry/optional_fields.ex",
+        "lib/harness/project_cache.ex",
+        "lib/harness/project_cache/artifacts.ex",
+        "lib/harness/project_cache/command.ex",
+        "lib/harness/project_cache/recipe.ex",
+        "lib/harness/run/states/dispatched.ex",
+        "lib/harness/worktree.ex",
+        "priv/cache/relocate_plt.exs",
+        "test/harness/project_cache_test.exs",
+        "test/harness/project_cache_plt_test.exs",
+        "test/harness/project_cache/command_test.exs",
+        "test/harness/project_registry_test.exs",
+        "test/harness/project_registry/optional_fields_test.exs",
+        "test/harness/run/cache_preparation_test.exs",
+        "docs/project-cache.md"
+      ],
+      "body": "Operator requested this Codex/Astra Herdr session to implement and independently review in an isolated checkout. Current warm/2 copies parent deps, _build and priv/plts; Tapakly adds assets/node_modules, but had no parent PLT. Two reviewer worktrees built 8039/8041 dependency modules independently; one PLT build measured 6m12s. T147/T226/T252/T309/T410 are completed history, not this feature. Live 2026-09-08: harness and tapakly cron effective=false; leave operator switches and service untouched.\n\nBuild an opt-in project recipe (commands, output paths, identity inputs, toolchain probes, environment). Prepare in a private checkout before handing isolated copies to agents; serialize builders per compatible key; publish only a completed generation atomically. Failed/interrupted preparation reports mechanical status, publishes nothing, and does not claim product correctness. Preserve legacy warm_paths, non-clobbering copies and un-warmed audit checkout. Reviewer still executes and judges actual checks. No Harness.Verification. Treat test DB template provisioning separately after inspecting current isolation.\n",
+      "created_at": "2026-09-08",
+      "started_at": "2026-09-08",
+      "done_at": "2026-09-08",
+      "scored_at": "2026-09-08",
+      "implemented": "Opt-in project cache recipes prepare compatible generations under a cross-process lock, publish completed artifacts atomically, and seed isolated copies before dispatch. Cancellation, invalidation, legacy warming and cold audits are tested. Includes classic PLT relocation and independent real cold/warm evidence; database templates tracked separately in T422.",
+      "delivered_by": "codex/gpt-6-astra",
+      "verified": true,
+      "verified_by": "cursor/claude-opus-5-high (Herdr cache-review)",
+      "verification_ref": "docs/reviews/project-cache-421.md",
+      "cross_repo": []
+    },
+    {
+      "id": "422",
+      "phase": 4,
+      "bundle": "multi-agent",
+      "status": "pending",
+      "title": "Consume explicitly prepared test database templates for isolated runs",
+      "scores": {
+        "d": 5,
+        "b": 6,
+        "u": 5
+      },
+      "eff": 1.1,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-6-astra",
+      "acceptance_criteria": [
+        "Live PostgreSQL tests prove only an explicitly prepared test template is consumed for an isolated run DB",
+        "Missing template, missing extensions and insufficient privileges fail with explicit setup evidence instead of fallback to a live DB",
+        "Concurrent runs have distinct DBs, retain required extensions, execute migrations/checks and clean up only their own DB",
+        "No broad privilege grants or automatic server extension installation"
+      ],
+      "touches": [
+        "lib/harness/run/test_db_isolation.ex",
+        "lib/harness/project.ex",
+        "lib/harness/project_registry/optional_fields.ex",
+        "test/harness/run/test_db_isolation_test.exs"
+      ],
+      "body": "Tapakly required operator-installed vector/PostGIS for test databases. Current TestDbIsolation only supplies MIX_TEST_PARTITION and invokes ecto.drop; it does not create databases or consume templates. File cache preparation cannot solve extension provisioning. Add an opt-in contract to consume an explicitly operator-prepared, dedicated test template when provisioning the run-partition database. Never discover or clone arbitrary/live application DBs and never grant broad privileges. Server extension installation and template ownership remain explicit operator prerequisites. Choose the narrowest project/Ecto-compatible contract after probing live PostgreSQL; document required privileges, migration/check ownership, template invalidation and partition cleanup. Project checks still run under the independent reviewer. No changes to consuming source or active runs. Filing evidence 2026-09-08: harness cron effective=false, dispatch_mode=auto; this task makes the dedicated-template choice, not an unattended open decision.\n",
+      "created_at": "2026-09-08",
+      "scored_at": "2026-09-08",
+      "cross_repo": []
     }
   ]
 }
