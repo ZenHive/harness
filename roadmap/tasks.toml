@@ -13124,7 +13124,7 @@ scored_at = "2026-09-08"
 id = "423"
 phase = 4
 bundle = "multi-agent"
-status = "pending"
+status = "in_progress"
 title = "Preserve project cache generations across explicit non-build input changes"
 scores = { d = 4, b = 7, u = 7 }
 acceptance_criteria = ["Explicit exclude_inputs preserves cache hits across roadmap-only commits while code/config/lock changes invalidate", "Omitted/empty exclusions retain pre-change cache keys; validation and byte-safe path filtering are tested", "Two real run-lifecycle tests share one build across roadmap revisions and retain isolated copies plus reviewer gating", "Independent reviewer runs focused tests and dispatch checks and records evidence"]
@@ -13145,4 +13145,5 @@ Document in docs/project-cache.md the semantics, exact full Tapakly recipe (exis
 The user requested full execution including operational activation. Your delivery is the implementation/review portion; orchestrator completes real Tapakly prewarm and activation. Do not spawn recursive harness runs for this assigned implementation. Fix hook flags on your touched files, run focused tests and mix check.dispatch, commit only your paths. No unrelated cleanup.
 """
 created_at = "2026-09-08"
+started_at = "2026-09-08"
 scored_at = "2026-09-08"
