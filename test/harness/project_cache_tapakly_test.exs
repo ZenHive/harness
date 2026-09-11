@@ -90,10 +90,23 @@ defmodule Harness.ProjectCacheTapaklyTest do
     assert warm_log =~ " modules in "
     refute warm_log =~ "Creating dialyxir"
     refute warm_log =~ "Copying dialyxir"
-    dependency_beams = "_build/dev/lib/phoenix/ebin/Elixir.Phoenix.beam"
+    seed_dependencies = dependency_digests(Path.join([evidence, "cache", cold.seed["key"]]))
+    assert map_size(seed_dependencies) > 0
 
-    assert File.stat!(Path.join(first.path, dependency_beams), time: :posix).mtime ==
-             File.stat!(Path.join(second.path, dependency_beams), time: :posix).mtime
+    for wt <- [first, second] do
+      actual = dependency_digests(wt.path)
+      assert actual |> Map.keys() |> Enum.sort() == seed_dependencies |> Map.keys() |> Enum.sort()
+      changed = Enum.filter(seed_dependencies, fn {path, digest} -> actual[path] != digest end)
+      assert changed == [], "dependency BEAM bytes changed: #{inspect(Enum.map(changed, &elem(&1, 0)))}"
+
+      for index <- [0, 1] do
+        output = File.read!(Path.join(wt.path, "_build/cache-evidence/application-#{index}.log"))
+
+        for [_, app] <- Regex.scan(~r/^==> (.+)$/m, output) do
+          assert app == "tapakly", "outer preparation recompiled dependency #{app}"
+        end
+      end
+    end
 
     write_probe(repo, ~s("wrong"))
     invalid = tree(project, evidence)
@@ -116,6 +129,14 @@ defmodule Harness.ProjectCacheTapaklyTest do
 
     assert File.read!(Path.join(cwd, "_build/cache-evidence/quoted-0.log")) =~
              ~S(quoted "value" and $HOME)
+  end
+
+  defp dependency_digests(root) do
+    root
+    |> Path.join("_build/{dev,test}/lib/*/ebin/*.beam")
+    |> Path.wildcard()
+    |> Enum.reject(&String.contains?(&1, "/lib/tapakly/"))
+    |> Map.new(fn path -> {Path.relative_to(path, root), :crypto.hash(:sha256, File.read!(path))} end)
   end
 
   defp required_env(name) do
