@@ -13178,3 +13178,32 @@ Fix: before ingest (and before the writeback commit), when `roadmap_path` is ins
 """
 created_at = "2026-09-11"
 scored_at = "2026-09-11"
+
+[[task]]
+id = "425"
+phase = 4
+bundle = "multi-agent"
+status = "done"
+title = "Reuse dependency and PLT build work across application-only task landings"
+scores = { d = 6, b = 7, u = 7 }
+acceptance_criteria = ["Live Tapakly evidence spans two different application-source revisions and real fresh run worktrees, demonstrating reused dependency build work and no unnecessary full PLT rebuild while changed application modules are checked.", "Relevant dependency lock, toolchain, build configuration, environment and local/path-dependency changes invalidate the affected artifacts; negative controls prove stale artifacts cannot produce a false green.", "Normal project compilation, Dialyzer and independent reviewer checks remain authoritative after restoration; distinguish application compilation, dependency compilation, PLT relocation, PLT update and full PLT rebuild in measured evidence.", "Concurrent preparation preserves isolated writable worktrees and atomic cache publication; failed or cancelled preparation cannot publish partial artifacts.", "Existing recipes retain their supported behavior and rollback; any Tapakly recipe activation follows independent code review and real cold-to-warm acceptance across application revisions."]
+out_of_scope = ["Preparation status/dashboard redesign", "Test database template provisioning (T422)", "Weakening reviewer or project verification gates", "Changing or cancelling active runs"]
+assignee = "codex"
+model = "gpt-6-astra"
+body = """
+Observed 2026-09-08 after T423 activation: Tapakly T138 run run-1788862474795-fbee62f5 at 41d03346 and T443 review-only run run-1788862467798-b701354e at 58703769 both compile dependencies again. The full-build recipe intentionally invalidates on application-source changes, so consecutive code tasks still pay cold preparation. T423 correctly addressed roadmap-only revisions; retain that behavior.
+
+Determine the smallest sound reuse contract for unchanged dependencies and reusable PLT work across changed application revisions. Do not simply remove lib/config from the existing full-build key. T423 observed Dialyxir Project.cons_apps/0 compiling application code during --plt; verify actual local Mix/Dialyxir behavior before deciding artifact boundaries. A PLT may include application modules and require an incremental update; do not promise a dependency-only PLT without evidence. Inspect path dependencies, compile-time configuration and environment inputs too.
+
+Measure before and after on real Tapakly worktrees with an actual application-code delta, including a normal reviewer-style compile and Dialyzer run. Record elapsed preparation and which artifacts were rebuilt. A same-SHA or roadmap-only cache hit does not satisfy this task. No server restart, destructive dependency cleanup, global privilege changes or automatic deployment. Recovered from run-1789117597368-0b4f4ff8 after its memory guard stopped the implementer. The operator authorized inline completion with independent review. Task 424 on origin is the unrelated roadmap-sync task; this task preserves the cache scope under its newly allocated ID. Implementation may be independently dispatched; the orchestrator owns reviewed runtime/recipe activation and acceptance.
+"""
+implemented = "Added optional immutable seed reuse with full source-specific preparation; real Tapakly revisions reuse dependency BEAMs and incrementally validate PLTs with --force-check. Live negative control rejects the intentional invalid contract."
+delivered_by = "codex"
+verified = true
+verified_by = "cursor/cursor-grok-4.6-high"
+verification_ref = "docs/reviews/project-cache-425.md"
+created_at = "2026-09-08"
+started_at = "2026-09-11"
+scored_at = "2026-09-08"
+done_at = "2026-09-11"
+shipped_in = "fac94e3616648d5a3aa0d02b7cc6de360b935552"
