@@ -15,7 +15,19 @@ defmodule Harness.ProjectCacheTapaklyTest do
     recipe_path = required_env("HARNESS_CACHE_TAPAKLY_RECIPE")
     File.mkdir_p!(evidence)
     repo = Path.join(evidence, "source")
-    GitFixture.git!(evidence, ["clone", "--no-hardlinks", "--", source, repo])
+    resume? = System.get_env("HARNESS_CACHE_TAPAKLY_RESUME") == "1"
+    resume_env = System.get_env("HARNESS_CACHE_TAPAKLY_RESUME")
+    System.delete_env("HARNESS_CACHE_TAPAKLY_RESUME")
+    on_exit(fn -> if resume_env, do: System.put_env("HARNESS_CACHE_TAPAKLY_RESUME", resume_env) end)
+
+    if resume? do
+      assert File.dir?(Path.join(repo, ".git")), "resume requires the retained acceptance clone"
+      assert String.trim(GitFixture.git!(repo, ["remote", "get-url", "origin"])) == source
+      GitFixture.git!(repo, ["checkout", "--detach", "origin/HEAD"])
+    else
+      GitFixture.git!(evidence, ["clone", "--no-hardlinks", "--", source, repo])
+    end
+
     GitFixture.git!(repo, ["config", "user.email", "cache-acceptance@example.invalid"])
     GitFixture.git!(repo, ["config", "user.name", "Cache acceptance"])
     upstream = GitFixture.git!(repo, ["rev-parse", "HEAD"])
@@ -43,7 +55,7 @@ defmodule Harness.ProjectCacheTapaklyTest do
           [
             "MIX_ENV=dev mix compile --force",
             "MIX_ENV=test mix compile --force",
-            "MIX_ENV=dev mix dialyzer --plt"
+            "MIX_ENV=dev mix dialyzer --plt --force-check"
           ],
           "application"
         )
@@ -52,7 +64,7 @@ defmodule Harness.ProjectCacheTapaklyTest do
     write_probe(repo, "41")
     first = tree(project, evidence)
     assert {:ok, cold} = ProjectCache.prepare(first, candidate, cache_root: Path.join(evidence, "cache"))
-    assert cold.seed["state"] == "built"
+    assert cold.seed["state"] == if(resume?, do: "hit", else: "built")
     record(evidence, "cold", cold, first)
     verify(first, evidence, "cold")
 
@@ -74,8 +86,10 @@ defmodule Harness.ProjectCacheTapaklyTest do
            ) =~ "42"
 
     warm_log = File.read!(Path.join(second.path, "_build/cache-evidence/application-2.log"))
-    refute warm_log =~ "Creating PLT"
-    refute warm_log =~ "Building PLT"
+    assert warm_log =~ "Checking "
+    assert warm_log =~ " modules in "
+    refute warm_log =~ "Creating dialyxir"
+    refute warm_log =~ "Copying dialyxir"
     dependency_beams = "_build/dev/lib/phoenix/ebin/Elixir.Phoenix.beam"
 
     assert File.stat!(Path.join(first.path, dependency_beams), time: :posix).mtime ==
@@ -86,10 +100,22 @@ defmodule Harness.ProjectCacheTapaklyTest do
     assert {:ok, rejected} = ProjectCache.prepare(invalid, candidate, cache_root: Path.join(evidence, "cache"))
     assert rejected.seed["state"] == "hit"
     {output, status} = run(invalid.path, "MIX_ENV=dev mix dialyzer", Path.join(evidence, "invalid-dialyzer.log"))
-    assert status != 0, output
-    assert output =~ "CacheAcceptanceProbe" or output =~ "cache_acceptance_probe", output
+    assert status == 2, output
+    assert output =~ "invalid_contract", output
+    assert output =~ "Tapakly.CacheAcceptanceProbe.value/0", output
+    assert output =~ "The @spec for the function does not match the success typing", output
     File.write!(Path.join(evidence, "upstream.txt"), upstream)
     File.write!(Path.join(evidence, "complete.json"), Jason.encode!(%{cold: cold, warm: warm, negative_status: status}))
+  end
+
+  test "measurement preserves shell quotes in the original recipe command" do
+    cwd = GitFixture.tmp_base()
+    File.mkdir_p!(cwd)
+    [command] = measured([~S(printf '%s' 'quoted "value" and $HOME')], "quoted")
+    assert {"", 0} = System.cmd("sh", ["-c", command], cd: cwd, stderr_to_stdout: true)
+
+    assert File.read!(Path.join(cwd, "_build/cache-evidence/quoted-0.log")) =~
+             ~S(quoted "value" and $HOME)
   end
 
   defp required_env(name) do
@@ -103,9 +129,11 @@ defmodule Harness.ProjectCacheTapaklyTest do
     commands
     |> Enum.with_index()
     |> Enum.map(fn {command, index} ->
-      "mkdir -p _build/cache-evidence; /usr/bin/time -f 'elapsed_seconds=%e max_rss_kb=%M' sh -c '#{command}' > _build/cache-evidence/#{prefix}-#{index}.log 2>&1"
+      "mkdir -p _build/cache-evidence; /usr/bin/time -f 'elapsed_seconds=%e max_rss_kb=%M' sh -c #{shell_quote(command)} > _build/cache-evidence/#{prefix}-#{index}.log 2>&1"
     end)
   end
+
+  defp shell_quote(command), do: "'" <> String.replace(command, "'", "'\"'\"'") <> "'"
 
   defp write_probe(repo, expression) do
     path = "lib/tapakly/cache_acceptance_probe.ex"

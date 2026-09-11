@@ -130,7 +130,7 @@ candidate =
   |> Map.put("commands", [
     "MIX_ENV=dev mix compile --force",
     "MIX_ENV=test mix compile --force",
-    "MIX_ENV=dev mix dialyzer --plt"
+    "MIX_ENV=dev mix dialyzer --plt --force-check"
   ])
 ```
 
@@ -145,8 +145,9 @@ Reviewers still run normal compilation and full Dialyzer analysis, not just
 error.
 
 PLT relocation happens before application compilation, while the copied BEAMs
-still match the producer's digests. Normal PLT checking then updates changed
-entries against the newly compiled modules. This preserves the existing strict
+still match the producer's digests. Dialyxir requires `--force-check` here: its default freshness hash contains
+the lockfile and application list, not changed BEAM bytes. The forced incremental
+check updates changed entries against the newly compiled modules. This preserves the existing strict
 relocation helper; it does not falsify digests or claim a dependency-only PLT.
 A PLT update is expected when application modules occur in the PLT. Unsupported
 PLT formats still fail restoration.
