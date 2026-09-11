@@ -71,7 +71,7 @@ Hand-build when harness cannot perform or judge the work:
 
 ### Running a Task
 
-**Prerequisites:** long-lived harness BEAM (`iex -S mix` in the harness checkout), target project registered in `Harness.ProjectRegistry`, clean `git status` on the target's dispatch branch (runs fork worktrees off `HEAD`).
+**Prerequisites:** long-lived harness BEAM (`iex -S mix` in the harness checkout), target project registered in `Harness.ProjectRegistry`, clean `git status` on the target's dispatch branch (runs fork worktrees off `HEAD`). **🚨 The roadmap side does NOT self-sync.** The run's *code* base is fresh (Task 196: with a `target_branch` set, `Run.Actions.Worktree.worktree_opts/1` fetches and forks off `origin/<target>`), but `dispatch-task` / `dispatch-bundle` **ingest `tasks.toml` via `rmap` from the on-disk checkout at `project.roadmap_path`** — no fetch, no pull. When the harness node's checkout lives on another host (e.g. `/data/postgresql/code/<project>`), a task you just filed and pushed from your Mac does not exist there until that checkout is pulled: `git -C <roadmap_path> pull --ff-only` on the node **before** dispatching (via `project_eval` or a shell there). The `roadmap: task <id> -> in_progress` commits harness pushes are also made in that checkout, so a stale one produces a non-ff push. (Observed 2026-09-11 on mpp: the operator pulled by hand before the wave; the orchestrator had not.)
 
 **Three dispatch paths** (prefer top to bottom):
 
