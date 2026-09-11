@@ -19554,6 +19554,57 @@
       "verified_by": "cursor",
       "verification_ref": "harness-run:run-1788858693817-9d7b2db7",
       "cross_repo": []
+    },
+    {
+      "id": "424",
+      "phase": 23,
+      "bundle": "roadmap-writeback",
+      "status": "pending",
+      "title": "Sync the roadmap checkout (fetch + ff-only) before ingest and writeback so dispatch reads the tasks that are actually on origin",
+      "scores": {
+        "d": 3,
+        "b": 7,
+        "u": 6
+      },
+      "eff": 2.17,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "cursor",
+      "model": "cursor-grok-4.6-high",
+      "acceptance_criteria": [
+        "Harness.Roadmap.ingest/2 (and the next_bundle / ready readers used by dispatch-task and dispatch-bundle) fetch the roadmap branch and ff-only the roadmap_path checkout before running rmap, when roadmap_path is a clean git work tree on that branch",
+        "The writeback path (mark_in_progress / mark_landed / mark_blocked / mark_pending) performs the same sync before committing, so its push is fast-forward against origin",
+        "A dirty tree, a non-ff divergence, a detached HEAD, or a roadmap_path that is not a git work tree is skipped with a witnessed outcome (Logger + the returned term), never forced and never silently ignored; ingest still proceeds on the on-disk state in that case",
+        "Self-host safety: syncing a project whose roadmap_path is the running node's own source tree follows the existing TargetSync self-host rule (path identity, not project name)",
+        "Test: a bare origin fixture with a task pushed after the local clone was made — ingest by id succeeds and returns the pushed task's body; without the sync the same call returns not-found (asserted as the negative control)",
+        "Test: dirty checkout → sync skipped, witnessed, ingest still runs on the local file; non-ff divergence → skipped, witnessed, no force",
+        "Test: the writeback's `-> in_progress` commit lands on top of the freshly fetched origin tip (no non-ff rejection) in the same fixture",
+        "priv/includes/harness-workflow.md § Running a Task: the 2026-09-11 'pull the node's checkout by hand before dispatch' prerequisite is reduced to the residual dirty/non-ff case, and scripts/sync-harness-skills.sh has been run"
+      ],
+      "out_of_scope": [
+        "Changing how the run's code worktree is forked (Task 196 already forks off origin/<target>)",
+        "Auto-resolving a dirty or diverged roadmap checkout — that stays an operator action, surfaced as a witnessed skip",
+        "GitHub-source projects (their read-only cache is already fetched + ff-synced by Harness.Project.Source.Github)"
+      ],
+      "files_to_modify": [
+        "lib/harness/roadmap.ex",
+        "lib/harness/git/target_sync.ex"
+      ],
+      "touches": [
+        "lib/harness/roadmap.ex",
+        "lib/harness/git/target_sync.ex",
+        "lib/harness/dispatch.ex",
+        "test/harness/roadmap_test.exs",
+        "test/harness/git/target_sync_test.exs"
+      ],
+      "body": "Task 196 made the run's CODE base fresh: `Run.Actions.Worktree.worktree_opts/1` fetches and forks off `origin/<target>`. The ROADMAP side never got the same treatment. `Harness.Roadmap.ingest/2` (and `next_bundle`, `ready`, the `dispatch-task` / `dispatch-bundle` MCP tools behind them) run `rmap` against `project.roadmap_path` as it sits on disk — no fetch, no pull. The durable writeback path (`roadmap: task <id> -> in_progress` / `-> done`) commits into that same checkout and pushes.\n\nObserved 2026-09-11 on mpp: the orchestrator filed tasks 108–112 on a Mac and pushed; the harness node's checkout at `/data/postgresql/code/mpp` still had the previous `tasks.toml`. Had the operator not run `git pull` there by hand before the wave, `dispatch-task 111` would have failed with task-not-found (or, for an edited existing task, dispatched the stale body), and the `-> in_progress` writeback push would have been non-fast-forward. Every remote-hosted local-source project has this hole; today the workflow include documents it as a manual prerequisite (harness `04aef67`).\n\nFix: before ingest (and before the writeback commit), when `roadmap_path` is inside a git work tree, fetch the roadmap branch (`roadmap_target_branch`, else the same derivation the \"Durability\" section of `mark_landed` already uses) and fast-forward the checkout onto it. `Harness.Git.TargetSync` already encodes the exact safety policy this needs — ff-only, never force, skip witnessed on a dirty tree / non-ff / self-host — so reuse or generalize it rather than writing a second sync. A skipped sync is a logged fact the caller can see (the same shape TargetSync returns today), never a silent fallback to stale data. Pure mechanics: fetch, ff, compare — no judgment, no error-string classification.\n",
+      "created_at": "2026-09-11",
+      "scored_at": "2026-09-11",
+      "cross_repo": []
     }
   ]
 }

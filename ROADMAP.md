@@ -9,7 +9,7 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (20 of 28 done · 0 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (20 of 29 done · 0 in progress)
 
 **Last shipped:** no recent shipments
 
@@ -365,7 +365,7 @@
 | Task 380 | ✅ | 🎁 **audit-perf** · 🚀 **v0_16** · Fetch each project target once per landed-sha reconciliation pass [D:3/B:5/U:4 → Eff:1.5?] 🚀 |
 | Task 381 | ✅ | 🎁 **audit-perf** · 🚀 **v0_16** · Make capped dashboard transcript append linear in incoming chunk size [D:2/B:4/U:3 → Eff:1.75?] 🚀 |
 | Task 382 | ✅ | 🎁 **audit-perf** · 🚀 **v0_16** · Remove the per-lookup Postgres landing-settings round trip from ProjectRegistry [D:3/B:5/U:4 → Eff:1.5?] 🚀 |
-| Task 383 | ✅ | 🎁 **resilience** · 🐛 Delivery commit exclusion missed .harness/agent-rules.md — harness's own scaffolding rode in a deliverable [D:3/B:6/U:5 → Eff:1.83] 🚀 |
+| Task 383 | ✅ | 🎁 **resilience** · 🐛 Delivery commit exclusion missed .harness/agent-rules.md — harness's own scaffolding rode in a deliverable [D:3/B:6/U:5 → Eff:1.83?] 🚀 |
 | Task 384 | ✅ | 🎁 **deferred** · Migrate anubis_mcp 1.x -> 2.0.0 (Application callback removal, transport/supervision rewrite) [D:5/B:3/U:2 → Eff:0.5] ⚠️ |
 | Task 389 | ✅ | 🎁 **config-surface** · 🚀 **v0_16** · Expose roadmap_target_branch on the operator registration surfaces [D:3/B:6/U:5 → Eff:1.83] 🚀 |
 | Task 391 | ✅ | 🎁 **surface** · Four `roadmap-mark_*` MCP tools expose zero parameters — declare their params, then guard the class [D:3/B:6/U:6 → Eff:2.0] 🎯 |
@@ -375,4 +375,5 @@
 | Task 413 | ✅ | 🎁 **witness-legibility** · Surface an in-flight audit signal on the fleet count strip, not just the ops panel [D:4/B:7/U:6 → Eff:1.62] 🚀 |
 | Task 414 | ✅ | 🎁 **config-surface** · 🐛 Give dispatch-register_project a typed languages schema so MCP clients can send a JSON array [D:3/B:7/U:6 → Eff:2.17] 🎯 |
 | Task 417 | ✅ | 🎁 **resilience** · 🐛 Delivery staging must never carry a symlink or dependency/build artifact — a leaked deps symlink destroyed the base checkout [D:3/B:9/U:8 → Eff:2.83] 🎯 |
+| Task 424 | ⬜ | 🎁 **roadmap-writeback** · 🐛 Sync the roadmap checkout (fetch + ff-only) before ingest and writeback so dispatch reads the tasks that are actually on origin [D:3/B:7/U:6 → Eff:2.17] 🎯 |
 <!-- TASKS:END -->
