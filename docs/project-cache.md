@@ -109,6 +109,83 @@ Bump `version` to force a new generation, including after changing an external
 restore helper. Different keys never mutate existing generations. A cache hit
 means a preparation completed for that key; it makes no claim about product tests.
 
+## Reusing build work across application revisions
+
+An optional `seed` contains one ordinary recipe, without another `seed`. Its
+output paths must be a subset of the outer recipe's paths. The seed generation
+is copied and restored **into the private builder**, before the outer commands
+run. It never supplies a final cache hit by itself. The outer recipe retains
+its full source identity and publishes only after its commands succeed.
+
+```elixir
+# `full_recipe` is the existing reviewed full-build recipe.
+seed = Map.put(full_recipe, "exclude_inputs", [
+  "lib", "test", "assets/test", "docs",
+  "ROADMAP.md", "roadmap/data.json", "roadmap/tasks.toml"
+])
+
+candidate =
+  full_recipe
+  |> Map.put("seed", seed)
+  |> Map.put("commands", [
+    "MIX_ENV=dev mix compile --force",
+    "MIX_ENV=test mix compile --force",
+    "MIX_ENV=dev mix dialyzer --plt"
+  ])
+```
+
+This example is a candidate for an audited Mix project, not a universal list of
+safe exclusions. The seed may contain old application BEAMs, compiler manifests,
+consolidated protocols and application entries in its PLT. They are build inputs,
+not checked outputs. Force compilation of the consuming application in every
+cached Mix environment; keep normal dependency checking and PLT checking enabled.
+Do not use `--no-deps-check`, `--no-compile` or `--no-check` to make reuse pass.
+Reviewers still run normal compilation and full Dialyzer analysis, not just
+`--plt`. Preparation can succeed while that analysis correctly rejects a type
+error.
+
+PLT relocation happens before application compilation, while the copied BEAMs
+still match the producer's digests. Normal PLT checking then updates changed
+entries against the newly compiled modules. This preserves the existing strict
+relocation helper; it does not falsify digests or claim a dependency-only PLT.
+A PLT update is expected when application modules occur in the PLT. Unsupported
+PLT formats still fail restoration.
+
+Keep dependency declarations/locks, toolchain pins, all build configuration,
+compiler scripts, frontend locks and tracked local dependency sources in the
+seed identity. Inspect `mix.exs` and compile-time config before selecting
+exclusions: a path dependency under `lib` makes the example exclusions wrong.
+Vendor local dependencies inside the checkout and include their complete trees;
+external/untracked path dependency content is not covered by `git ls-tree` and
+must not be treated as a locked dependency. Untracked build inputs require an
+identity command that hashes their content, or an explicit recipe version change.
+An external path that the private clone cannot resolve is a preparation failure.
+
+The seed receives the outer command environment with its own `env` overrides.
+Its selected inherited environment and tool identities also participate in the
+**outer** key, even if the outer `env_inputs` list is narrower. Using the default
+`env_inputs: nil` conservatively includes all inherited variables. Audit explicit
+lists for config reads, native compiler variables and tool search paths. Host
+facts read by configuration (such as the existence of a local database socket)
+need identity probes when they affect cached bytes.
+
+Both generations use the existing per-key host locks, private copies, manifests
+and atomic rename publication. Nested seeds are rejected, so lock acquisition
+cannot recurse into a seed chain. The seed shares the caller monitor and outer
+deadline, with its own timeout as an additional bound. Cancellation or failure
+cannot publish a partial generation. A completed seed can remain when outer
+preparation fails; it contains only the seed's successful command outputs, and
+retry must still run outer preparation. Concurrent application revisions share
+one immutable seed while producing separate writable builders and final keys.
+
+Reports for seeded builds include `seed` with its key, build/hit state, copied
+paths and elapsed time. On a final cache hit this is **historical provenance of
+the generation's construction**, not another seed operation. Existing recipes,
+keys and reports without a seed retain their behavior. Roll back by restoring the
+previous full recipe, or set `cache_preparation: nil` for legacy warming. Runtime
+loading and consuming-project recipe activation remain the orchestrator's job
+after independent review and live acceptance.
+
 ## Tapakly recipe and operational acceptance
 
 The operator snapshot `/tmp/tapakly-cache-recipe.json` read on 2026-09-08 supplies

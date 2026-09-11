@@ -85,10 +85,12 @@ defmodule Harness.ProjectCache do
     root = Path.expand(Keyword.get(opts, :cache_root, Keyword.get(config, :root, "~/.cache/harness/project-cache")))
 
     with :ok <- File.mkdir_p(root),
-         {:ok, key} <- key(worktree, recipe, environment, owner, deadline) do
+         {:ok, seed} <- resolve_seed(worktree, recipe["seed"], environment, owner, deadline),
+         {:ok, key} <- key(worktree, recipe, environment, owner, deadline, seed) do
       destination = Path.join(root, key)
 
-      seed_generation(worktree, Map.put(recipe, "env", environment), destination, owner, deadline, key, started)
+      build_recipe = recipe |> Map.put("env", environment) |> Map.put(:seed_context, seed)
+      seed_generation(worktree, build_recipe, destination, owner, deadline, key, started)
     end
   end
 
@@ -100,13 +102,15 @@ defmodule Harness.ProjectCache do
              generation(worktree, recipe, destination, owner, deadline)
            end),
          :ok <- Command.check(owner, deadline),
-         {:ok, copied} <- Artifacts.seed(destination, worktree.path, recipe, owner, deadline) do
-      {:ok, %{key: key, state: state, copied: copied, elapsed_ms: System.monotonic_time(:millisecond) - started}}
+         {:ok, copied} <- Artifacts.seed(destination, worktree.path, recipe, owner, deadline),
+         {:ok, manifest} <- Artifacts.manifest(destination) do
+      report = %{key: key, state: state, copied: copied, elapsed_ms: System.monotonic_time(:millisecond) - started}
+      {:ok, if(manifest["seed"], do: Map.put(report, :seed, manifest["seed"]), else: report)}
     end
   end
 
-  @spec key(Worktree.t(), map(), map(), reference(), integer()) :: {:ok, String.t()} | {:error, term()}
-  defp key(worktree, recipe, environment, owner, deadline) do
+  @spec key(Worktree.t(), map(), map(), reference(), integer(), map() | nil) :: {:ok, String.t()} | {:error, term()}
+  defp key(worktree, recipe, environment, owner, deadline, seed) do
     with {:ok, inputs} <- Git.run(["ls-tree", "-r", "-z", worktree.base_sha, "--" | recipe["inputs"]], worktree.repo),
          {:ok, tools} <-
            Command.run_all(recipe["identity_commands"], worktree.path, environment, owner, deadline, :digest) do
@@ -121,7 +125,22 @@ defmodule Harness.ProjectCache do
         identity_env(environment, recipe["env_inputs"])
       }
 
+      identity = if seed, do: {identity, seed.key}, else: identity
       {:ok, :sha256 |> :crypto.hash(:erlang.term_to_binary(identity, [:deterministic])) |> Base.encode16(case: :lower)}
+    end
+  end
+
+  @spec resolve_seed(Worktree.t(), map() | nil, map(), reference(), integer()) ::
+          {:ok, map() | nil} | {:error, term()}
+  defp resolve_seed(_worktree, nil, _environment, _owner, _deadline), do: {:ok, nil}
+
+  defp resolve_seed(worktree, seed, environment, owner, deadline) do
+    started = System.monotonic_time(:millisecond)
+    deadline = min(deadline, started + seed["timeout_ms"])
+    environment = Map.merge(environment, seed["env"])
+
+    with {:ok, key} <- key(worktree, seed, environment, owner, deadline, nil) do
+      {:ok, %{key: key, started: started, deadline: deadline, environment: environment}}
     end
   end
 
@@ -176,6 +195,7 @@ defmodule Harness.ProjectCache do
            {:ok, _} <- Git.run(["clone", "--shared", "--no-checkout", "--", worktree.repo, source], stage),
            {:ok, _} <- Git.run(["checkout", "--detach", worktree.base_sha], source),
            :ok <- Artifacts.validate_outputs(source, recipe["paths"]),
+           {:ok, seed} <- seed_build(%{worktree | path: source}, recipe, destination, owner, deadline),
            {:ok, _outputs} <- Command.run_all(recipe["commands"], source, recipe["env"], owner, deadline),
            :ok <- Artifacts.ignored_outputs(source, recipe["paths"]),
            :ok <- Artifacts.publishable(source, recipe["paths"]),
@@ -187,7 +207,8 @@ defmodule Harness.ProjectCache do
                  source: source,
                  commands: length(recipe["commands"]),
                  exit_status: 0,
-                 prepared_ms: System.monotonic_time(:millisecond) - started
+                 prepared_ms: System.monotonic_time(:millisecond) - started,
+                 seed: seed
                })
              ),
            :ok <- Command.check(owner, deadline),
@@ -198,4 +219,19 @@ defmodule Harness.ProjectCache do
       File.rm_rf(stage)
     end
   end
+
+  @spec seed_build(Worktree.t(), map(), String.t(), reference(), integer()) :: {:ok, map() | nil} | {:error, term()}
+  defp seed_build(worktree, %{"seed" => seed, :seed_context => context}, destination, owner, _deadline) do
+    seed_generation(
+      worktree,
+      Map.put(seed, "env", context.environment),
+      Path.join(Path.dirname(destination), context.key),
+      owner,
+      context.deadline,
+      context.key,
+      context.started
+    )
+  end
+
+  defp seed_build(_worktree, _recipe, _destination, _owner, _deadline), do: {:ok, nil}
 end

@@ -1,0 +1,151 @@
+defmodule Harness.ProjectCacheTapaklyTest do
+  use ExUnit.Case, async: false
+
+  alias Harness.GitFixture
+  alias Harness.ProjectCache
+  alias Harness.ProjectFixture
+  alias Harness.Worktree
+
+  @moduletag :integration
+  @moduletag timeout: 7_200_000
+
+  test "real Tapakly revisions reuse dependency builds and PLTs while normal analysis checks changed code" do
+    source = required_env("HARNESS_CACHE_TAPAKLY_SOURCE")
+    evidence = required_env("HARNESS_CACHE_TAPAKLY_EVIDENCE")
+    recipe_path = required_env("HARNESS_CACHE_TAPAKLY_RECIPE")
+    File.mkdir_p!(evidence)
+    repo = Path.join(evidence, "source")
+    GitFixture.git!(evidence, ["clone", "--no-hardlinks", "--", source, repo])
+    GitFixture.git!(repo, ["config", "user.email", "cache-acceptance@example.invalid"])
+    GitFixture.git!(repo, ["config", "user.name", "Cache acceptance"])
+    upstream = GitFixture.git!(repo, ["rev-parse", "HEAD"])
+    project = ProjectFixture.from_repo(repo)
+    recipe = recipe_path |> File.read!() |> Jason.decode!()
+    helper = Application.app_dir(:harness, "priv/cache/relocate_plt.exs")
+
+    full =
+      recipe
+      |> Map.put("restore_commands", ["elixir '#{helper}' _build/dev/*.plt"])
+      |> Map.put("env_inputs", nil)
+      |> Map.update!("env", &Map.merge(&1, %{"ERL_FLAGS" => "+S 2:2", "MIX_ENV" => "dev"}))
+
+    seed =
+      full
+      |> Map.put("exclude_inputs", ["lib", "test", "ROADMAP.md", "roadmap/data.json", "roadmap/tasks.toml"])
+      |> Map.update!("commands", &measured(&1, "seed"))
+
+    candidate =
+      full
+      |> Map.put("seed", seed)
+      |> Map.put(
+        "commands",
+        measured(
+          [
+            "MIX_ENV=dev mix compile --force",
+            "MIX_ENV=test mix compile --force",
+            "MIX_ENV=dev mix dialyzer --plt"
+          ],
+          "application"
+        )
+      )
+
+    write_probe(repo, "41")
+    first = tree(project, evidence)
+    assert {:ok, cold} = ProjectCache.prepare(first, candidate, cache_root: Path.join(evidence, "cache"))
+    assert cold.seed["state"] == "built"
+    record(evidence, "cold", cold, first)
+    verify(first, evidence, "cold")
+
+    write_probe(repo, "42")
+    second = tree(project, evidence)
+    assert first.base_sha != second.base_sha
+    assert {:ok, warm} = ProjectCache.prepare(second, candidate, cache_root: Path.join(evidence, "cache"))
+    record(evidence, "warm", warm, second)
+    assert warm.seed["state"] == "hit"
+    assert warm.seed["key"] == cold.seed["key"]
+    assert warm.key != cold.key
+    verify(second, evidence, "warm")
+
+    assert normal(
+             second,
+             evidence,
+             "value",
+             "elixir -pa _build/dev/lib/tapakly/ebin -e 'IO.puts(Tapakly.CacheAcceptanceProbe.value())'"
+           ) =~ "42"
+
+    warm_log = File.read!(Path.join(second.path, "_build/cache-evidence/application-2.log"))
+    refute warm_log =~ "Creating PLT"
+    refute warm_log =~ "Building PLT"
+    dependency_beams = "_build/dev/lib/phoenix/ebin/Elixir.Phoenix.beam"
+
+    assert File.stat!(Path.join(first.path, dependency_beams), time: :posix).mtime ==
+             File.stat!(Path.join(second.path, dependency_beams), time: :posix).mtime
+
+    write_probe(repo, ~s("wrong"))
+    invalid = tree(project, evidence)
+    assert {:ok, rejected} = ProjectCache.prepare(invalid, candidate, cache_root: Path.join(evidence, "cache"))
+    assert rejected.seed["state"] == "hit"
+    {output, status} = run(invalid.path, "MIX_ENV=dev mix dialyzer", Path.join(evidence, "invalid-dialyzer.log"))
+    assert status != 0, output
+    assert output =~ "CacheAcceptanceProbe" or output =~ "cache_acceptance_probe", output
+    File.write!(Path.join(evidence, "upstream.txt"), upstream)
+    File.write!(Path.join(evidence, "complete.json"), Jason.encode!(%{cold: cold, warm: warm, negative_status: status}))
+  end
+
+  defp required_env(name) do
+    System.get_env(name) ||
+      flunk(
+        "Missing #{name}. Set HARNESS_CACHE_TAPAKLY_SOURCE to a local https://github.com/ZenHive/tapakly checkout, HARNESS_CACHE_TAPAKLY_RECIPE to its reviewed recipe JSON, and HARNESS_CACHE_TAPAKLY_EVIDENCE to a fresh absolute evidence directory."
+      )
+  end
+
+  defp measured(commands, prefix) do
+    commands
+    |> Enum.with_index()
+    |> Enum.map(fn {command, index} ->
+      "mkdir -p _build/cache-evidence; /usr/bin/time -f 'elapsed_seconds=%e max_rss_kb=%M' sh -c '#{command}' > _build/cache-evidence/#{prefix}-#{index}.log 2>&1"
+    end)
+  end
+
+  defp write_probe(repo, expression) do
+    path = "lib/tapakly/cache_acceptance_probe.ex"
+
+    File.write!(Path.join(repo, path), """
+    defmodule Tapakly.CacheAcceptanceProbe do
+      @moduledoc false
+      @spec value() :: integer()
+      def value, do: #{expression}
+    end
+    """)
+
+    GitFixture.git!(repo, ["add", path])
+    GitFixture.git!(repo, ["commit", "-qm", "cache acceptance application revision"])
+  end
+
+  defp tree(project, evidence) do
+    {:ok, wt} = Worktree.create(project, base_dir: Path.join(evidence, "worktrees"))
+    wt
+  end
+
+  defp record(evidence, label, report, wt) do
+    File.write!(Path.join(evidence, label <> ".json"), Jason.encode!(%{report: report, sha: wt.base_sha, path: wt.path}))
+  end
+
+  defp verify(wt, evidence, label) do
+    normal(wt, evidence, label <> "-compile-dev", "MIX_ENV=dev mix compile --warnings-as-errors")
+    normal(wt, evidence, label <> "-compile-test", "MIX_ENV=test mix compile --warnings-as-errors")
+    normal(wt, evidence, label <> "-dialyzer", "MIX_ENV=dev mix dialyzer")
+  end
+
+  defp normal(wt, evidence, label, command) do
+    {output, status} = run(wt.path, command, Path.join(evidence, label <> ".log"))
+    assert status == 0, "#{label}: #{output}"
+    output
+  end
+
+  defp run(cwd, command, log) do
+    {output, status} = System.cmd("sh", ["-c", command], cd: cwd, env: [{"ERL_FLAGS", "+S 2:2"}], stderr_to_stdout: true)
+    File.write!(log, output)
+    {output, status}
+  end
+end

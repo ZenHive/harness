@@ -21,12 +21,33 @@ defmodule Harness.ProjectCache.Recipe do
   def normalize(nil), do: {:ok, nil}
 
   def normalize(recipe) when is_map(recipe) and not is_struct(recipe) do
+    {seed, recipe} = Map.pop(recipe, "seed")
     recipe = Map.merge(@defaults, recipe)
 
-    if valid?(recipe), do: {:ok, recipe}, else: {:error, :invalid_cache_preparation}
+    with true <- valid?(recipe),
+         {:ok, seed} <- normalize_seed(seed, recipe["paths"]) do
+      {:ok, if(is_nil(seed), do: recipe, else: Map.put(recipe, "seed", seed))}
+    else
+      _ -> {:error, :invalid_cache_preparation}
+    end
   end
 
   def normalize(_recipe), do: {:error, :invalid_cache_preparation}
+
+  @spec normalize_seed(term(), [String.t()]) :: {:ok, map() | nil} | :error
+  defp normalize_seed(nil, _paths), do: {:ok, nil}
+
+  defp normalize_seed(seed, paths) when is_map(seed) do
+    with false <- Map.has_key?(seed, "seed"),
+         {:ok, normalized} <- normalize(seed),
+         true <- Enum.all?(normalized["paths"], &(&1 in paths)) do
+      {:ok, normalized}
+    else
+      _ -> :error
+    end
+  end
+
+  defp normalize_seed(_seed, _paths), do: :error
 
   @doc "Whether a path names a relative descendant without traversal or git metadata."
   @spec relative_path?(term()) :: boolean()
