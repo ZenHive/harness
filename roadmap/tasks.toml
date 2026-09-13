@@ -12970,7 +12970,7 @@ shipped_in = "0cc1f16b993a3d5ba9e810df0aca8343ce3a3dcd"
 id = "418"
 phase = 22
 bundle = "contract"
-status = "pending"
+status = "in_progress"
 title = "Publish Task 392 tree-kill in harness_agent_adapter and restore the git dependency pin"
 scores = { d = 4, b = 7, u = 7 }
 acceptance_criteria = ["ZenHive/harness_agent_adapter on main contains the Task 392 OSProcess.kill_tree/1 behaviour: SIGTERM the captured descendant tree, bounded terminate_grace_ms, SIGKILL remainder, wait for quiescence; its own mix ci is green including the grandchild-quiescence tests", 'harness mix.exs takes {:harness_agent_adapter, git: "https://github.com/ZenHive/harness_agent_adapter.git"} pinned at that SHA (or a tag), not path: "vendor/harness_agent_adapter"', "vendor/harness_agent_adapter is deleted from the harness tree; mix deps.get + mix check.dispatch compile against the git pin; Harness.AgentAdapter.OSProcess.kill_tree/1 is still the shared terminate surface used by MemoryGuard, cancel, hold-interrupt, reviewer timeout/rotation, and lifetime expiry", "CLAUDE.md, AGENTS.md, skills/harness-driver/SKILL.md, and CHANGELOG describe the package as a git dependency again, not a vendor path pin"]
@@ -12988,6 +12988,7 @@ The Task 397 contract is the git dependency. Restore it: land the OSProcess tree
 Observed 2026-08-26 on the post-merge audit of 2af446e. CLAUDE.md / AGENTS.md / the driver skill still said "git dependency" after the vendor pin landed; the audit rewrote those to match the path pin so they stop lying, and this task is what makes the original wording true again.
 """
 created_at = "2026-08-26"
+started_at = "2026-09-13"
 scored_at = "2026-08-26"
 
 [[task]]
