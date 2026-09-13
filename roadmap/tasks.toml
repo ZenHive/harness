@@ -13159,7 +13159,7 @@ shipped_in = "207b6bc059f2d3573525a73727f5f08024499fcc"
 id = "424"
 phase = 23
 bundle = "roadmap-writeback"
-status = "pending"
+status = "in_progress"
 title = "Sync the roadmap checkout (fetch + ff-only) before ingest and writeback so dispatch reads the tasks that are actually on origin"
 scores = { d = 3, b = 7, u = 6 }
 markers = ["bug"]
@@ -13177,6 +13177,7 @@ Observed 2026-09-11 on mpp: the orchestrator filed tasks 108–112 on a Mac and 
 Fix: before ingest (and before the writeback commit), when `roadmap_path` is inside a git work tree, fetch the roadmap branch (`roadmap_target_branch`, else the same derivation the "Durability" section of `mark_landed` already uses) and fast-forward the checkout onto it. `Harness.Git.TargetSync` already encodes the exact safety policy this needs — ff-only, never force, skip witnessed on a dirty tree / non-ff / self-host — so reuse or generalize it rather than writing a second sync. A skipped sync is a logged fact the caller can see (the same shape TargetSync returns today), never a silent fallback to stale data. Pure mechanics: fetch, ff, compare — no judgment, no error-string classification.
 """
 created_at = "2026-09-11"
+started_at = "2026-09-13"
 scored_at = "2026-09-11"
 
 [[task]]

@@ -9,7 +9,7 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (20 of 29 done · 0 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (20 of 29 done · 1 in progress)
 
 **Last shipped:** no recent shipments
 
@@ -376,5 +376,5 @@
 | Task 413 | ✅ | 🎁 **witness-legibility** · Surface an in-flight audit signal on the fleet count strip, not just the ops panel [D:4/B:7/U:6 → Eff:1.62] 🚀 |
 | Task 414 | ✅ | 🎁 **config-surface** · 🐛 Give dispatch-register_project a typed languages schema so MCP clients can send a JSON array [D:3/B:7/U:6 → Eff:2.17] 🎯 |
 | Task 417 | ✅ | 🎁 **resilience** · 🐛 Delivery staging must never carry a symlink or dependency/build artifact — a leaked deps symlink destroyed the base checkout [D:3/B:9/U:8 → Eff:2.83] 🎯 |
-| Task 424 | ⬜ | 🎁 **roadmap-writeback** · 🐛 Sync the roadmap checkout (fetch + ff-only) before ingest and writeback so dispatch reads the tasks that are actually on origin [D:3/B:7/U:6 → Eff:2.17] 🎯 |
+| Task 424 | 🔄 | 🎁 **roadmap-writeback** · 🐛 Sync the roadmap checkout (fetch + ff-only) before ingest and writeback so dispatch reads the tasks that are actually on origin [D:3/B:7/U:6 → Eff:2.17] 🎯 |
 <!-- TASKS:END -->
