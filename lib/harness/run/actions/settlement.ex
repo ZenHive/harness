@@ -160,17 +160,17 @@ defmodule Harness.Run.Actions.Settlement do
   end
 
   # Autonomous merge-train trigger: a run the reviewer approved under a project
-  # that opts into landing (`landing_policy: :auto` + a non-empty `target_branch`)
-  # enqueues exactly one landing job onto the project's serialized `landing_<name>`
-  # queue. Every other terminal state — rejection, failure, `:manual` project, or
-  # a project with no `target_branch` — enqueues nothing.
+  # that opts into landing (`landing_policy` in `[:auto, :pr]` + a non-empty
+  # `target_branch`) enqueues exactly one landing job onto the project's serialized
+  # `landing_<name>` queue. Every other terminal state — rejection, failure,
+  # `:manual` project, or a project with no `target_branch` — enqueues nothing.
   @doc false
   @spec maybe_enqueue_landing(data(), Result.state()) :: :ok
   def maybe_enqueue_landing(
-        %{reason: :approved, project: %Project{landing_policy: :auto, target_branch: tb} = project} = data,
+        %{reason: :approved, project: %Project{landing_policy: policy, target_branch: tb} = project} = data,
         :done
       )
-      when is_binary(tb) and tb != "" do
+      when policy in [:auto, :pr] and is_binary(tb) and tb != "" do
     %{
       "project_name" => project.name,
       "run_id" => data.run_id,
@@ -181,7 +181,11 @@ defmodule Harness.Run.Actions.Settlement do
       "agent" => to_string(data.item.agent),
       "reviewer" => reviewer_agent_name(data.reviewer_adapter),
       "branch" => "harness/" <> data.run_id,
-      "land_attempt" => data.land_attempt
+      "land_attempt" => data.land_attempt,
+      "task_title" => data.item.title,
+      "task_body" => data.item.body,
+      "acceptance_criteria" => data.item.acceptance_criteria,
+      "review_report" => review_report(data)
     }
     |> LanderWorker.new_for_project(project)
     |> HarnessOban.insert()
@@ -189,6 +193,10 @@ defmodule Harness.Run.Actions.Settlement do
   end
 
   def maybe_enqueue_landing(_data, _terminal_state), do: :ok
+
+  @spec review_report(data()) :: String.t() | nil
+  defp review_report(%{review: %Review{report: report}}) when is_binary(report), do: report
+  defp review_report(_data), do: nil
 
   # The reviewer's agent-family name, threaded through the landing job so the
   # post-merge audit can pick a third family (∉ {implementer, reviewer}).

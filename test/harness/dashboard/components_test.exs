@@ -649,8 +649,9 @@ defmodule Harness.Dashboard.ComponentsTest do
   describe "landing_card/1" do
     test "renders project landing forms and the empty state" do
       projects = [
-        %{name: "manual-proj", label: "manual-proj", auto?: false, target_branch: nil},
-        %{name: "auto-proj", label: "auto-proj", auto?: true, target_branch: "development"}
+        %{name: "manual-proj", label: "manual-proj", policy: :manual, auto?: false, target_branch: nil},
+        %{name: "auto-proj", label: "auto-proj", policy: :auto, auto?: true, target_branch: "development"},
+        %{name: "pr-proj", label: "pr-proj", policy: :pr, auto?: false, target_branch: "main"}
       ]
 
       html = render_component(&Components.landing_card/1, projects: projects)
@@ -661,6 +662,9 @@ defmodule Harness.Dashboard.ComponentsTest do
       assert html =~ ~s(id="landing-form-auto-proj")
       assert html =~ "auto-land"
       assert html =~ ~s(value="development")
+      assert html =~ ~s(id="landing-form-pr-proj")
+      assert html =~ "pull request"
+      assert html =~ ~s(value="pr")
 
       assert render_component(&Components.landing_card/1, projects: []) =~ "No projects registered."
     end

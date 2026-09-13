@@ -49,7 +49,11 @@ defmodule Harness.ProjectRegistry.OptionalFieldsTest do
       assert {:ok, %{concurrency_cap: 1}} = OptionalFields.fetch(%{concurrency_cap: 1})
     end
 
-    test "rejects landing_policy values other than :manual or :auto" do
+    test "accepts landing_policy :pr" do
+      assert {:ok, %{landing_policy: :pr}} = OptionalFields.fetch(%{landing_policy: :pr})
+    end
+
+    test "rejects landing_policy values other than :manual, :auto, or :pr" do
       assert {:error, {:invalid_project, {:invalid_landing_policy, "auto"}}} =
                OptionalFields.fetch(%{landing_policy: "auto"})
 

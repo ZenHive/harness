@@ -1237,10 +1237,11 @@ defmodule Harness.Dashboard.Components do
   The per-project **Landing** card — the operator control for autonomous merge.
 
   Unlike the read-only config inspector, this is a *form*: each project carries a
-  landing policy (`manual` / `auto-land`) and, when auto, a `target_branch`.
-  Submitting fires `set_landing` on the parent LiveView, which validates (auto
-  requires a branch) and persists the override via `Harness.Landing.Settings`.
-  A green run only merges when the project is `auto-land` with a target branch.
+  landing policy (`manual` / `auto-land` / `pr`) and, when auto or pr, a
+  `target_branch`. Submitting fires `set_landing` on the parent LiveView, which
+  validates (auto and pr require a branch) and persists the override via
+  `Harness.Landing.Settings`. A green run only merges or opens a PR when the
+  project is `auto-land` or `pr` with a target branch.
   """
   attr(:projects, :list, required: true)
 
@@ -1251,25 +1252,32 @@ defmodule Harness.Dashboard.Components do
       <h2 class="setting-section-title">Landing</h2>
       <p class="setting-desc">
         Per-project autonomous merge. <strong>auto-land</strong>
-        merges a run into its target branch the moment it verifies green <em>and</em>
-        clears the semantic gate; <strong>manual</strong>
-        verifies then stops, leaving the diff in the worktree for you to land.
-        Auto-land requires a target branch — without one it cannot be armed.
+        fast-forward-pushes a reviewer-approved run onto its target branch;
+        <strong>pull request</strong>
+        rebases then opens a GitHub PR against that branch instead of pushing it;
+        <strong>manual</strong>
+        verifies then stops, leaving the diff on `harness/&lt;run-id&gt;`.
+        Auto-land and PR landing require a target branch — without one they cannot be armed.
         The choice persists across restarts.
       </p>
       <ul class="project-list">
-        <li :for={project <- @projects} class="project-row" data-effective={to_string(project.auto?)}>
+        <li
+          :for={project <- @projects}
+          class="project-row"
+          data-effective={to_string(landing_armed?(project))}
+        >
           <form id={"landing-form-#{project.name}"} class="landing-form" phx-submit="set_landing">
             <input type="hidden" name="name" value={project.name} />
             <div class="project-id">
               <span class="project-name">{project.label}</span>
-              <span class="pill" data-state={if project.auto?, do: "on", else: "off"}>
-                {if project.auto?, do: "auto-land", else: "manual"}
+              <span class="pill" data-state={if landing_armed?(project), do: "on", else: "off"}>
+                {landing_pill_label(project)}
               </span>
             </div>
             <select name="landing_policy" aria-label={"Landing policy for #{project.label}"}>
-              <option value="manual" selected={not project.auto?}>manual</option>
-              <option value="auto" selected={project.auto?}>auto-land</option>
+              <option value="manual" selected={landing_policy(project) == :manual}>manual</option>
+              <option value="auto" selected={landing_policy(project) == :auto}>auto-land</option>
+              <option value="pr" selected={landing_policy(project) == :pr}>pull request</option>
             </select>
             <input
               type="text"
@@ -1285,6 +1293,23 @@ defmodule Harness.Dashboard.Components do
       </ul>
     </section>
     """
+  end
+
+  @spec landing_policy(map()) :: :manual | :auto | :pr
+  defp landing_policy(%{policy: policy}) when policy in [:manual, :auto, :pr], do: policy
+  defp landing_policy(%{auto?: true}), do: :auto
+  defp landing_policy(_project), do: :manual
+
+  @spec landing_armed?(map()) :: boolean()
+  defp landing_armed?(project), do: landing_policy(project) in [:auto, :pr]
+
+  @spec landing_pill_label(map()) :: String.t()
+  defp landing_pill_label(project) do
+    case landing_policy(project) do
+      :auto -> "auto-land"
+      :pr -> "pull request"
+      :manual -> "manual"
+    end
   end
 
   @doc """

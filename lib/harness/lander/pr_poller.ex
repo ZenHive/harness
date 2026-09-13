@@ -110,11 +110,11 @@ defmodule Harness.Lander.PRPoller do
   end
 
   @spec pr_state(map()) :: :open | :merged | :closed | :unknown
-  defp pr_state(%{"state" => state}) when is_binary(state) do
+  defp pr_state(%{"state" => state} = view) when is_binary(state) do
     case String.upcase(state) do
       "OPEN" -> :open
       "MERGED" -> :merged
-      "CLOSED" -> :closed
+      "CLOSED" -> if merge_sha(view), do: :merged, else: :closed
       _other -> :unknown
     end
   end

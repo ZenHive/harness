@@ -69,7 +69,8 @@ defmodule Harness.Cron.Settings do
           optional(:master_enabled) => boolean(),
           optional(:project_autonomy) => %{String.t() => boolean()},
           optional(:dispatch_mode) => %{String.t() => dispatch_mode()},
-          optional(:schedule) => String.t()
+          optional(:schedule) => String.t(),
+          optional(:pr_poll_schedule) => String.t()
         }
 
   @doc "Returns whether the fleet-wide master autonomy switch is on (read from the store)."
@@ -94,6 +95,22 @@ defmodule Harness.Cron.Settings do
   @spec dispatch_mode(Project.t() | String.t()) :: dispatch_mode()
   def dispatch_mode(%Project{name: name}), do: dispatch_mode(name)
   def dispatch_mode(name) when is_binary(name), do: Map.get(dispatch_mode_map(), name, :auto)
+
+  @doc """
+  Returns the configured cron expression for PR-merge polling.
+
+  Unlike `schedule/0`, this is not the roadmap-preset whitelist — `:pr` lands
+  need a 5-minute tick that those presets do not include. A non-empty stored
+  crontab wins; otherwise the in-code default (`*/5 * * * *`). Boot-applied
+  like the roadmap schedule.
+  """
+  @spec pr_poll_schedule() :: String.t()
+  def pr_poll_schedule do
+    case Map.get(record(), :pr_poll_schedule) do
+      crontab when is_binary(crontab) and crontab != "" -> crontab
+      _unset -> @default_pr_poll_schedule
+    end
+  end
 
   @doc """
   Returns the configured cron expression for roadmap polling: the persisted

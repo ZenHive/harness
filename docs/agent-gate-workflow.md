@@ -13,8 +13,8 @@ re-verification, and the mechanical benchmark corpus.
 worktree → implementer AI → reviewer AI (THE GATE) → MERGE → audit AI
 
 dispatched → running (implementer) → committing → recovering (bounded AI) → reviewing (reviewer) → done | failed
-                                                                            ↓ (done + auto policy)
-                                                              MERGE (lander: rebase + ff-push)
+                                                                            ↓ (done + :auto or :pr)
+                                                              MERGE (lander: rebase, then ff-push or open PR)
                                                                             ↓
                                                               AUDIT (post-merge audit agent)
 ```
@@ -26,8 +26,12 @@ surface, false verdicts, and config burden for zero added judgment.
 This is the autonomous version of the human worktree workflow
 (`~/.claude/includes/worktree-workflow.md`) with every human/GitHub stage replaced by an AI:
 implement (Claude session → implementer AI), gate (GitHub CI/reviewer → reviewer AI), merge
-(`gh pr merge` → lander ff-push), audit (`staged-review:audit-review` skill → audit AI worker).
-No GitHub PRs anywhere — merge is a local rebase + ff-push.
+(`gh pr merge` → lander ff-push, or `gh pr create` under `landing_policy: :pr`), audit
+(`staged-review:audit-review` skill → audit AI worker).
+The reviewer AI remains the gate — a GitHub PR is not a second review loop. Under `:auto`,
+MERGE is a rebase + ff-push to `origin/<target>`. Under `:pr`, MERGE rebases the same way,
+pushes `origin/harness/<run-id>`, and opens a PR; rmap writeback and the post-merge audit
+wait until that PR is merged.
 
 ## The principle
 
@@ -93,7 +97,7 @@ writes `.harness/review.json`:
 
 Harness reads the file mechanically (`Harness.Run.Review`):
 
-- `approve` → run settles `:done`, reason `:approved` → landing enqueued (if `landing_policy: :auto`)
+- `approve` → run settles `:done`, reason `:approved` → landing enqueued (if `landing_policy` in `[:auto, :pr]` with a target branch)
 - `reject` → run settles `:failed`, reason `{:review_rejected, report}` → task back to the queue
 - approved `checks` containing a reviewer-authored `passed: false`, or non-empty `concerns`, surface as
   `review_warning` facts on the run record / notification / dashboard. Harness flags them loudly but
@@ -140,12 +144,24 @@ routing from the counted facts.
 ### MERGE — the lander
 
 `Harness.Lander`, on the project's serialized `landing_<name>` Oban queue (limit 1):
-fetch → detached worktree → rebase `harness/<run-id>` onto `origin/<target>` → **ff-push**
-(never `--force`). No re-verification — the reviewer already gated the work. The operator's
-checkout is untouched. A successful push enqueues the audit job (base_sha = the pre-land
-`origin/<target>` tip).
+fetch → detached worktree → rebase `harness/<run-id>` onto `origin/<target>`. No
+re-verification — the reviewer already gated the work.
 
-Outcomes: `{:landed, sha}` · `{:conflict, out}` · `{:push_rejected, out}` · `{:reflex_halt, r}`
+- **`:auto`** — **ff-push** the tip to `origin/<target>` (never `--force`). The operator's
+  checkout is untouched (`Git.TargetSync` may fast-forward the local target when that is
+  safe). A successful push writes rmap `done --verified --shipped-in <sha>` immediately
+  and enqueues the audit job (base_sha = the pre-land `origin/<target>` tip).
+- **`:pr`** — force-with-lease-push the rebased tip to `origin/harness/<run-id>` (never the
+  target) and open a GitHub pull request with `gh pr create --base <target> --head harness/<run-id>`.
+  `Git.TargetSync` is not run. The run record stores `pr_url`; the rmap task stays
+  `in_progress` (`--landing-ref <url>` when rmap supports it). A cron poller
+  (`Harness.Lander.PRPoller`) reads `gh pr view --json state,mergeCommit,mergedAt`.
+  MERGED performs the same three writebacks `:auto` does at push time (rmap `done` +
+  post-merge audit + `:landed`). CLOSED-unmerged marks the task `blocked` with the PR URL
+  in the reason and retains the branch. An unauthenticated or missing `gh` fails the landing
+  job with a witnessed reason and never falls back to a direct push.
+
+Outcomes: `{:landed, sha}` · `{:pr_opened, url}` · `{:gh_failed, reason}` · `{:conflict, out}` · `{:push_rejected, out}` · `{:reflex_halt, r}`
 · `{:skipped, r}` · `{:error, r}`. `Harness.Lander.Resilience` routes each: a `{:conflict, _}`
 (returned only *after* the in-worktree merge-resolver agent already failed) retains the
 reviewer-approved `harness/<run-id>` branch, marks the task `blocked`, and witnesses the
@@ -153,6 +169,7 @@ conflict — **never a fresh implementer run**; recovery is operator-driven `dis
 (zero-token re-land of the retained branch). `{:push_rejected, _}` re-lands the same branch
 under the attempt cap (the rebase succeeded, the push lost a race); a non-command
 `{:reflex_halt, _}` re-dispatches under the cap; all routes mark `blocked` at the cap.
+`{:gh_failed, _}` cancels with a witnessed reason and retains the branch.
 
 ### Audit AI — post-merge, batched, best-effort
 

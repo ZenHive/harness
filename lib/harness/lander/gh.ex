@@ -124,7 +124,7 @@ defmodule Harness.Lander.GH do
     String.contains?(output, "gh auth login") or String.contains?(output, "GH_TOKEN")
   end
 
-  @spec runner() :: :not_found | ([String.t()], keyword() -> :not_found | {String.t(), integer()})
+  @spec runner() :: ([String.t()], keyword() -> :not_found | {String.t(), integer()})
   defp runner do
     Application.get_env(:harness, :gh_cmd, &default_gh/2)
   end
@@ -132,8 +132,13 @@ defmodule Harness.Lander.GH do
   @spec default_gh([String.t()], keyword()) :: :not_found | {String.t(), integer()}
   defp default_gh(args, opts) do
     case System.find_executable("gh") do
-      nil -> :not_found
-      _path -> System.cmd("gh", args, opts)
+      nil ->
+        :not_found
+
+      _path ->
+        # argv-list spawn — no shell, no interpolation (same as Git.run/2).
+        # sobelow_skip ["CI.System"]
+        System.cmd("gh", args, opts)
     end
   end
 

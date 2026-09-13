@@ -32,6 +32,7 @@ defmodule Harness.Notification.Event do
           | :model_unavailable
           | :settled
           | :persist_failed
+          | :pr_opened
 
   @typedoc """
   The raw outcome payload, keyed by `type`:
@@ -51,6 +52,7 @@ defmodule Harness.Notification.Event do
     * `:persist_failed` — settle-time `run_records` insert failed; outcome is a map
       with `reason`, optional `spilled_path`, and optional `pending_migrations`
       labels (Task 370 — schema/DB drift must not be silent).
+    * `:pr_opened` — GitHub pull request URL opened under `landing_policy: :pr`.
   """
   @type outcome :: String.t() | map()
 
@@ -91,9 +93,16 @@ defmodule Harness.Notification.Event do
       ...>   type: :dispatch_parked, task_id: "42", outcome: %{adapter: "claude", pending_id: "proj:42"}
       ...> })
       "parked dispatch of task 42 for claude (awaiting operator approval)"
+
+      iex> Harness.Notification.Event.summary(%Harness.Notification.Event{
+      ...>   type: :pr_opened, task_id: "42", outcome: "https://github.com/acme/repo/pull/7"
+      ...> })
+      "opened PR for task 42: https://github.com/acme/repo/pull/7"
   """
   @spec summary(t()) :: String.t()
   def summary(%__MODULE__{type: :landed, task_id: id, outcome: sha}), do: "landed task #{id} at #{sha}"
+
+  def summary(%__MODULE__{type: :pr_opened, task_id: id, outcome: url}), do: "opened PR for task #{id}: #{url}"
 
   def summary(%__MODULE__{type: :blocked, task_id: id, outcome: reason}), do: "blocked task #{id}: #{reason}"
 

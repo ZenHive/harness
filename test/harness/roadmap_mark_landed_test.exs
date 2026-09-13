@@ -232,6 +232,57 @@ defmodule Harness.RoadmapMarkLandedTest do
              ]
     end
 
+    test "threads --landing-ref when supplied", %{tmp_dir: tmp_dir} do
+      {script, args_file} = stub_rmap(tmp_dir)
+      url = "https://github.com/acme/harness/pull/7"
+
+      assert {:ok, _output} =
+               Roadmap.mark_in_progress("77",
+                 root: tmp_dir,
+                 landing_ref: url,
+                 rmap_bin: script
+               )
+
+      recorded = args_file |> File.read!() |> String.split("\n", trim: true)
+
+      assert recorded == [
+               "status",
+               "77",
+               "in_progress",
+               "--landing-ref",
+               url,
+               "--tasks-path",
+               Path.join(tmp_dir, "roadmap/tasks.toml")
+             ]
+    end
+
+    test "returns the rmap error when the binary rejects --landing-ref", %{tmp_dir: tmp_dir} do
+      script = Path.join(tmp_dir, "rmap-reject-flag")
+
+      File.write!(script, """
+      #!/bin/sh
+      for arg in "$@"; do
+        if [ "$arg" = "--landing-ref" ]; then
+          echo 'unknown flag: --landing-ref' >&2
+          exit 1
+        fi
+      done
+      exit 0
+      """)
+
+      File.chmod!(script, 0o755)
+
+      assert {:error, {1, output, args}} =
+               Roadmap.mark_in_progress("77",
+                 root: tmp_dir,
+                 landing_ref: "https://github.com/acme/harness/pull/7",
+                 rmap_bin: script
+               )
+
+      assert output =~ "unknown flag: --landing-ref"
+      assert "--landing-ref" in args
+    end
+
     test "returns {:error, {:rmap_not_found, _}} when the binary is absent", %{tmp_dir: tmp_dir} do
       assert {:error, {:rmap_not_found, _bin}} =
                Roadmap.mark_in_progress("1", root: tmp_dir, rmap_bin: Path.join(tmp_dir, "nope-rmap"))

@@ -10,6 +10,18 @@ defmodule Harness.Notification.EventTest do
 
   doctest Event
 
+  describe "summary/1 — pr_opened" do
+    test "names the opened PR URL" do
+      event = %Event{
+        type: :pr_opened,
+        task_id: "426",
+        outcome: "https://github.com/acme/harness/pull/7"
+      }
+
+      assert Event.summary(event) == "opened PR for task 426: https://github.com/acme/harness/pull/7"
+    end
+  end
+
   describe "summary/1 — in_run_discernment" do
     test "names the action and verdict from the sampled payload" do
       event = %Event{

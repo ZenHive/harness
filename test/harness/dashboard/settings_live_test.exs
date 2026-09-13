@@ -792,8 +792,34 @@ defmodule Harness.Dashboard.SettingsLiveTest do
       |> form("#landing-form-#{project.name}", %{landing_policy: "auto", target_branch: ""})
       |> render_submit()
 
-    assert html =~ "needs a target branch"
+    assert html =~ "need a target branch"
     # The rejected submit never armed the project.
+    assert LandingSettings.effective(project).landing_policy == :manual
+  end
+
+  test "arming PR landing persists the override and confirms", %{conn: conn, project: project} do
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html =
+      view
+      |> form("#landing-form-#{project.name}", %{landing_policy: "pr", target_branch: "release"})
+      |> render_submit()
+
+    assert html =~ "Landing updated for #{project.name}"
+    effective = LandingSettings.effective(project)
+    assert effective.landing_policy == :pr
+    assert effective.target_branch == "release"
+  end
+
+  test "arming PR landing without a target branch is rejected", %{conn: conn, project: project} do
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    html =
+      view
+      |> form("#landing-form-#{project.name}", %{landing_policy: "pr", target_branch: ""})
+      |> render_submit()
+
+    assert html =~ "need a target branch"
     assert LandingSettings.effective(project).landing_policy == :manual
   end
 

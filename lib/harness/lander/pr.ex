@@ -142,7 +142,7 @@ defmodule Harness.Lander.PR do
 
   @spec write_landing_ref_task(Project.t(), map(), String.t(), String.t()) :: :ok
   defp write_landing_ref_task(project, request, url, task_id) do
-    case Roadmap.mark_in_progress(task_id, project: project, landing_ref: url) do
+    case Roadmap.mark_in_progress(task_id, landing_ref_opts(project, url)) do
       {:ok, _output} ->
         :ok
 
@@ -153,6 +153,19 @@ defmodule Harness.Lander.PR do
         )
 
         :ok
+    end
+  end
+
+  @spec landing_ref_opts(Project.t(), String.t()) :: keyword()
+  defp landing_ref_opts(project, url) do
+    maybe_rmap_bin(project: project, landing_ref: url)
+  end
+
+  @spec maybe_rmap_bin(keyword()) :: keyword()
+  defp maybe_rmap_bin(opts) do
+    case Application.get_env(:harness, :rmap_bin) do
+      bin when is_binary(bin) -> Keyword.put(opts, :rmap_bin, bin)
+      _unset -> opts
     end
   end
 

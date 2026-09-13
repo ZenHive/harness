@@ -653,6 +653,22 @@ defmodule Harness.ProjectRegistryTest do
       assert project.reviewer == :codex
     end
 
+    test "loads landing_policy :pr from a map config" do
+      entry = %{
+        name: "configured-pr",
+        source: {:local, "/tmp/harness-pr"},
+        roadmap_path: "/tmp/harness-pr/roadmap/tasks.toml",
+        languages: [:elixir],
+        landing_policy: :pr,
+        target_branch: "main"
+      }
+
+      Application.put_env(:harness, :projects, [entry])
+
+      assert {:ok, %{projects: %{"configured-pr" => %Harness.Project{landing_policy: :pr, target_branch: "main"}}}} =
+               ProjectRegistry.init(:noargs)
+    end
+
     test "loads a valid project from a map config" do
       entry = %{
         name: "configured-map",
@@ -939,6 +955,16 @@ defmodule Harness.ProjectRegistryTest do
 
       assert {:ok, effective} = ProjectRegistry.lookup("flip")
       assert effective.landing_policy == :auto
+      assert effective.target_branch == "release"
+    end
+
+    test "lookup overlays a persisted :pr/branch override onto a :manual/nil registration default" do
+      project = %{sample_project("flip-pr") | landing_policy: :manual, target_branch: nil}
+      assert :ok = ProjectRegistry.register(project)
+      assert :ok = LandingSettings.set("flip-pr", :pr, "release", "test")
+
+      assert {:ok, effective} = ProjectRegistry.lookup("flip-pr")
+      assert effective.landing_policy == :pr
       assert effective.target_branch == "release"
     end
 

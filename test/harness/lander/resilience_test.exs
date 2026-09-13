@@ -49,6 +49,19 @@ defmodule Harness.Lander.ResilienceTest do
     test "blocked-command reflex halts block immediately" do
       assert {:block, :reflex_halt} = Resilience.plan({:reflex_halt, {:blocked_command, "mix deps.clean"}}, 1)
     end
+
+    test "pr_opened terminates ok at any attempt" do
+      assert {:ok, {:pr_opened, "https://example.com/pr/1"}} =
+               Resilience.plan({:pr_opened, "https://example.com/pr/1"}, 1)
+
+      assert {:ok, {:pr_opened, "https://example.com/pr/1"}} =
+               Resilience.plan({:pr_opened, "https://example.com/pr/1"}, 2)
+    end
+
+    test "gh_failed cancels with a witnessed reason at any attempt" do
+      assert {:gh_failed, :gh_not_found} = Resilience.plan({:gh_failed, :gh_not_found}, 1)
+      assert {:gh_failed, {:gh_unauthenticated, "x"}} = Resilience.plan({:gh_failed, {:gh_unauthenticated, "x"}}, 2)
+    end
   end
 
   describe "route/2 — terminal outcomes (no repair)" do
@@ -62,6 +75,37 @@ defmodule Harness.Lander.ResilienceTest do
 
     test "error returns {:error, reason} so Oban backs off and retries" do
       assert {:error, :fetch_boom} = Resilience.route({:error, :fetch_boom}, base_args("any", 1))
+    end
+
+    test "pr_opened returns :ok and notifies :pr_opened" do
+      Application.put_env(:harness, :notification_sinks, [CaptureSink])
+      Application.put_env(:harness, :test_capture_pid, self())
+
+      on_exit(fn ->
+        Application.delete_env(:harness, :notification_sinks)
+        Application.delete_env(:harness, :test_capture_pid)
+      end)
+
+      url = "https://github.com/acme/harness/pull/7"
+      assert :ok = Resilience.route({:pr_opened, url}, base_args("any", 1))
+      assert_receive {:notify, %Event{type: :pr_opened, outcome: ^url, task_id: "42"}}
+    end
+
+    test "gh_failed cancels, notifies :blocked, and does not retry" do
+      Application.put_env(:harness, :notification_sinks, [CaptureSink])
+      Application.put_env(:harness, :test_capture_pid, self())
+
+      on_exit(fn ->
+        Application.delete_env(:harness, :notification_sinks)
+        Application.delete_env(:harness, :test_capture_pid)
+      end)
+
+      assert {:cancel, {:gh_failed, :gh_not_found}} =
+               Resilience.route({:gh_failed, :gh_not_found}, base_args("any", 1))
+
+      assert_receive {:notify, %Event{type: :blocked, outcome: reason}}
+      assert reason =~ "PR open failed"
+      assert reason =~ "never pushed origin/<target>"
     end
   end
 

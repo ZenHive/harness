@@ -154,6 +154,13 @@ defmodule Harness.Cron.SettingsTest do
       assert RoadmapPoller.schedule() == "0 * * * *"
     end
 
+    test "pr_poll_schedule defaults to every 5 minutes and persists a stored crontab" do
+      assert Settings.pr_poll_schedule() == "*/5 * * * *"
+
+      assert :ok = SettingsStore.put(:cron, %{pr_poll_schedule: "*/10 * * * *"})
+      assert Settings.pr_poll_schedule() == "*/10 * * * *"
+    end
+
     test "a persisted schedule outside the preset whitelist is ignored" do
       # An old/hand-edited record could carry a crontab no longer in the whitelist.
       assert :ok =

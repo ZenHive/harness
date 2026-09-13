@@ -455,6 +455,10 @@ defmodule Harness.Roadmap do
       * `:root` — the project root holding `roadmap/tasks.toml`. Required unless
         `:project` is given.
       * `:rmap_bin` — override the `rmap` binary name/path (intended for tests).
+      * `:landing_ref` — optional URL written as `rmap status <id> in_progress
+        --landing-ref <ref>` so an open harness PR is visible on the task.
+        An rmap binary that rejects the flag returns `{:error, _}`; callers
+        that must tolerate an older rmap (the PR lander) log and continue.
 
     Returns `{:ok, output}` or `{:error, {status, output, args}}`.
     """,
@@ -462,14 +466,27 @@ defmodule Harness.Roadmap do
       item_or_id: [kind: :value, description: "Roadmap task ID string."],
       opts: [
         kind: :value,
-        description: "Keyword list. `:project`, `:root`, and `:rmap_bin` are documented above."
+        description: "Keyword list. `:project`, `:root`, `:rmap_bin`, and `:landing_ref` are documented above."
       ]
     ]
   )
 
   @spec mark_in_progress(Item.t() | String.t(), keyword()) :: {:ok, String.t()} | {:error, term()}
   def mark_in_progress(item_or_id, opts) do
-    mutate(item_or_id, ["in_progress"], "in_progress", opts)
+    mutate(item_or_id, in_progress_args(opts), "in_progress", opts)
+  end
+
+  @spec in_progress_args(keyword()) :: [String.t()]
+  defp in_progress_args(opts) do
+    append_flag(["in_progress"], "--landing-ref", landing_ref(opts))
+  end
+
+  @spec landing_ref(keyword()) :: String.t() | nil
+  defp landing_ref(opts) do
+    case Keyword.get(opts, :landing_ref) do
+      ref when is_binary(ref) and ref != "" -> ref
+      _absent -> nil
+    end
   end
 
   api(

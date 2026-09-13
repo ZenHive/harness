@@ -198,8 +198,7 @@ defmodule Harness.Lander do
       "reviewer" => reviewer_name(record.reviewer_adapter),
       "branch" => "harness/" <> record.run_id,
       "land_attempt" => 1,
-      "manual_reland" => true,
-      "review_report" => record.review_report
+      "manual_reland" => true
     }
   end
 

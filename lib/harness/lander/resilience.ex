@@ -16,6 +16,10 @@ defmodule Harness.Lander.Resilience do
   ## Routing table
 
     * `{:landed, sha}` → `:ok` (terminal — the worker logs the SHA).
+    * `{:pr_opened, url}` → `:ok` (terminal for this job — rmap stays
+      `in_progress` until the PR poller sees MERGED; notifies `:pr_opened`).
+    * `{:gh_failed, reason}` → cancel with a witnessed reason, retain the
+      branch, never fall back to pushing the target.
     * `{:skipped, reason}` → `:ok` (nothing to act on, e.g. a `{:github, _}`
       source the lander can't push to).
     * `{:error, reason}` → `{:error, reason}` (a transient fetch/checkout
@@ -83,6 +87,7 @@ defmodule Harness.Lander.Resilience do
           | {:reland, pos_integer()}
           | {:conflict_retain, String.t()}
           | {:manual_reland_conflict, String.t()}
+          | {:gh_failed, term()}
           | {:block, reason_tag()}
 
   @doc """
@@ -105,6 +110,8 @@ defmodule Harness.Lander.Resilience do
   """
   @spec plan(Lander.outcome(), pos_integer()) :: action()
   def plan({:landed, _sha} = landed, _attempt), do: {:ok, landed}
+  def plan({:pr_opened, _url} = opened, _attempt), do: {:ok, opened}
+  def plan({:gh_failed, reason}, _attempt), do: {:gh_failed, reason}
   def plan({:skipped, _reason} = skipped, _attempt), do: {:ok, skipped}
   def plan({:error, reason}, _attempt), do: {:retry, reason}
 
@@ -148,9 +155,22 @@ defmodule Harness.Lander.Resilience do
     :ok
   end
 
+  defp apply_action({:ok, {:pr_opened, url}}, args) do
+    Logger.info("harness lander: opened PR for task #{args["task_id"]} (run #{args["run_id"]}): #{url}")
+    Notification.notify(event(:pr_opened, url, args))
+    :ok
+  end
+
   defp apply_action({:ok, {:skipped, reason}}, args) do
     Logger.info("harness lander: skipped task #{args["task_id"]}: #{inspect(reason)}")
     :ok
+  end
+
+  defp apply_action({:gh_failed, reason}, args) do
+    witnessed = gh_failed_reason(reason, args)
+    Logger.warning("harness lander: #{witnessed}")
+    Notification.notify(event(:blocked, witnessed, args))
+    {:cancel, {:gh_failed, reason}}
   end
 
   defp apply_action({:retry, reason}, _args), do: {:error, reason}
@@ -296,6 +316,12 @@ defmodule Harness.Lander.Resilience do
 
   # Builds a witness Event from the worker args + the type-specific outcome
   # payload (landed SHA / blocked reason).
+  @spec gh_failed_reason(term(), map()) :: String.t()
+  defp gh_failed_reason(reason, args) do
+    "PR open failed: #{inspect(reason)} (task #{args["task_id"]}, run #{args["run_id"]}, " <>
+      "branch #{args["branch"]} retained; never pushed origin/<target>)"
+  end
+
   @spec event(Event.type(), Event.outcome(), map()) :: Event.t()
   defp event(type, outcome, args) do
     %Event{

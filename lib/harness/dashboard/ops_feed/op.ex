@@ -167,6 +167,8 @@ defmodule Harness.Dashboard.OpsFeed.Op do
   # Mechanical relabel of a land outcome tuple.
   @spec land_outcome(term()) :: {atom(), String.t() | nil, String.t() | nil}
   defp land_outcome({:landed, sha}), do: {:landed, sha, nil}
+  defp land_outcome({:pr_opened, url}), do: {:pr_opened, url, nil}
+  defp land_outcome({:gh_failed, reason}), do: {:gh_failed, nil, inspect(reason)}
   defp land_outcome({:conflict, _output}), do: {:conflict, nil, "rebase conflict"}
   defp land_outcome({:push_rejected, _output}), do: {:push_rejected, nil, "target advanced under us"}
   defp land_outcome({:reflex_halt, reason}), do: {:reflex_halt, nil, inspect(reason)}

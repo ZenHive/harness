@@ -15,10 +15,11 @@ defmodule Harness.Dashboard.SettingsLive do
   renders only here, not on the run dashboard.
 
   Hosts the per-project **Landing** card over `Harness.Landing.Settings`: the
-  runtime-flippable `manual` / `auto-land` + target-branch override that arms
-  autonomous merge, and a **Dispatch now** button that fires an immediate
-  roadmap poll instead of waiting for the cron tick. Transient operator feedback
-  rides a `:notice` assign rendered by `Harness.Dashboard.Components.operator_flash/1`.
+  runtime-flippable `manual` / `auto-land` / `pr` + target-branch override that
+  arms autonomous merge or GitHub PR landing, and a **Dispatch now** button
+  that fires an immediate roadmap poll instead of waiting for the cron tick.
+  Transient operator feedback rides a `:notice` assign rendered by
+  `Harness.Dashboard.Components.operator_flash/1`.
 
   Designed as the home for further operator config (the Task 127 config
   inspector slots in here as a sibling card).
@@ -128,12 +129,19 @@ defmodule Harness.Dashboard.SettingsLive do
     {:noreply, refresh(socket)}
   end
 
-  def handle_event("set_landing", %{"name" => name, "landing_policy" => policy, "target_branch" => branch}, socket) do
+  def handle_event("set_landing", %{"name" => name, "landing_policy" => policy} = params, socket) do
+    branch = Map.get(params, "target_branch", "")
+
     notice =
       case LandingSettings.set(name, policy_atom(policy), branch, "dashboard") do
-        :ok -> {:ok, "Landing updated for #{name}."}
-        {:error, :target_branch_required} -> {:error, "Auto-land needs a target branch — none was given."}
-        {:error, :invalid_policy} -> {:error, "Unknown landing policy."}
+        :ok ->
+          {:ok, "Landing updated for #{name}."}
+
+        {:error, :target_branch_required} ->
+          {:error, "Auto-land and PR landing need a target branch — none was given."}
+
+        {:error, :invalid_policy} ->
+          {:error, "Unknown landing policy."}
       end
 
     {:noreply, socket |> assign(:notice, notice) |> refresh()}
@@ -742,7 +750,14 @@ defmodule Harness.Dashboard.SettingsLive do
   defp landing_state(projects) do
     Enum.map(projects, fn project ->
       %{landing_policy: policy, target_branch: branch} = LandingSettings.effective(project)
-      %{name: project.name, label: project.name, auto?: policy == :auto, target_branch: branch}
+
+      %{
+        name: project.name,
+        label: project.name,
+        policy: policy,
+        auto?: policy == :auto,
+        target_branch: branch
+      }
     end)
   end
 
@@ -767,9 +782,10 @@ defmodule Harness.Dashboard.SettingsLive do
 
   # Maps the select's string value to a policy atom without `String.to_atom` on
   # request input — an unknown value becomes `:invalid`, which `set/4` rejects.
-  @spec policy_atom(String.t()) :: :auto | :manual | :invalid
+  @spec policy_atom(String.t()) :: :auto | :manual | :pr | :invalid
   defp policy_atom("auto"), do: :auto
   defp policy_atom("manual"), do: :manual
+  defp policy_atom("pr"), do: :pr
   defp policy_atom(_other), do: :invalid
 
   # Fires a roadmap poll immediately instead of waiting for the cron tick. Honors
