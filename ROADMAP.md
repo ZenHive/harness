@@ -9,7 +9,7 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (21 of 30 done · 1 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (21 of 30 done · 2 in progress)
 
 **Last shipped:** Task 424 — Sync the roadmap checkout (fetch + ff-only) before ingest and writeback so dispatch reads the tasks that are actually on origin on 2026-09-13
 
@@ -378,5 +378,5 @@
 | Task 414 | ✅ | 🎁 **config-surface** · 🐛 Give dispatch-register_project a typed languages schema so MCP clients can send a JSON array [D:3/B:7/U:6 → Eff:2.17] 🎯 |
 | Task 417 | ✅ | 🎁 **resilience** · 🐛 Delivery staging must never carry a symlink or dependency/build artifact — a leaked deps symlink destroyed the base checkout [D:3/B:9/U:8 → Eff:2.83] 🎯 |
 | Task 424 | ✅ | 🎁 **roadmap-writeback** · 🐛 Sync the roadmap checkout (fetch + ff-only) before ingest and writeback so dispatch reads the tasks that are actually on origin [D:3/B:7/U:6 → Eff:2.17] 🎯 |
-| Task 428 | ⬜ | 🎁 **resilience** · Node-pressure gate samples a naive RSS sum, not memory headroom — switch to MemAvailable and give the mark an env override [D:3/B:5/U:4 → Eff:1.5] 🚀 |
+| Task 428 | 🔄 | 🎁 **resilience** · Node-pressure gate samples a naive RSS sum, not memory headroom — switch to MemAvailable and give the mark an env override [D:3/B:5/U:4 → Eff:1.5] 🚀 |
 <!-- TASKS:END -->

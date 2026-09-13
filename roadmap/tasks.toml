@@ -13285,7 +13285,7 @@ scored_at = "2026-09-13"
 id = "428"
 phase = 23
 bundle = "resilience"
-status = "pending"
+status = "in_progress"
 title = "Node-pressure gate samples a naive RSS sum, not memory headroom — switch to MemAvailable and give the mark an env override"
 scores = { d = 3, b = 5, u = 4 }
 depends_on = [202]
@@ -13323,6 +13323,7 @@ Second, smaller defect, same surface: the per-run cap has an env override (HARNE
 Found while diagnosing six production runs killed as {:memory_runaway, ...} at 6.1-6.8 GiB against the 6 GiB library default (tapakly, harness, ccxt_extract, aave_sim, 2026-06 through 2026-09-11). Those were the PER-RUN cap, addressed deployment-side by setting HARNESS_RUN_MEM_THRESHOLD_GB=12; they are not evidence about this gate and are mentioned only as provenance.
 """
 created_at = "2026-09-13"
+started_at = "2026-09-13"
 scored_at = "2026-09-13"
 
 [[task]]
