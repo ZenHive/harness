@@ -19281,7 +19281,7 @@
       "id": "418",
       "phase": 22,
       "bundle": "contract",
-      "status": "in_progress",
+      "status": "done",
       "title": "Publish Task 392 tree-kill in harness_agent_adapter and restore the git dependency pin",
       "scores": {
         "d": 4,
@@ -19326,10 +19326,17 @@
         "run-lifecycle",
         "otp"
       ],
+      "shipped_in": "c047cd1e7598aec107c9e0ba7247415f03345929",
       "body": "Task 392 had to change Harness.AgentAdapter.OSProcess, which after Task 397 lives in the extracted package. The implementer vendored the whole package at vendor/harness_agent_adapter and switched mix.exs from the ZenHive git pin to a path dep so the tree-kill could land inside this repo. That unblocks terminate-the-tree, but it forks the extracted package: later adapter work in ZenHive/harness_agent_adapter will not reach this node, and later adapter work here will not reach other consumers (Personas OS).\n\nThe Task 397 contract is the git dependency. Restore it: land the OSProcess tree-kill (and the grandchild-quiescence tests) on harness_agent_adapter main, then point harness mix.exs back at that SHA and delete the vendor copy. Do not re-implement tree-kill in harness lib/ — the shared lifecycle surface stays in the package.\n\nObserved 2026-08-26 on the post-merge audit of 2af446e. CLAUDE.md / AGENTS.md / the driver skill still said \"git dependency\" after the vendor pin landed; the audit rewrote those to match the path pin so they stop lying, and this task is what makes the original wording true again.\n",
       "created_at": "2026-08-26",
       "started_at": "2026-09-13",
+      "done_at": "2026-09-13",
       "scored_at": "2026-08-26",
+      "implemented": "Landed by grok via merge-train; reviewer-approved (run run-1789278391276-1448c2b8, c047cd1e7598aec107c9e0ba7247415f03345929).",
+      "delivered_by": "grok",
+      "verified": true,
+      "verified_by": "cursor",
+      "verification_ref": "harness-run:run-1789278391276-1448c2b8",
       "cross_repo": []
     },
     {
