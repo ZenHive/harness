@@ -5,15 +5,38 @@ alias Harness.Dashboard.Endpoint
 database_config =
   case System.get_env("HARNESS_DATABASE_URL") || System.get_env("DATABASE_URL") do
     nil ->
+      host = System.get_env("HARNESS_DB_HOST") || System.get_env("PGHOST")
+      password = System.get_env("HARNESS_DB_PASSWORD") || System.get_env("PGPASSWORD")
+      port = String.to_integer(System.get_env("PGPORT") || "5432")
+
+      # Local installations can authenticate the OS user over a Unix socket.
+      # Explicit connection settings retain precedence over socket discovery.
+      socket_dir =
+        if is_nil(host) and is_nil(password) do
+          Enum.find(["/var/run/postgresql", "/tmp"], fn dir ->
+            File.exists?(Path.join(dir, ".s.PGSQL.#{port}"))
+          end)
+        end
+
+      endpoint =
+        cond do
+          is_binary(host) and String.starts_with?(host, "/") -> [socket_dir: host]
+          is_binary(host) -> [hostname: host]
+          socket_dir -> [socket_dir: socket_dir]
+          true -> [hostname: "localhost"]
+        end
+
       base = [
         database: System.get_env("HARNESS_DB_NAME") || "harness_#{config_env()}",
-        username: System.get_env("HARNESS_DB_USER") || System.get_env("USER") || "postgres",
-        hostname: System.get_env("HARNESS_DB_HOST") || "localhost"
+        username:
+          System.get_env("HARNESS_DB_USER") || System.get_env("PGUSER") ||
+            System.get_env("USER") || "postgres",
+        port: port
       ]
 
-      case System.get_env("HARNESS_DB_PASSWORD") do
-        nil -> base
-        password -> Keyword.put(base, :password, password)
+      case password do
+        nil -> base ++ endpoint
+        password -> Keyword.put(base ++ endpoint, :password, password)
       end
 
     url ->

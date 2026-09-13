@@ -109,3 +109,16 @@ All tooling is wired per the global Elixir setup conventions (Styler first, Reac
 ## License
 
 MIT (or your preferred license).
+
+## Local database connection
+
+`HARNESS_DATABASE_URL` (or `DATABASE_URL`) sets the complete database connection.
+Without a URL, Harness reads `HARNESS_DB_NAME` (default `harness_<env>`),
+`HARNESS_DB_USER` (then `PGUSER`, `$USER`, `postgres`), `HARNESS_DB_HOST` (then
+`PGHOST`), and `HARNESS_DB_PASSWORD` (then `PGPASSWORD`). `PGPORT` defaults to 5432.
+
+With no explicit host or password, Harness uses an existing Postgres socket in
+`/var/run/postgresql` or `/tmp`, or `localhost` if neither exists. Explicit hosts
+and passwords retain TCP connections; an absolute host path selects a Unix socket.
+For a laptop using TCP, set `HARNESS_DB_HOST=localhost` and its database password
+when required. Database URLs take precedence over individual settings.
