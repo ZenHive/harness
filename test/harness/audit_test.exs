@@ -15,6 +15,7 @@ defmodule Harness.AuditTest do
   use ExUnit.Case, async: false
 
   alias Harness.Agent.Settings, as: AgentSettings
+  alias Harness.AgentAdapter.Claude
   alias Harness.AgentAdapter.Pi
   alias Harness.AgentRegistry
   alias Harness.Audit
@@ -750,6 +751,33 @@ defmodule Harness.AuditTest do
           {:skipped, :no_audit_agent} ->
             :ok
         end
+      end
+    end
+
+    test "a reviewer-only agent (implementer-disabled, reviewer-eligible) is a valid auditor" do
+      # Regression: auditor eligibility AND-ed the implementer-level enabled?
+      # flag with reviewer_eligible?, so a claude that is disabled as implementer
+      # but trusted as reviewer could never audit — every codex↔cursor land was
+      # skipped with :no_audit_agent while claude was reviewing those same runs.
+      previous = SettingsStore.fetch_map(:agent)
+      on_exit(fn -> SettingsStore.put(:agent, previous) end)
+
+      for {agent, _module} <- AgentRegistry.agents() do
+        AgentSettings.set_reviewer_eligible(agent, agent == :claude, "audit-test")
+      end
+
+      AgentSettings.set_enabled(:claude, false, "audit-test")
+      refute AgentSettings.enabled?(:claude)
+      assert AgentSettings.reviewer_eligible?(:claude)
+
+      result = Audit.select_auditor(%{implementer: "codex", reviewer: "cursor"})
+
+      if AgentRegistry.installed?(Claude) and AgentRegistry.available?(Claude) do
+        assert {:ok, Claude} = result
+      else
+        # No claude CLI on this host: the only eligible third family is absent,
+        # so the skip is the correct answer — but never because of enabled?.
+        assert {:skipped, :no_audit_agent} = result
       end
     end
   end

@@ -13,12 +13,14 @@ defmodule Harness.Lander.ResolverTest do
   # files (same class as ReviewerSelectionTest; observed 2026-07-07).
   use ExUnit.Case, async: false
 
+  alias Harness.Agent.Settings
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentAdapter.Codex
   alias Harness.AgentAdapter.Cursor
   alias Harness.AgentRegistry
   alias Harness.GitFixture
   alias Harness.Lander.Resolver
+  alias Harness.SettingsStore
   alias Harness.Worktree
 
   @long_conflict_payload_chars 4_100
@@ -69,6 +71,32 @@ defmodule Harness.Lander.ResolverTest do
 
       assert {:error, {:no_resolver_model, [codex: {:model_required, :codex}]}} =
                Resolver.select_resolver_candidate(:claude, :codex)
+    end
+
+    test "a reviewer-only agent (implementer-disabled, reviewer-eligible) is a valid resolver" do
+      # Regression: dispatchable?/2 AND-ed the implementer-level enabled? flag
+      # with reviewer_eligible?, so a claude disabled as implementer but trusted
+      # as reviewer could never resolve a codex↔cursor land conflict.
+      AgentRegistry.reset()
+      mark_all_installed(false)
+      mark_installed(Claude, true)
+      put_model_env(agent_model: [claude: "claude-opus-5"], reviewer_model: [])
+
+      previous = SettingsStore.fetch_map(:agent)
+
+      on_exit(fn ->
+        SettingsStore.put(:agent, previous)
+        AgentRegistry.reset()
+      end)
+
+      for {agent, _module} <- AgentRegistry.agents() do
+        Settings.set_reviewer_eligible(agent, agent == :claude, "resolver-test")
+      end
+
+      Settings.set_enabled(:claude, false, "resolver-test")
+      refute Settings.enabled?(:claude)
+
+      assert {:ok, Claude} = Resolver.select_resolver(:codex, :cursor)
     end
   end
 

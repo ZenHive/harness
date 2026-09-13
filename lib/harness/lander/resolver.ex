@@ -180,11 +180,16 @@ defmodule Harness.Lander.Resolver do
   end
 
   # Reuses the reviewer-eligibility gate (Agent.Settings) + availability/install
-  # registry — the resolver must be a trusted, present, enabled agent.
+  # registry — the resolver must be a trusted, present agent. The implementer-level
+  # `Settings.enabled?` flag is deliberately NOT a gate here (same contract as
+  # `Run.Actions.Reviewing.reviewer_dispatchable?/1`): a reviewer-only agent —
+  # disabled as implementer, reviewer-eligible — is exactly the trusted third
+  # party a resolver should be. Coupling the flags left every codex↔cursor land
+  # without a resolver once claude was implementer-disabled.
   @spec dispatchable?(atom(), module()) :: boolean()
   defp dispatchable?(agent, module) do
     AgentRegistry.installed?(module) and AgentRegistry.available?(module) and
-      Settings.enabled?(agent) and Settings.reviewer_eligible?(agent)
+      Settings.reviewer_eligible?(agent)
   end
 
   @doc false

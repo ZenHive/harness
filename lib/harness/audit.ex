@@ -364,14 +364,20 @@ defmodule Harness.Audit do
 
   # The auditor commits and ff-pushes to the shared target branch unsupervised —
   # a *higher*-trust role than the reviewer gate. So it requires the same
-  # `reviewer_eligible?` trust flag the reviewer and resolver demand (not just
-  # `enabled?`): an agent we won't trust to *gate* a run must not be trusted to
-  # autonomously *write to* the target branch. An unresolvable module (test
-  # doubles via the explicit `:auditor` override) stays permissive.
+  # `reviewer_eligible?` trust flag the reviewer and resolver demand: an agent we
+  # won't trust to *gate* a run must not be trusted to autonomously *write to*
+  # the target branch. The implementer-level `AgentSettings.enabled?` flag is
+  # deliberately NOT a gate (same contract as
+  # `Run.Actions.Reviewing.reviewer_dispatchable?/1`): a reviewer-only agent —
+  # disabled as implementer, reviewer-eligible — is exactly the trusted third
+  # family an audit wants. Coupling the flags skipped every codex↔cursor land
+  # with `:no_audit_agent` once claude was implementer-disabled (2026-08-26 →
+  # 09-13, 41 unaudited commits). An unresolvable module (test doubles via the
+  # explicit `:auditor` override) stays permissive.
   @spec auditor_eligible?(module()) :: boolean()
   defp auditor_eligible?(module) do
     case AgentRegistry.agent_for_module(module) do
-      {:ok, agent} -> AgentSettings.enabled?(agent) and AgentSettings.reviewer_eligible?(agent)
+      {:ok, agent} -> AgentSettings.reviewer_eligible?(agent)
       {:error, _reason} -> true
     end
   end
