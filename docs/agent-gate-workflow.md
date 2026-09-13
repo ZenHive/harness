@@ -59,6 +59,12 @@ shared-`tapakly_test` contamination first observed on task 85 at 2026-06-10
 the isolation env, harness runs `MIX_ENV=test mix ecto.drop --quiet`; failure is
 logged and never gates settle or landing.
 
+Projects requiring operator-installed extensions can opt into
+[`test_db_template`](test-db-templates.md). Harness consumes only the explicitly
+prepared, frozen template, validates Ecto's effective partition, and cleans up
+using a run ownership marker. The independent reviewer still runs migrations and
+project checks.
+
 **The evidence that settled it:** every run-lifecycle bug from 2026-05-26 → 06-03 (tasks 153–163,
 168, 169, 171, 172, the task-41 verifier crash, the task-172 failure) traced to the *harness
 verification/lifecycle machinery* — false reds, false greens, verifier crashes, timeout

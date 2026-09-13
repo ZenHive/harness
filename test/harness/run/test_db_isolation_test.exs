@@ -7,6 +7,11 @@ defmodule Harness.Run.TestDbIsolationTest do
   @project %Project{name: "tapakly", source: {:local, "/tmp/tapakly"}, roadmap_path: "/tmp/tapakly", languages: [:elixir]}
 
   describe "env/2" do
+    test "template opt-in partitions on the full run id" do
+      project = %{@project | test_db_template: %{}}
+      assert TestDbIsolation.env(project, "run-1-same") != TestDbIsolation.env(project, "run-2-same")
+    end
+
     test "uses Phoenix's default MIX_TEST_PARTITION env with a DB-safe run suffix" do
       assert TestDbIsolation.env(@project, "run-1781945210210-a54845d6") == %{
                "MIX_TEST_PARTITION" => "_h_a54845d6"
@@ -35,6 +40,30 @@ defmodule Harness.Run.TestDbIsolationTest do
       assert TestDbIsolation.env(%{@project | test_db_isolation_env: "none"}, "run-a") == scrub
       assert TestDbIsolation.env(%{@project | test_db_isolation_env: " "}, "run-a") == scrub
     end
+
+    test "handles empty and punctuation-only run identifiers" do
+      for id <- ["", "---", "run-///"] do
+        assert TestDbIsolation.env(@project, id) == %{"MIX_TEST_PARTITION" => "_h_run"}
+      end
+
+      assert TestDbIsolation.env_name(%{@project | test_db_isolation_env: " APP_PARTITION "}) == {:ok, "APP_PARTITION"}
+    end
+  end
+
+  test "preparation is opt-in and refuses a template with disabled isolation" do
+    assert :ok = TestDbIsolation.prepare(@project, "/missing", "run-a")
+
+    recipe = %{
+      "repo" => "App.Repo",
+      "database" => "app_test",
+      "template" => "harness_test_template_app",
+      "extensions" => ["vector"]
+    }
+
+    project = %{@project | test_db_template: recipe, test_db_isolation_env: false}
+    assert {:error, {:test_db_template, message}} = TestDbIsolation.prepare(project, "/missing", "run-a")
+    assert message =~ "requires enabled"
+    assert {:error, _} = TestDbIsolation.prepare(%{project | test_db_template: %{}}, "/missing", "run-a")
   end
 
   describe "teardown/3" do
@@ -42,6 +71,32 @@ defmodule Harness.Run.TestDbIsolationTest do
 
     test "does nothing for opted-out projects", %{tmp_dir: dir} do
       assert :ok = TestDbIsolation.teardown(%{@project | test_db_isolation_env: false}, dir, "run-a")
+    end
+
+    test "tolerates absent worktree paths and config", %{tmp_dir: dir} do
+      assert :ok = TestDbIsolation.teardown(@project, nil, "run-a")
+      File.write!(Path.join(dir, "mix.exs"), "")
+      assert :ok = TestDbIsolation.teardown(@project, dir, "run-a")
+    end
+
+    test "logs command failures without interrupting settlement", %{tmp_dir: dir} do
+      File.mkdir_p!(Path.join(dir, "config"))
+      File.write!(Path.join(dir, "mix.exs"), "")
+      File.write!(Path.join([dir, "config", "test.exs"]), "MIX_TEST_PARTITION")
+      old_path = System.fetch_env!("PATH")
+      on_exit(fn -> System.put_env("PATH", old_path) end)
+      System.put_env("PATH", dir)
+
+      assert ExUnit.CaptureLog.capture_log(fn ->
+               assert :ok = TestDbIsolation.teardown(@project, dir, "run-a")
+             end) =~ "teardown failed"
+
+      File.write!(Path.join(dir, "mix"), "#!/bin/sh\necho failed\nexit 1\n")
+      File.chmod!(Path.join(dir, "mix"), 0o755)
+
+      assert ExUnit.CaptureLog.capture_log(fn ->
+               assert :ok = TestDbIsolation.teardown(@project, dir, "run-a")
+             end) =~ "teardown exited 1"
     end
 
     test "does nothing when the worktree does not advertise the isolation env", %{tmp_dir: dir} do

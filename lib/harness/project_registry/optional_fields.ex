@@ -3,6 +3,7 @@ defmodule Harness.ProjectRegistry.OptionalFields do
 
   alias Harness.Project
   alias Harness.ProjectCache.Recipe
+  alias Harness.Run.TestDbTemplate
 
   @fields [
     {:concurrency_cap, nil},
@@ -13,6 +14,7 @@ defmodule Harness.ProjectRegistry.OptionalFields do
     {:target_branch, nil},
     {:reviewer, nil},
     {:test_db_isolation_env, nil},
+    {:test_db_template, nil},
     {:tooling_baseline_overrides, %{}}
   ]
 
@@ -25,6 +27,7 @@ defmodule Harness.ProjectRegistry.OptionalFields do
     target_branch: :invalid_target_branch,
     reviewer: :invalid_reviewer,
     test_db_isolation_env: :invalid_test_db_isolation_env,
+    test_db_template: :invalid_test_db_template,
     tooling_baseline_overrides: :invalid_tooling_baseline_overrides
   }
 
@@ -84,6 +87,13 @@ defmodule Harness.ProjectRegistry.OptionalFields do
   defp cast(:test_db_isolation_env, :none), do: {:ok, :none}
   defp cast(:test_db_isolation_env, name) when is_binary(name), do: {:ok, name}
   defp cast(:test_db_isolation_env, other), do: invalid(:test_db_isolation_env, other)
+
+  defp cast(:test_db_template, recipe) do
+    case TestDbTemplate.normalize(recipe) do
+      {:ok, normalized} -> {:ok, normalized}
+      {:error, _} -> invalid(:test_db_template, recipe)
+    end
+  end
 
   defp cast(:tooling_baseline_overrides, map) when is_map(map) and not is_struct(map) do
     if Enum.all?(map, &string_pair?/1),

@@ -11,6 +11,7 @@ defmodule Harness.Run.States.Dispatched do
 
   # ── State: dispatched — carve the isolated worktree ──────────────────────
   alias Harness.ProjectCache
+  alias Harness.Run.TestDbIsolation
   alias Harness.Worktree
   alias Harness.Worktree.Reaper
 
@@ -37,11 +38,7 @@ defmodule Harness.Run.States.Dispatched do
          :ok <- maybe_validate_implementer_isolation(data) do
       Reaper.track(self(), data.run_id, worktree.path, worktree.repo)
 
-      task =
-        start_task(fn ->
-          :ok = ProjectCache.warm(worktree, data.project.cache_preparation, warm_paths: data.project.warm_paths)
-          {:warmed, worktree}
-        end)
+      task = start_task(fn -> prepare_worktree(worktree, data) end)
 
       {:keep_state, %{data | task: task}}
     else
@@ -68,5 +65,14 @@ defmodule Harness.Run.States.Dispatched do
 
   def handle(event_type, event_content, data) do
     handle_common(event_type, event_content, :dispatched, data)
+  end
+
+  @spec prepare_worktree(Worktree.t(), data()) :: {:warmed, Worktree.t()} | {:error, term()}
+  defp prepare_worktree(worktree, data) do
+    :ok = ProjectCache.warm(worktree, data.project.cache_preparation, warm_paths: data.project.warm_paths)
+
+    with :ok <- TestDbIsolation.prepare(data.project, worktree.path, data.run_id, data.env) do
+      {:warmed, worktree}
+    end
   end
 end

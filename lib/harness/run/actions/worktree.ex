@@ -90,8 +90,8 @@ defmodule Harness.Run.Actions.Worktree do
 
   @doc false
   @spec teardown_test_database(data()) :: :ok
-  def teardown_test_database(%{project: %Project{} = project, worktree: %Worktree{path: path}, run_id: run_id}) do
-    TestDbIsolation.teardown(project, path, run_id)
+  def teardown_test_database(%{project: %Project{} = project, worktree: %Worktree{path: path}, run_id: run_id} = data) do
+    TestDbIsolation.teardown(project, path, run_id, Map.get(data, :env, %{}))
   end
 
   def teardown_test_database(_data), do: :ok

@@ -141,7 +141,7 @@ Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/result_stor
 Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/result_store/file.ex:107,6338A01
 Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/result_store/file.ex:115,5C1B142
 Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/result_store/file.ex:215,1093120
-Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/run/test_db_isolation.ex:100,156E3F7
+Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/run/test_db_isolation.ex:159,22E6ECD
 Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/token_usage/grok_session.ex:50,1F599AE
 Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/worktree.ex:464,5F0C72D
 Traversal.FileModule: Directory Traversal in `File.read`,lib/harness/worktree.ex:489,1FCF3A1

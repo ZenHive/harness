@@ -450,6 +450,27 @@ defmodule Harness.Run.LifecycleTest do
       assert GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_db.txt"]) == "tapakly_test_h_c001d00d"
     end
 
+    test "template preparation failures stop dispatch before either agent starts" do
+      repo = GitFixture.init_repo()
+
+      recipe = %{
+        "repo" => "App.Repo",
+        "database" => "app_test",
+        "template" => "harness_test_template_app",
+        "extensions" => ["vector"]
+      }
+
+      project = %{ProjectFixture.from_repo(repo) | test_db_template: recipe, test_db_isolation_env: false}
+      {run_id, pid} = start(project: project, adapter: TestDbEnvCaptureAdapter, reviewer: TestDbEnvCaptureAdapter)
+
+      assert %Result{state: :failed, reason: {:worktree_failed, {:test_db_template, message}}, worktree_path: path} =
+               await_result(run_id, pid)
+
+      assert message =~ "requires enabled"
+      refute File.exists?(Path.join(path, "agent_db.txt"))
+      refute File.exists?(Path.join(path, "reviewer_db.txt"))
+    end
+
     test "does not inject a test DB partition when the project opts out" do
       repo = GitFixture.init_repo()
       project = ProjectFixture.from_repo(repo, test_db_isolation_env: false)

@@ -42,6 +42,8 @@ defmodule Harness.Project do
     reviewer gate; `nil` keeps the default auto-selection.
   - `test_db_isolation_env` — optional env var name used to partition a run's
     test database (default `MIX_TEST_PARTITION`); `false` or `"none"` opts out.
+  - `test_db_template` — opt-in single-repo PostgreSQL template recipe; see
+    `docs/test-db-templates.md`. Requires database partitioning to be enabled.
   - `tooling_baseline_overrides` — optional map of baseline item ids to opt-out
     reasons (e.g. `%{"dep:credo" => "legacy project"}`); recorded as facts,
     never a silent skip.
@@ -66,6 +68,7 @@ defmodule Harness.Project do
     target_branch: nil,
     reviewer: nil,
     test_db_isolation_env: nil,
+    test_db_template: nil,
     tooling_baseline_overrides: %{}
   ]
 
@@ -91,6 +94,7 @@ defmodule Harness.Project do
           target_branch: String.t() | nil,
           reviewer: atom() | nil,
           test_db_isolation_env: String.t() | false | :none | nil,
+          test_db_template: map() | nil,
           tooling_baseline_overrides: %{String.t() => String.t()}
         }
 

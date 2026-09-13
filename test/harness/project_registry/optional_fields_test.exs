@@ -13,6 +13,7 @@ defmodule Harness.ProjectRegistry.OptionalFieldsTest do
     target_branch: "main",
     reviewer: :codex,
     test_db_isolation_env: "APP_TEST_PARTITION",
+    test_db_template: nil,
     tooling_baseline_overrides: %{"dep:credo" => "legacy"}
   }
 
@@ -29,12 +30,27 @@ defmodule Harness.ProjectRegistry.OptionalFieldsTest do
                target_branch: nil,
                reviewer: nil,
                test_db_isolation_env: nil,
+               test_db_template: nil,
                tooling_baseline_overrides: %{}
              }
     end
 
     test "round-trips a fully populated valid map" do
       assert {:ok, @valid} == OptionalFields.fetch(@valid)
+    end
+
+    test "validates the explicit template contract" do
+      recipe = %{
+        "repo" => "App.Repo",
+        "database" => "app_test",
+        "template" => "harness_test_template_app_v1",
+        "extensions" => ["vector"]
+      }
+
+      assert {:ok, %{test_db_template: ^recipe}} = OptionalFields.fetch(%{test_db_template: recipe})
+
+      assert {:error, {:invalid_project, {:invalid_test_db_template, %{}}}} =
+               OptionalFields.fetch(%{test_db_template: %{}})
     end
 
     test "rejects a concurrency_cap that is not a positive integer" do
