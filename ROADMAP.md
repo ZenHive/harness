@@ -9,9 +9,9 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (22 of 30 done · 1 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (23 of 30 done · 0 in progress)
 
-**Last shipped:** Task 424 — Sync the roadmap checkout (fetch + ff-only) before ingest and writeback so dispatch reads the tasks that are actually on origin, Task 428 — Node-pressure gate samples a naive RSS sum, not memory headroom — switch to MemAvailable and give the mark an env override on 2026-09-13
+**Last shipped:** Task 377 — Retry safe post-land cleanup and reclaim historical run branches/worktree orphans, Task 424 — Sync the roadmap checkout (fetch + ff-only) before ingest and writeback so dispatch reads the tasks that are actually on origin, Task 428 — Node-pressure gate samples a naive RSS sum, not memory headroom — switch to MemAvailable and give the mark an env override on 2026-09-13
 
 **Up next:** Task 362 — Diagnose and eliminate the AgentRegistry empty-registry test flake [D:4/B:6/U:5 → Eff:1.38] 📋
 <!-- FOCUS:END -->
@@ -362,7 +362,7 @@
 | Task 373 | ⬜ | 🎁 **run-history** · 🚀 **v0_17** · Per-adapter/model activity trail across runs and agent seats [D:5/B:6/U:6 → Eff:1.2?] 📋 |
 | Task 374 | ⬜ | 🎁 **run-history** · 🚀 **v0_17** · Unified append-only lifecycle event log (harness_events) — every run action becomes a durable, queryable fact [D:8/B:7/U:4 → Eff:0.69?] ⚠️ |
 | Task 376 | ✅ | 🎁 **test-suite-perf** · Landing tests leak an empty temp repo dir per run into the shared worktree root [D:2/B:4/U:5 → Eff:2.25?] 🎯 |
-| Task 377 | 🔄 | 🎁 **resilience** · Retry safe post-land cleanup and reclaim historical run branches/worktree orphans [D:4/B:5/U:5 → Eff:1.25?] 📋 |
+| Task 377 | ✅ | 🎁 **resilience** · Retry safe post-land cleanup and reclaim historical run branches/worktree orphans [D:4/B:5/U:5 → Eff:1.25?] 📋 |
 | Task 378 `[P]` | ✅ | 🎁 **roadmap-durability** · Durable roadmap writes ignore roadmap_path and push tasks.toml into the source repo [D:4/B:7/U:7 → Eff:1.75?] 🚀 |
 | Task 379 | ✅ | 🎁 **roadmap-writeback** · 🚀 **v0_16** · 🐛 Durable roadmap writeback silently produced no commit — dispatch-start and post-land transitions both lost [D:4/B:7/U:7 → Eff:1.75?] 🚀 |
 | Task 380 | ✅ | 🎁 **audit-perf** · 🚀 **v0_16** · Fetch each project target once per landed-sha reconciliation pass [D:3/B:5/U:4 → Eff:1.5?] 🚀 |
