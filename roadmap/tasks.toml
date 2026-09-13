@@ -13409,3 +13409,41 @@ Vendor the generator into scripts/ so it runs from any clone, and wire --check i
 """
 created_at = "2026-09-13"
 scored_at = "2026-09-13"
+
+[[task]]
+id = "431"
+phase = 25
+bundle = "core-loop"
+status = "pending"
+title = "Cron orchestrator counts in-flight from rmap in_progress, so a manual-landing project deadlocks permanently at its concurrency cap"
+scores = { d = 3, b = 8, u = 8 }
+markers = ["bug"]
+acceptance_criteria = ["The in-flight fact handed to the cron orchestrator counts only tasks that actually have a live run or an unfinished Oban job — the same dispatch identity Harness.Cron.RoadmapPoller.run_in_flight?/2 already counts (live registry state in @in_flight_run_states, or Harness.Oban.unfinished_run_job?/2). A task whose run has settled is not in-flight regardless of its rmap status. The primitive is shared, not reimplemented: it moves somewhere both modules call.", "The orchestrator still receives touches/files_to_modify for each genuinely in-flight task, since touch-disjointness is what the in-flight list exists for. Resolve the live in-flight ids against the rmap rows rather than dropping the path data.", "Regression test: a project with concurrency_cap N and N tasks marked in_progress in rmap but ZERO live runs and zero unfinished Oban jobs builds an orchestrator context with in_flight == [] and dispatches, instead of deferring on a full cap. This is the starconiq failure and it must fail on the current code.", "Regression test the other direction: a task with a live in-flight run IS reported in_flight (a settled-run task and a running-run task in the same project are distinguished), so the fix does not reopen the stale-base collision the in-flight list was added to prevent.", "INVARIANT (the class, not just this instance): a poll that dispatches nothing for an autonomy-enabled project is never indistinguishable from ordinary backpressure. Every zero-dispatch poll emits one structured witnessed reason naming the cap, how many occupants have a live run or unfinished Oban job, and how many are merely rmap-in_progress. A wedged project is then readable from the log alone, whatever wedges it — the observability gap is what let this run silently for five hours, and it is the same gap Task 375 hit from the uncast-cap side.", "mix check.dispatch green plus focused mix test.json on the touched cron modules."]
+out_of_scope = ["Changing what rmap in_progress means, or making a green-but-unlanded run revert to pending — Task 131 established that stickiness deliberately and it is what stops the re-dispatch loop under manual landing. This task fixes the in-flight COUNT, not the status semantics.", "The ready-set checkout sync (Task 420) and the lander's missing roadmap advance (Task 386) — separate causes, separate tasks.", "Auto-landing a manual-landing project, or changing any project's registered landing_policy / target_branch. Operator configuration, not code.", "A harness-side gate, warning, or refusal that blocks registering cron autonomy on a manual-landing project.", "Re-validating %Harness.Project{} field casting at registration — that is Task 375, done. This task assumes the cap value is valid and fixes the numerator counted against it."]
+files_to_modify = ["lib/harness/cron/orchestrator.ex", "lib/harness/cron/roadmap_poller.ex"]
+touches = ["lib/harness/cron/", "test/harness/cron/"]
+domains = ["orchestration", "autonomy"]
+assignee = "cursor"
+model = "cursor-grok-4.6-high"
+body = """
+Sibling gate checked (RMAP_SIBLING_CHECKED=1): 237, 9, 131, 375, 284. None is this class. 237 is the `:manual` DISPATCH mode (parking a dispatch decision for operator approval) — a different axis from `landing_policy: :manual`. 9 is the retired in-memory batch cap coordinator, replaced by Oban queue-per-project. 131 is the causal ancestor and its semantics are explicitly preserved here, not changed: it made `in_progress` sticky on purpose, and this task fixes a CONSUMER that misreads that stickiness. 375 is the nearest sibling in symptom shape (a bad `concurrency_cap` silently killing dispatch) but its cause is type-casting at registration — the denominator; this is the numerator. The one thing 375 and this share is the observability gap that let both run silently, and that is deliberately widened into the invariant in AC 5 rather than filed as a third instance. 284 is the dashboard config surface.
+
+Evidence, 2026-09-13, harness node (Linux, harness_prod): starconiq has dispatched nothing since 08:05 and the cause is a phantom full concurrency cap.
+
+The four starconiq runs for tasks 4, 12, 22 and 23 settled `done`/`approve` between 07:33 and 08:05. All four have `landed_sha` NULL in `run_records`; the Oban breakdown has `project_starconiq` at 4 completed jobs and no `landing_starconiq` queue at all, so no landing job was ever enqueued. That part is correct behaviour, not a bug: `project_registry-lookup starconiq` returns `landing_policy: "manual"`, `target_branch: nil`, so approved work stays on its retained `harness/run-*` branch (all four branches still exist locally) and the tasks stay `in_progress` — exactly what Task 131 specified ("a green-but-unlanded run LEAVES the task in_progress ... under landing_policy :manual this is exactly what stops the re-dispatch loop").
+
+The defect is that `Harness.Cron.Orchestrator.in_flight_tasks/1` (lib/harness/cron/orchestrator.ex:184) derives the in-flight set from `Roadmap.list(project.name, "in_progress")`. Under manual landing `in_progress` carries two different meanings — "a run is executing this right now" and "a run finished this and it is awaiting a manual land" — and the orchestrator reads both as the first. With `concurrency_cap: 4` and exactly four settled-unlanded tasks, every subsequent poll is handed a context claiming the cap is full, and the orchestrator's plan correctly defers on it:
+
+    13:00:23 harness cron poller: starconiq task 20 defer by orchestrator: All 4 concurrency slots are occupied by in-flight tasks 4, 12, 22, and 23.
+    13:00:23 harness cron poller: starconiq task 3 defer by orchestrator: All 4 concurrency slots are occupied; also overlaps in-flight task 4 at lib/starpatron/media.ex.
+
+Identical messages at 12:00 and 13:00. The judgment is sound; the fact it was given is wrong. Any project on `landing_policy: :manual` with cron autonomy enabled deadlocks permanently once `concurrency_cap` tasks have completed without landing — and the failure is silent, because a defer reads like ordinary backpressure in the log.
+
+The right primitive already exists a few hundred lines away and is already documented as authoritative: `RoadmapPoller.run_in_flight?/2` (lib/harness/cron/roadmap_poller.ex:419) counts `live_run_in_flight?/2` (registry state in `@in_flight_run_states`) or `Harness.Oban.unfinished_run_job?/2`, with the comment "Registry is authoritative for in-BEAM live runs; Oban is authoritative for persisted queued/executing jobs. Count both by dispatch identity". The poller uses it to skip a duplicate dispatch; the orchestrator context does not use it at all. Make the orchestrator's in-flight fact come from that same source.
+
+Keep the mantra boundary intact: the in-flight list is a COUNT harness owns and is currently counting wrong. The grouping/deferral judgment stays in the orchestrator's plan artifact — do not add a cond, a deadlock heuristic, or a cap-override branch to the poller.
+
+Note for whoever picks this up: the four starconiq tasks were unblocked by the operator out-of-band on 2026-09-13, so the live symptom may be gone. The regression test, not the current starconiq state, is the evidence that matters.
+"""
+created_at = "2026-09-13"
+scored_at = "2026-09-13"
