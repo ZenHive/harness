@@ -19772,8 +19772,8 @@
         "bug"
       ],
       "depends_on": [],
-      "assignee": "grok",
-      "model": "grok-4.6",
+      "assignee": "codex",
+      "model": "gpt-6-astra",
       "acceptance_criteria": [
         "Stopping the application (SIGTERM -> Application.stop, or Run.Supervisor terminate) with runs in flight settles every live run within a bounded window well under 120s: implementer / reviewer / recovery Ports are terminated, a :failed record with a reason naming the node shutdown is persisted through ResultStore, the harness/<run-id> branch is retained, and the worktree is finished as :failed (retained). Test with a fake long-running Port that ignores stdin EOF",
         "Harness.Run traps exits (or the supervisor child spec carries a shutdown value that lets terminate/3 run) so crash_settle/3 actually executes under a supervisor-driven :shutdown, pinned by a test that stops Run.Supervisor with a live run and asserts the record exists afterwards",
