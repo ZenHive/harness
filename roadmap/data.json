@@ -19495,7 +19495,7 @@
       "id": "422",
       "phase": 4,
       "bundle": "multi-agent",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Consume explicitly prepared test database templates for isolated runs",
       "scores": {
         "d": 5,
@@ -19523,6 +19523,7 @@
       ],
       "body": "Tapakly required operator-installed vector/PostGIS for test databases. Current TestDbIsolation only supplies MIX_TEST_PARTITION and invokes ecto.drop; it does not create databases or consume templates. File cache preparation cannot solve extension provisioning. Add an opt-in contract to consume an explicitly operator-prepared, dedicated test template when provisioning the run-partition database. Never discover or clone arbitrary/live application DBs and never grant broad privileges. Server extension installation and template ownership remain explicit operator prerequisites. Choose the narrowest project/Ecto-compatible contract after probing live PostgreSQL; document required privileges, migration/check ownership, template invalidation and partition cleanup. Project checks still run under the independent reviewer. No changes to consuming source or active runs. Filing evidence 2026-09-08: harness cron effective=false, dispatch_mode=auto; this task makes the dedicated-template choice, not an unattended open decision.\n",
       "created_at": "2026-09-08",
+      "started_at": "2026-09-13",
       "scored_at": "2026-09-08",
       "cross_repo": []
     },

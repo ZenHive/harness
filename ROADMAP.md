@@ -78,7 +78,7 @@
 | Task 187 | ✅ | 🎁 **multi-agent** · Flip Antigravity worktree_isolation to true — agy 1.0.5 honors port cwd (Task 32 finding is stale) [D:2/B:5/U:5 → Eff:2.5?] 🎯 |
 | Task 366 `[P]` | ⬜ | 🎁 **multi-agent** · Add Kimi Code headless adapter + full roster wiring [D:5/B:7/U:6 → Eff:1.3?] 📋 |
 | Task 421 | ✅ | 🎁 **multi-agent** · Prepare keyed project caches before agent fan-out [D:6/B:8/U:8 → Eff:1.33] 📋 |
-| Task 422 | ⬜ | 🎁 **multi-agent** · Consume explicitly prepared test database templates for isolated runs [D:5/B:6/U:5 → Eff:1.1] 📋 |
+| Task 422 | 🔄 | 🎁 **multi-agent** · Consume explicitly prepared test database templates for isolated runs [D:5/B:6/U:5 → Eff:1.1] 📋 |
 | Task 423 | ✅ | 🎁 **multi-agent** · Preserve project cache generations across explicit non-build input changes [D:4/B:7/U:7 → Eff:1.75] 🚀 |
 | Task 425 | ✅ | 🎁 **multi-agent** · Reuse dependency and PLT build work across application-only task landings [D:6/B:7/U:7 → Eff:1.17] 📋 |
 | Task 429 | ⬜ | 🎁 **multi-agent** · 🐛 ProjectCache is Linux-only: make its runtime prerequisites and tests pass on a macOS operator machine so the architect-seat mix ci gate can go green there [D:4/B:5/U:4 → Eff:1.12] 📋 |
