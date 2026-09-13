@@ -8503,7 +8503,7 @@
       },
       "eff": 1.25,
       "dep_layer": 0,
-      "unlocks": 1,
+      "unlocks": 2,
       "markers": [],
       "depends_on": [],
       "assignee": "claude",
@@ -8598,7 +8598,7 @@
       },
       "eff": 0.63,
       "dep_layer": 1,
-      "unlocks": 0,
+      "unlocks": 1,
       "markers": [],
       "depends_on": [
         200
@@ -19804,6 +19804,59 @@
         "test/harness/dispatch_test.exs"
       ],
       "body": "Observed 2026-09-13 on the deployed node (ex63-eth, harness.service): at 01:47:48 UTC the node received SIGTERM while run run-1789262032622-221c3186 (task 426, codex) was in :reviewing with a committed branch (da370a0, 14 files, +754/-52) and harness had just re-prompted the reviewer once for a :missing verdict. The drain hung: the endpoint drained its LiveView socket, MCP SSE sessions kept emitting keepalive warnings every 15s, and the process exited at 01:49:48 — exactly TimeoutStopSec=2min later, i.e. systemd SIGKILLed it. Consequences, all verified after the restart: Harness.Run.Supervisor.list_runs() == [], ResultStore has NO record for the run (crash_settle/3 never ran — terminate/3 was pre-empted by SIGKILL, or never reached because the gen_statem does not trap exits; premise unverified which), the boot worktree sweep removed the run worktree (branch retained), and the Oban job 1917 sat in state cancelled with a single error entry from attempt 2 at 01:44:32 reading {:duplicate_run_in_flight, pid} — so the live run had already lost its Oban anchor three minutes before the SIGTERM for a reason the journal does not show (no Run.Worker log line at 01:44). Because no record existed, dispatch-rereview and dispatch-resume_failed both return :not_found (Dispatch.rereview/1 -> ResultStore.fetch_run_record/1; load_failed_record/1), and the only recovery was a hand-built Run.Supervisor.start_run/4 with rereview_opts/3 from project_eval — the Recover-Don't-Redo table has no row for this case. The gap is mechanical: a run must settle a record on shutdown the same way it does on a crash, fast enough to beat the stop timeout, so the existing recovery primitives can pick up the retained branch after a restart. Judgment stays out: harness records the fact (shutdown, retained branch); the orchestrator decides rereview vs resume. Sibling checked: task 29 (lifetime timeout as last-resort settle) covers the in-run timer, not process shutdown; task 424/420 cover roadmap checkout currency, unrelated.",
+      "created_at": "2026-09-13",
+      "scored_at": "2026-09-13",
+      "cross_repo": []
+    },
+    {
+      "id": "428",
+      "phase": 23,
+      "bundle": "resilience",
+      "status": "pending",
+      "title": "Node-pressure gate samples a naive RSS sum, not memory headroom — switch to MemAvailable and give the mark an env override",
+      "scores": {
+        "d": 3,
+        "b": 5,
+        "u": 4
+      },
+      "eff": 1.5,
+      "dep_layer": 2,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [
+        202
+      ],
+      "assignee": "codex",
+      "model": "gpt-6-astra",
+      "acceptance_criteria": [
+        "The node-pressure admission gate's sample is a headroom measure rather than a sum of per-process RSS: on Linux it reads MemAvailable from /proc/meminfo, and the gate admits while headroom is ABOVE a low-water mark instead of while an RSS sum is below a high-water mark.",
+        "The mark is operator-tunable without a recompile: config/runtime.exs plumbs an environment variable for it, symmetric with the existing HARNESS_RUN_MEM_THRESHOLD_GB. Today mem_highwater_kb is reachable only from app config, so a deployment cannot tune the gate at all.",
+        "The fail-open escape hatches survive the inversion: an explicit disable value still disables the gate, and an unreadable/unavailable sample still ADMITS rather than deadlocking dispatch (today's `host_total_kb` returning 0 behaviour).",
+        "The old :mem_highwater_kb key is either kept working or removed with a documented migration in config/runtime.exs' comment block and CHANGELOG — no silent semantic flip of an existing key's meaning, since the comparison direction reverses.",
+        "MemoryGuard.host_rss_kb/0 is either deleted or its moduledoc states plainly that it is not a memory-pressure measure (it double-counts shared pages across processes) and is not the gate's input.",
+        "Tests prove admission is deferred when headroom is under the mark and proceeds when over it, and that the deferred Oban job still snoozes rather than being discarded (task 202's contract is preserved).",
+        "The non-Linux path still compiles and degrades fail-open (admit) rather than blocking dispatch."
+      ],
+      "out_of_scope": [
+        "The per-run watchdog from task 200 (tree_rss_kb / mem_threshold_kb). It has the same shared-page double-count but it is a per-tree runaway backstop, not a pressure measure, and its overcount is conservative in the direction that matters. Separate concern, separate task if it earns one.",
+        "A global cross-queue concurrency cap (open-source Oban has none; the sum-of-queue-limits ceiling stays the steady-state bound).",
+        "Host-side systemd/cgroup limits. The deployment's harness.slice MemoryHigh/MemoryMax is the kernel-enforced backstop and is an ops concern, not harness code.",
+        "Any judgment moved into harness code — the gate stays mechanical: sample, compare, snooze."
+      ],
+      "files_to_modify": [
+        "lib/harness/run/worker.ex",
+        "lib/harness/run/memory_guard.ex"
+      ],
+      "touches": [
+        "lib/harness/run/worker.ex",
+        "lib/harness/run/memory_guard.ex",
+        "config/runtime.exs",
+        "test/harness/run/worker_test.exs"
+      ],
+      "domains": [
+        "otp"
+      ],
+      "body": "Task 202 shipped the aggregate companion to task 200's per-run cap. Its threshold logic is sound; its INPUT is not a measure of what it claims to measure.\n\n`MemoryGuard.host_rss_kb/0` sums `ps -o rss=` across every process on the host. Resident-set sizes are not additive: shared pages (libc, a shared binary, Postgres shared_buffers touched by each backend) are counted once per process, so the sum has no fixed relationship to memory actually in use. It is also host-wide, so on any box where harness is a tenant rather than the sole workload, other services' memory counts against harness' admission budget.\n\nMeasured on the self-host deployment 2026-09-13 (Hetzner EX63, 62.4 GiB, harness alongside a Reth archive node):\n\n  host_rss_kb (the gate input) .......... 28.8 GiB\n  actually in use (free) ................ 18.7 GiB\n  of which Reth 16.0 + Lighthouse 6.5 ... 22.5 GiB\n  default high-water (95% of MemTotal) .. 59.3 GiB\n\nTwo consequences:\n\n1. The overstatement factor here is ~1.54, which makes the gate accidentally conservative. That factor is not stable. It depends entirely on how much sharing exists among the running processes, and it collapses toward 1.0 in exactly the scenario the guard exists for: one process with a large PRIVATE heap (the 2026-06-04 incident was a single `mix` task at ~27 GB). In that case the gate first defers admission at 59.3 GiB of real usage on a 62.4 GiB host — no headroom, straight into swap.\n\n2. Reth and Lighthouse's 22.5 GiB counts against harness' budget. Conservative, but wrong: the gate cannot distinguish \"harness is close to filling the box\" from \"something else is\".\n\nThe fix is not a different threshold, it is a different input. `MemAvailable` in /proc/meminfo is the kernel's own estimate of how much can be allocated without swapping; it accounts for reclaimable page cache and double-counts nothing. Gate on \"headroom below X\" instead of \"RSS sum above Y\". Note the comparison direction reverses — hence the AC about not silently reusing :mem_highwater_kb's meaning.\n\nWorth considering while in here, but not required by the ACs: when harness runs under a dedicated cgroup (the self-host deployment uses a harness.slice with MemoryHigh/MemoryMax), `memory.current` vs `memory.max` from cgroup v2 answers \"is HARNESS about to hit its own limit\", which is a sharper question than the host-wide one. MemAvailable answers \"is the HOST about to swap\". The two are complementary; MemAvailable is the one that generalizes to deployments without a slice.\n\nSecond, smaller defect, same surface: the per-run cap has an env override (HARNESS_RUN_MEM_THRESHOLD_GB, runtime.exs) and the aggregate gate has none. `mem_highwater_kb` is reachable only from compiled app config, so an operator cannot tune or disable the gate without editing the repo. That asymmetry is how the input defect stayed invisible — there was no knob to reach for, so nobody looked at the dial.\n\nFound while diagnosing six production runs killed as {:memory_runaway, ...} at 6.1-6.8 GiB against the 6 GiB library default (tapakly, harness, ccxt_extract, aave_sim, 2026-06 through 2026-09-11). Those were the PER-RUN cap, addressed deployment-side by setting HARNESS_RUN_MEM_THRESHOLD_GB=12; they are not evidence about this gate and are mentioned only as provenance.\n",
       "created_at": "2026-09-13",
       "scored_at": "2026-09-13",
       "cross_repo": []
