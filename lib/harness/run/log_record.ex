@@ -58,11 +58,14 @@ defmodule Harness.Run.LogRecord do
   cheaper than a hard fail plus manual re-dispatch. All default to "recovery never
   ran" (`0` / `nil` / empty usage) for the overwhelming majority of runs.
 
-  ## Landing witness (`landed_sha`)
+  ## Landing witness (`landed_sha`, `pr_url`, `pr_writeback`)
 
   `landed_sha` is the lander's durable witness for this run: nil until the run is
-  fast-forward-pushed, then the pushed commit SHA. Historical records created
-  before this field existed remain nil and render as unmerged until re-landed.
+  fast-forward-pushed (or a `:pr` pull request merges), then the pushed/merge
+  commit SHA. Historical records created before this field existed remain nil
+  and render as unmerged until re-landed. `pr_url` is the GitHub pull request
+  opened under `landing_policy: :pr`; `pr_writeback` records that the
+  open/merged/closed writeback already ran so the PR poller is idempotent.
   `task_fingerprint` is the dispatch-time stable task-content hash the lander
   uses to guard rmap writeback against numeric-id drift.
 
@@ -143,6 +146,8 @@ defmodule Harness.Run.LogRecord do
           recovery_repaired: String.t() | nil,
           recovery_token_usage: TokenUsage.t(),
           landed_sha: String.t() | nil,
+          pr_url: String.t() | nil,
+          pr_writeback: :opened | :merged | :closed | nil,
           cold_check: %{optional(String.t()) => term()} | nil,
           approved_then_found_red: %{optional(String.t()) => term()}
         }
@@ -158,7 +163,7 @@ defmodule Harness.Run.LogRecord do
   ]
   # LogRecord is a deliberately flat persistence fact-record: run facts + reviewer
   # facts + recovery facts (Task 229), each a column the result store reads. Per
-  # the mantra ("count facts in code"), these are facts, not behavior — the 34-field
+  # the mantra ("count facts in code"), these are facts, not behavior — the 36-field
   # count is the shape of the data, not a refactor smell.
   # credo:disable-for-next-line Credo.Check.Warning.StructFieldAmount
   defstruct [
@@ -205,6 +210,8 @@ defmodule Harness.Run.LogRecord do
     recovery_repaired: nil,
     recovery_token_usage: %TokenUsage{},
     landed_sha: nil,
+    pr_url: nil,
+    pr_writeback: nil,
     cold_check: nil,
     approved_then_found_red: %{}
   ]

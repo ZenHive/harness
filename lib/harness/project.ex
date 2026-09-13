@@ -32,11 +32,12 @@ defmodule Harness.Project do
   - `cache_preparation` — optional string-keyed preparation recipe; see
     `Harness.ProjectCache` and `docs/project-cache.md`.
   - `landing_policy` — `:manual` by default; `:auto` means reviewer-approved
-    runs are eligible for autonomous landing.
+    runs are eligible for autonomous fast-forward landing; `:pr` opens a
+    GitHub pull request instead of pushing the target.
   - `target_branch` — branch in the code repository (`source`) where the
-    autonomous lander fast-forward-pushes an approved run (e.g. `"main"`).
-    `nil` by default; a project only auto-lands when it sets both
-    `landing_policy: :auto` and a `target_branch`.
+    autonomous lander fast-forward-pushes an approved run (e.g. `"main"`), or
+    the PR base under `:pr`. `nil` by default; a project only auto-lands or
+    opens a PR when it sets `:auto` or `:pr` together with a `target_branch`.
   - `reviewer` — optional agent atom that pins this project's cross-family
     reviewer gate; `nil` keeps the default auto-selection.
   - `test_db_isolation_env` — optional env var name used to partition a run's
@@ -71,8 +72,8 @@ defmodule Harness.Project do
   @typedoc "Where harness finds the target repository."
   @type source :: Local.t() | Github.t()
 
-  @typedoc "Whether approved runs require manual landing or are eligible for auto-land."
-  @type landing_policy :: :manual | :auto
+  @typedoc "Whether approved runs require manual landing, auto-land, or a GitHub PR."
+  @type landing_policy :: :manual | :auto | :pr
 
   @typedoc "A first-class orchestration target."
   @type t :: %__MODULE__{

@@ -4,11 +4,11 @@ defmodule Harness.Landing.Settings do
   for autonomous merge.
 
   A project's `%Harness.Project{}` carries a *default* `landing_policy`
-  (`:manual` | `:auto`) and `target_branch`. Those are registration-time identity;
+  (`:manual` | `:auto` | `:pr`) and `target_branch`. Those are registration-time identity;
   this module is the **override** an operator flips at runtime from the dashboard,
   the same way `Harness.Cron.Settings` / `Harness.Agent.Settings` overlay autonomy
-  and agent enablement. A run never auto-merges until an operator opts the project
-  into `:auto` **with a target branch**.
+  and agent enablement. A run never auto-merges or opens a PR until an operator
+  opts the project into `:auto` or `:pr` **with a target branch**.
 
   ## One Postgres table, read directly; registry holds the hot snapshot
 
@@ -23,9 +23,9 @@ defmodule Harness.Landing.Settings do
 
   ## The footgun guard
 
-  `set/4` refuses `:auto` without a non-empty `target_branch` (`{:error,
-  :target_branch_required}`) — arming auto-merge with nowhere to merge is never a
-  valid state. `:manual` clears the target branch.
+  `set/4` refuses `:auto` or `:pr` without a non-empty `target_branch` (`{:error,
+  :target_branch_required}`) — arming auto-merge or PR landing with nowhere to
+  merge is never a valid state. `:manual` clears the target branch.
 
   With `repo_enabled: false` the store is ephemeral: a flip is a no-op write and
   `overlay/1` always returns the project's registration-time defaults (the
@@ -39,7 +39,7 @@ defmodule Harness.Landing.Settings do
   require Logger
 
   @store_key :landing
-  @valid_policies [:manual, :auto]
+  @valid_policies [:manual, :auto, :pr]
 
   @typedoc "A single project's runtime override: landing policy and/or reviewer pin."
   @type override :: %{
@@ -110,15 +110,15 @@ defmodule Harness.Landing.Settings do
   Sets a project's landing override at runtime, persists it, and logs an
   info-level audit line naming the actor.
 
-  `:auto` requires a non-empty `target_branch` — `{:error, :target_branch_required}`
+  `:auto` and `:pr` require a non-empty `target_branch` — `{:error, :target_branch_required}`
   otherwise. `:manual` ignores and clears the branch. An unknown policy is rejected.
   """
   @spec set(String.t(), Project.landing_policy(), String.t() | nil, String.t()) ::
           :ok | {:error, :target_branch_required | :invalid_policy}
-  def set(name, :auto, branch, actor) when is_binary(name) and is_binary(actor) do
+  def set(name, policy, branch, actor) when is_binary(name) and is_binary(actor) and policy in [:auto, :pr] do
     case normalize_branch(branch) do
       nil -> {:error, :target_branch_required}
-      trimmed -> put_and_persist(name, %{landing_policy: :auto, target_branch: trimmed}, actor)
+      trimmed -> put_and_persist(name, %{landing_policy: policy, target_branch: trimmed}, actor)
     end
   end
 
@@ -150,11 +150,13 @@ defmodule Harness.Landing.Settings do
     :ok
   end
 
+  @doc false
   @spec describe(override()) :: String.t()
-  defp describe(%{landing_policy: :auto, target_branch: branch}), do: "auto-land to #{branch}"
-  defp describe(%{landing_policy: :manual}), do: "manual"
-  defp describe(%{reviewer: nil}), do: "reviewer auto"
-  defp describe(%{reviewer: reviewer}), do: "reviewer #{reviewer}"
+  def describe(%{landing_policy: :pr, target_branch: branch}), do: "pull request to #{branch}"
+  def describe(%{landing_policy: :auto, target_branch: branch}), do: "auto-land to #{branch}"
+  def describe(%{landing_policy: :manual}), do: "manual"
+  def describe(%{reviewer: nil}), do: "reviewer auto"
+  def describe(%{reviewer: reviewer}), do: "reviewer #{reviewer}"
 
   @spec overlay_landing(Project.t(), override()) :: Project.t()
   defp overlay_landing(project, %{landing_policy: policy, target_branch: branch}) do

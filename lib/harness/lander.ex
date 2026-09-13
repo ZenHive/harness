@@ -3,22 +3,31 @@ defmodule Harness.Lander do
   Autonomous merge-train: lands an approved run onto a project's target branch.
 
   When a run settles `:done` (the reviewer AI approved it) under a project with
-  `landing_policy: :auto`, `Harness.Run` enqueues a landing job on the project's
-  serialized `landing_<name>` Oban queue (limit 1, so one approved run lands at
-  a time per project). `Harness.Lander.Worker` resolves the project and calls
-  `land/1`, which:
+  `landing_policy: :auto` or `:pr` and a non-empty `target_branch`, `Harness.Run`
+  enqueues a landing job on the project's serialized `landing_<name>` Oban
+  queue (limit 1, so one approved run lands at a time per project).
+  `Harness.Lander.Worker` resolves the project and calls `land/1`, which:
 
     1. `git fetch origin`,
     2. checks out the settled run's `harness/<run-id>` branch into a fresh
        **detached** worktree and, if `origin/<target>` has moved past it,
        rebases onto it,
-    3. fast-forward-pushes the tip to `origin/<target_branch>` (never `--force`;
-       then fast-forwards the operator's local target via `Git.TargetSync` when
-       that is safe — skipped and witnessed when dirty, non-ff, or self-host),
-    4. writes the outcome back to rmap (`done` + `verified` + `shipped_in`),
-    5. enqueues a post-merge audit job (`Harness.Audit.Worker`) for the landed
-       range — best-effort, never blocks the land,
-    6. prunes the settled run's retained branch and implementer worktree.
+    3. **`:auto`** — fast-forward-pushes the tip to `origin/<target_branch>`
+       (never `--force`; then fast-forwards the operator's local target via
+       `Git.TargetSync` when that is safe — skipped and witnessed when dirty,
+       non-ff, or self-host). **`:pr`** — force-with-lease-pushes the rebased
+       tip to `origin/harness/<run-id>` (never the target) and opens a GitHub
+       pull request with `gh`. `Git.TargetSync` is not run; rmap writeback
+       waits for merge.
+    4. **`:auto`** writes the outcome back to rmap (`done` + `verified` +
+       `shipped_in`) immediately. **`:pr`** records `pr_url` and keeps the
+       task `in_progress` (with `--landing-ref` when rmap supports it).
+    5. **`:auto`** enqueues a post-merge audit job (`Harness.Audit.Worker`)
+       for the landed range — best-effort, never blocks the land. **`:pr`**
+       enqueues that audit when the PR poller observes MERGED.
+    6. **`:auto`** prunes the settled run's retained branch and implementer
+       worktree. **`:pr`** retains the branch until merge or a closed-unmerged
+       block.
 
   There is **no re-verification step**: the reviewer AI already gated the work
   (it ran the project's checks itself); the lander is pure git mechanics. The
@@ -51,6 +60,7 @@ defmodule Harness.Lander do
   alias Harness.Dashboard.OpsFeed.Op
   alias Harness.Git
   alias Harness.Git.TargetSync
+  alias Harness.Lander.PR
   alias Harness.Lander.Resolver
   alias Harness.Lander.Worker, as: LanderWorker
   alias Harness.Notification
@@ -80,12 +90,18 @@ defmodule Harness.Lander do
           optional(:task_fingerprint) => String.t() | nil,
           optional(:task_fingerprints) => %{optional(String.t()) => String.t() | nil},
           optional(:agent) => atom() | String.t() | nil,
-          optional(:reviewer) => atom() | String.t() | nil
+          optional(:reviewer) => atom() | String.t() | nil,
+          optional(:task_title) => String.t() | nil,
+          optional(:task_body) => String.t() | nil,
+          optional(:acceptance_criteria) => [String.t()],
+          optional(:review_report) => String.t() | nil
         }
 
   @typedoc "The structured result of a land attempt."
   @type outcome ::
           {:landed, String.t()}
+          | {:pr_opened, String.t()}
+          | {:gh_failed, term()}
           | {:conflict, String.t()}
           | {:push_rejected, String.t()}
           | {:reflex_halt, term()}
@@ -182,7 +198,8 @@ defmodule Harness.Lander do
       "reviewer" => reviewer_name(record.reviewer_adapter),
       "branch" => "harness/" <> record.run_id,
       "land_attempt" => 1,
-      "manual_reland" => true
+      "manual_reland" => true,
+      "review_report" => record.review_report
     }
   end
 
@@ -203,16 +220,8 @@ defmodule Harness.Lander do
   defp land_in_worktree(%Worktree{} = worktree, repo, target, base_sha, project, request) do
     result =
       with {:ok, integrated_tip} <- integrate(worktree, target, base_sha, request),
-           {:ok, tip} <- rewrite_colliding_roadmap_task_ids(worktree, base_sha, integrated_tip),
-           {:ok, pushed} <- push(repo, tip, target) do
-        # Delivery push is the point of no return. Task 379 /
-        # run-1786522856472-c6cebe49 lost mark_landed and the "landed task" log
-        # because sync/audit/prune ran first and the job died before writeback.
-        writeback(project, request, pushed)
-        sync_local_target(repo, target, project, request)
-        enqueue_audit(project, request, base_sha)
-        prune_landed_run(repo, request)
-        {:landed, pushed}
+           {:ok, tip} <- rewrite_colliding_roadmap_task_ids(worktree, base_sha, integrated_tip) do
+        deliver(project.landing_policy, repo, tip, target, base_sha, project, request)
       else
         {:conflict, _output} = conflict -> conflict
         {:push_rejected, _output} = rejected -> rejected
@@ -654,6 +663,44 @@ defmodule Harness.Lander do
     end
   end
 
+  @spec deliver(Project.landing_policy(), String.t(), String.t(), String.t(), String.t(), Project.t(), request()) ::
+          outcome()
+  defp deliver(:pr, repo, tip, target, _base_sha, project, request) do
+    case push_run_branch(repo, tip, request.branch) do
+      {:ok, _pushed} ->
+        case PR.open(project, request, target, repo) do
+          {:ok, url} -> {:pr_opened, url}
+          {:error, reason} -> {:gh_failed, reason}
+        end
+
+      {:push_rejected, _output} = rejected ->
+        rejected
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp deliver(_policy, repo, tip, target, base_sha, project, request) do
+    case push(repo, tip, target) do
+      {:ok, pushed} ->
+        # Delivery push is the point of no return. Task 379 /
+        # run-1786522856472-c6cebe49 lost mark_landed and the "landed task" log
+        # because sync/audit/prune ran first and the job died before writeback.
+        writeback(project, request, pushed)
+        sync_local_target(repo, target, project, request)
+        enqueue_audit(project, request, base_sha)
+        prune_landed_run(repo, request)
+        {:landed, pushed}
+
+      {:push_rejected, _output} = rejected ->
+        rejected
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
   @spec push(String.t(), String.t(), String.t()) ::
           {:ok, String.t()} | {:push_rejected, String.t()} | {:error, term()}
   defp push(repo, tip, target) do
@@ -668,16 +715,34 @@ defmodule Harness.Lander do
     end
   end
 
+  @spec push_run_branch(String.t(), String.t(), String.t()) ::
+          {:ok, String.t()} | {:push_rejected, String.t()} | {:error, term()}
+  defp push_run_branch(repo, tip, branch) do
+    case Git.run(["push", "--force-with-lease", "origin", tip <> ":refs/heads/" <> branch], repo) do
+      {:ok, _output} ->
+        {:ok, tip}
+
+      {:error, {:git_failed, _args, status, output}} ->
+        if Git.non_fast_forward?(repo, tip, branch, status, output),
+          do: {:push_rejected, output},
+          else: {:error, {:push_failed, output}}
+    end
+  end
+
   # After the code ff-push, fast-forward the operator's local target too (shared
   # ff-only sync, never forcing a dirty/diverged/self-host checkout) so it
   # doesn't drift behind origin. A skip is surfaced as a witness event.
+  # Injectable so `:pr` tests can prove this is never called.
   @spec sync_local_target(String.t(), String.t(), Project.t(), request()) :: :ok
   defp sync_local_target(repo, target, project, request) do
-    case TargetSync.ff_local(repo, target) do
+    case target_sync().(repo, target) do
       :synced -> :ok
       {:skipped, reason} -> notify_local_sync_skipped(project, request, reason)
     end
   end
+
+  @spec target_sync() :: (String.t(), String.t() -> :synced | {:skipped, String.t()})
+  defp target_sync, do: Application.get_env(:harness, :lander_target_sync, &TargetSync.ff_local/2)
 
   @spec notify_local_sync_skipped(Project.t(), request(), String.t()) :: :ok
   defp notify_local_sync_skipped(project, request, reason) do
@@ -695,6 +760,12 @@ defmodule Harness.Lander do
 
   # The push succeeded, so the code IS landed; a writeback failure (e.g. rmap's
   # --shipped-in flag not yet present) is logged but never un-lands the merge.
+  @doc false
+  @spec writeback_merged(Project.t(), request(), String.t()) :: :ok
+  def writeback_merged(%Project{} = project, request, sha) when is_binary(sha) do
+    writeback(project, request, sha)
+  end
+
   @spec writeback(Project.t(), request(), String.t()) :: :ok
   defp writeback(%Project{} = project, request, sha) do
     persist_landed_sha(request.run_id, sha)
@@ -784,6 +855,30 @@ defmodule Harness.Lander do
   # before this push) is the audit's range fallback when the branch has no prior
   # `audit(...)` commit. Best-effort: an enqueue failure — including a raise when
   # no Oban instance is running — is logged, never un-lands the merge.
+  @doc false
+  @spec enqueue_pr_audit(Project.t(), request(), String.t()) :: :ok
+  def enqueue_pr_audit(%Project{} = project, request, sha) when is_binary(sha) do
+    enqueue_audit(project, request, audit_base_sha(project, sha))
+  end
+
+  @spec audit_base_sha(Project.t(), String.t()) :: String.t()
+  defp audit_base_sha(%Project{} = project, sha) do
+    case Project.local_repo_path(project) do
+      {:ok, repo} -> parent_sha(repo, sha)
+      _unavailable -> sha
+    end
+  end
+
+  @spec parent_sha(String.t(), String.t()) :: String.t()
+  defp parent_sha(repo, sha) do
+    _ = Git.run(["fetch", "origin"], repo)
+
+    case Git.run(["rev-parse", sha <> "^"], repo) do
+      {:ok, parent} -> String.trim(parent)
+      _missing -> sha
+    end
+  end
+
   @spec enqueue_audit(Project.t(), request(), String.t()) :: :ok
   defp enqueue_audit(%Project{} = project, request, base_sha) do
     %{

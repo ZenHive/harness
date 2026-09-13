@@ -112,6 +112,8 @@ defmodule Harness.ResultStore.Postgres do
           updated_at: fragment("EXCLUDED.updated_at"),
           # rich evidence — incoming nil/empty never overwrites settled data
           landed_sha: fragment("COALESCE(EXCLUDED.landed_sha, ?)", r.landed_sha),
+          pr_url: fragment("COALESCE(EXCLUDED.pr_url, ?)", r.pr_url),
+          pr_writeback: fragment("COALESCE(EXCLUDED.pr_writeback, ?)", r.pr_writeback),
           verdict: fragment("COALESCE(EXCLUDED.verdict, ?)", r.verdict),
           agent_outcome_kind: fragment("COALESCE(EXCLUDED.agent_outcome_kind, ?)", r.agent_outcome_kind),
           agent_exit_status: fragment("COALESCE(EXCLUDED.agent_exit_status, ?)", r.agent_exit_status),
@@ -732,6 +734,8 @@ defmodule Harness.ResultStore.Postgres do
         reviewer_outcome_kind: r.reviewer_outcome_kind,
         reviewer_exit_status: r.reviewer_exit_status,
         landed_sha: r.landed_sha,
+        pr_url: r.pr_url,
+        pr_writeback: r.pr_writeback,
         recovery_attempts: r.recovery_attempts,
         recovery_outcome: r.recovery_outcome,
         recovery_repaired: r.recovery_repaired,
@@ -827,6 +831,8 @@ defmodule Harness.ResultStore.Postgres do
       recovery_outcome: atom_or_string(r.recovery_outcome),
       recovery_repaired: r.recovery_repaired,
       landed_sha: r.landed_sha,
+      pr_url: r.pr_url,
+      pr_writeback: atom_or_string(r.pr_writeback),
       reason: encode_jsonb(r.reason),
       token_usage: encode_jsonb(r.token_usage),
       composed_inputs: encode_jsonb(r.composed_inputs),
@@ -890,6 +896,8 @@ defmodule Harness.ResultStore.Postgres do
       recovery_repaired: row.recovery_repaired,
       recovery_token_usage: decode_token_usage(row.recovery_token_usage),
       landed_sha: row.landed_sha,
+      pr_url: row.pr_url,
+      pr_writeback: string_to_atom(row.pr_writeback),
       cold_check: decode_optional_freeform_block(row.cold_check),
       approved_then_found_red: decode_freeform_block(row.approved_then_found_red)
     }

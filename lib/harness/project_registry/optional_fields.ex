@@ -69,7 +69,7 @@ defmodule Harness.ProjectRegistry.OptionalFields do
     end
   end
 
-  defp cast(:landing_policy, policy) when policy in [:manual, :auto], do: {:ok, policy}
+  defp cast(:landing_policy, policy) when policy in [:manual, :auto, :pr], do: {:ok, policy}
   defp cast(:landing_policy, other), do: invalid(:landing_policy, other)
 
   defp cast(:target_branch, nil), do: {:ok, nil}

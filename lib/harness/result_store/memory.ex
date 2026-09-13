@@ -140,6 +140,8 @@ defmodule Harness.ResultStore.Memory do
     {%{
        incoming
        | landed_sha: present(incoming.landed_sha, existing.landed_sha),
+         pr_url: present(incoming.pr_url, existing.pr_url),
+         pr_writeback: present(incoming.pr_writeback, existing.pr_writeback),
          verdict: present(incoming.verdict, existing.verdict),
          agent_outcome_kind: present(incoming.agent_outcome_kind, existing.agent_outcome_kind),
          agent_exit_status: present(incoming.agent_exit_status, existing.agent_exit_status),

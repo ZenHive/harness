@@ -27,8 +27,8 @@ defmodule Harness.ResultStore do
 
   Set `config :harness, :result_store, false` (or `nil`) to disable
   persistence entirely; both values short-circuit `record_run`, `save_batch`,
-  `load_batch`, `list_run_records`, `delete_run`, and `mark_landed` without
-  dispatching to a backend.
+  `load_batch`, `list_run_records`, `delete_run`, `mark_landed`, `mark_pr_url`,
+  and `mark_pr_writeback` without dispatching to a backend.
   """
 
   use Descripex, namespace: "/result_store"
@@ -284,6 +284,38 @@ defmodule Harness.ResultStore do
   defp log_landed_sha_patch({:error, reason}, run_id) do
     Logger.error("harness result store: failed to preserve landed_sha in spill #{run_id}: #{inspect(reason)}")
     :ok
+  end
+
+  @doc false
+  @spec mark_pr_url(String.t(), String.t(), store()) :: :ok | {:error, term()}
+  def mark_pr_url(run_id, url, store \\ configured())
+
+  def mark_pr_url(run_id, url, store) when store in [false, nil] and is_binary(run_id) and is_binary(url), do: :ok
+
+  def mark_pr_url(run_id, url, store) when is_binary(run_id) and is_binary(url) do
+    patch_record(run_id, store, fn record ->
+      %{record | pr_url: url, pr_writeback: record.pr_writeback || :opened}
+    end)
+  end
+
+  @doc false
+  @spec mark_pr_writeback(String.t(), :opened | :merged | :closed, store()) :: :ok | {:error, term()}
+  def mark_pr_writeback(run_id, status, store \\ configured())
+
+  def mark_pr_writeback(run_id, status, store)
+      when store in [false, nil] and is_binary(run_id) and status in [:opened, :merged, :closed], do: :ok
+
+  def mark_pr_writeback(run_id, status, store) when is_binary(run_id) and status in [:opened, :merged, :closed] do
+    patch_record(run_id, store, fn record -> %{record | pr_writeback: status} end)
+  end
+
+  @spec patch_record(String.t(), store(), (LogRecord.t() -> LogRecord.t())) :: :ok | {:error, term()}
+  defp patch_record(run_id, store, fun) do
+    case list_run_records(store, run_id: run_id) do
+      {:ok, [%LogRecord{} = record | _]} -> record_run(fun.(record), store)
+      {:ok, []} -> {:error, :not_found}
+      {:error, _reason} = error -> error
+    end
   end
 
   @doc false

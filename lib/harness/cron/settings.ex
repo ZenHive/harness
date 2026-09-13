@@ -37,7 +37,8 @@ defmodule Harness.Cron.Settings do
   `:cron_polling` app-env cache, no boot loader — so a flip is the single source
   of truth and survives a restart. With `repo_enabled: false` the store is
   ephemeral: master/project default off, dispatch mode `:auto`, schedule the
-  in-code default cadence.
+  in-code default cadence. The PR-poll crontab (`pr_poll_schedule/0`) lives on
+  the same record (default every 5 minutes) and is likewise boot-applied.
   """
 
   alias Harness.Project
@@ -47,6 +48,7 @@ defmodule Harness.Cron.Settings do
 
   @store_key :cron
   @default_schedule "0 * * * *"
+  @default_pr_poll_schedule "*/5 * * * *"
   @valid_dispatch_modes [:auto, :manual]
 
   # The only crontabs that can reach Oban's Cron plugin — a closed
