@@ -23,6 +23,7 @@ defmodule Harness.ProjectTest do
       assert project.pollution_allowlist == nil
       assert project.reviewer == nil
       assert project.test_db_isolation_env == nil
+      assert project.test_db_template == nil
     end
 
     test "carries the reviewer's check-command hint as free text" do

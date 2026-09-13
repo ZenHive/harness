@@ -65,6 +65,7 @@ defmodule Harness.Run.TestDbTemplateIntegrationTest do
     assert {:error, evidence} = TestDbTemplate.prepare(recipe, ctx.config, ctx.run_id)
     assert evidence =~ "harness_test_template_missing"
     assert evidence =~ "operator"
+    refute_database(ctx.config, ctx.config[:database])
   end
 
   test "missing extensions fail and remove the failed clone", ctx do
@@ -79,12 +80,21 @@ defmodule Harness.Run.TestDbTemplateIntegrationTest do
     config = Keyword.put(ctx.config, :username, "template_denied")
     assert {:error, evidence} = TestDbTemplate.prepare(ctx.recipe, config, ctx.run_id)
     assert evidence =~ "CREATEDB"
+    {:ok, conn} = Postgrex.start_link(Keyword.put(ctx.config, :database, "postgres"))
+
+    assert %{rows: [[false]]} =
+             Postgrex.query!(conn, "SELECT rolcreatedb FROM pg_roles WHERE rolname = 'template_denied'", [])
+
+    GenServer.stop(conn)
+    refute_database(ctx.config, ctx.config[:database])
   end
 
   test "refuses a repo pointing at an unpartitioned database", ctx do
     config = Keyword.put(ctx.config, :database, "fixture_test")
     assert {:error, evidence} = TestDbTemplate.prepare(ctx.recipe, config, ctx.run_id)
     assert evidence =~ "partition"
+    refute_database(ctx.config, "fixture_test")
+    refute_database(ctx.config, ctx.config[:database])
   end
 
   test "never reuses an existing database or drops another run's database", ctx do
@@ -141,12 +151,23 @@ defmodule Harness.Run.TestDbTemplateIntegrationTest do
       test_db_template: ctx.recipe
     }
 
-    env = %{"FIXTURE_SOCKET" => ctx.config[:socket_dir], "MIX_BUILD_PATH" => Path.join(ctx.tmp_dir, "_build")}
+    env = %{
+      "FIXTURE_SOCKET" => ctx.config[:socket_dir],
+      "MIX_BUILD_PATH" => Path.join(ctx.tmp_dir, "_build"),
+      "GH_TOKEN" => false,
+      "GITHUB_TOKEN" => false
+    }
 
     assert :ok = TestDbIsolation.prepare(project, ctx.tmp_dir, ctx.run_id, env)
 
     command_env =
-      env |> Map.merge(TestDbIsolation.env(project, ctx.run_id)) |> Map.put("MIX_ENV", "test") |> Map.to_list()
+      env
+      |> Map.merge(TestDbIsolation.env(project, ctx.run_id))
+      |> Map.put("MIX_ENV", "test")
+      |> Enum.map(fn
+        {key, false} -> {key, nil}
+        pair -> pair
+      end)
 
     {output, status} =
       System.cmd("mix", ["do", "ecto.migrate", "+", "test"], cd: ctx.tmp_dir, env: command_env, stderr_to_stdout: true)
@@ -170,6 +191,18 @@ defmodule Harness.Run.TestDbTemplateIntegrationTest do
              TestDbIsolation.prepare(project, ctx.tmp_dir, ctx.run_id, Map.put(env, "FIXTURE_BASE", "unpartitioned"))
 
     assert evidence =~ "repo database must equal partition"
+  end
+
+  @spec refute_database(keyword(), String.t()) :: :ok
+  defp refute_database(config, name) do
+    {:ok, conn} = Postgrex.start_link(Keyword.put(config, :database, "postgres"))
+
+    try do
+      assert %{rows: []} = Postgrex.query!(conn, "SELECT 1 FROM pg_database WHERE datname = $1", [name])
+      :ok
+    after
+      GenServer.stop(conn)
+    end
   end
 
   @spec fixture!(String.t()) :: :ok

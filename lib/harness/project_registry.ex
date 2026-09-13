@@ -33,9 +33,9 @@ defmodule Harness.ProjectRegistry do
   entries reject a value that does not match `%Harness.Project{}`'s `@type`:
   `concurrency_cap`, `landing_policy`, `target_branch`, `reviewer`,
   `pollution_allowlist`, `warm_paths`, `test_db_isolation_env`,
-  `tooling_baseline_overrides`. A string `"4"` for `concurrency_cap` is never
-  persisted. An already-persisted row that violates a type is skipped at load
-  rather than handed to callers.
+  `test_db_template`, `tooling_baseline_overrides`. A string `"4"` for
+  `concurrency_cap` is never persisted. An already-persisted row that
+  violates a type is skipped at load rather than handed to callers.
   """
 
   use GenServer

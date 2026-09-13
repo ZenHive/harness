@@ -8,7 +8,14 @@ defmodule Harness.Run.TestDbIsolationTest do
 
   describe "env/2" do
     test "template opt-in partitions on the full run id" do
-      project = %{@project | test_db_template: %{}}
+      recipe = %{
+        "repo" => "App.Repo",
+        "database" => "app_test",
+        "template" => "harness_test_template_app",
+        "extensions" => ["vector"]
+      }
+
+      project = %{@project | test_db_template: recipe}
       assert TestDbIsolation.env(project, "run-1-same") != TestDbIsolation.env(project, "run-2-same")
     end
 
@@ -63,7 +70,11 @@ defmodule Harness.Run.TestDbIsolationTest do
     project = %{@project | test_db_template: recipe, test_db_isolation_env: false}
     assert {:error, {:test_db_template, message}} = TestDbIsolation.prepare(project, "/missing", "run-a")
     assert message =~ "requires enabled"
-    assert {:error, _} = TestDbIsolation.prepare(%{project | test_db_template: %{}}, "/missing", "run-a")
+
+    assert {:error, {:test_db_template, invalid}} =
+             TestDbIsolation.prepare(%{project | test_db_template: %{}}, "/missing", "run-a")
+
+    assert invalid =~ "invalid recipe"
   end
 
   describe "teardown/3" do

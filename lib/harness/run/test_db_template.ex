@@ -90,7 +90,7 @@ defmodule Harness.Run.TestDbTemplate do
          true <- inspect(repo) == recipe["repo"],
          repo = Mix.Ecto.ensure_repo(repo, []),
          true <- repo.__adapter__() == Ecto.Adapters.Postgres,
-         :ok <- apply(__MODULE__, action, [recipe, repo.config(), run_id]) do
+         :ok <- run_action(action, recipe, repo.config(), run_id) do
       :ok
     else
       {:error, reason} ->
@@ -102,6 +102,10 @@ defmodule Harness.Run.TestDbTemplate do
         )
     end
   end
+
+  @spec run_action(:prepare | :drop, map(), keyword(), String.t()) :: :ok | {:error, String.t()}
+  defp run_action(:prepare, recipe, config, run_id), do: prepare(recipe, config, run_id)
+  defp run_action(:drop, recipe, config, run_id), do: drop(recipe, config, run_id)
 
   @spec validate_target(map(), keyword(), String.t()) :: :ok | {:error, String.t()}
   defp validate_target(recipe, config, run_id) do
@@ -214,7 +218,7 @@ defmodule Harness.Run.TestDbTemplate do
     opts =
       config
       |> Keyword.take(@connection_keys)
-      |> Keyword.merge(database: database, backoff_type: :stop, max_restarts: 0)
+      |> Keyword.merge(database: database, backoff_type: :stop, max_restarts: 0, sync_connect: true)
 
     case Postgrex.start_link(opts) do
       {:ok, conn} ->
@@ -225,10 +229,19 @@ defmodule Harness.Run.TestDbTemplate do
         end
 
       {:error, reason} ->
-        setup_error("PostgreSQL connection failed: #{Exception.message(reason)}")
+        setup_error("PostgreSQL connection failed: #{format_reason(reason)}")
     end
   rescue
-    error in [Postgrex.Error, DBConnection.ConnectionError] -> setup_error(Exception.message(error))
+    error in DBConnection.ConnectionError ->
+      setup_error("PostgreSQL connection failed: #{Exception.message(error)}")
+
+    error in Postgrex.Error ->
+      setup_error(Exception.message(error))
+  end
+
+  @spec format_reason(term()) :: String.t()
+  defp format_reason(reason) do
+    if is_exception(reason), do: Exception.message(reason), else: inspect(reason)
   end
 
   @spec identifier?(term()) :: boolean()

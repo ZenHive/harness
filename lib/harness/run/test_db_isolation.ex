@@ -104,7 +104,7 @@ defmodule Harness.Run.TestDbIsolation do
       end
     else
       :disabled -> {:error, {:test_db_template, "template provisioning requires enabled test database isolation"}}
-      {:error, _} = error -> error
+      {:error, reason} -> {:error, {:test_db_template, reason}}
     end
   rescue
     error in ErlangError -> {:error, {:test_db_template, error.original}}

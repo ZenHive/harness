@@ -59,7 +59,7 @@ defmodule Harness.Run.TestDbTemplateEntrypointIntegrationTest do
   end
 
   test "unreachable PostgreSQL is explicit setup evidence", ctx do
-    config = Keyword.put(ctx.config, :port, 55423)
+    config = Keyword.put(ctx.config, :port, 55_423)
     assert {:error, evidence} = TestDbTemplate.prepare(ctx.recipe, config, ctx.run_id)
     assert evidence =~ "PostgreSQL connection failed"
     assert evidence =~ "docs/test-db-templates.md"
