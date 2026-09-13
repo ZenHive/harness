@@ -688,7 +688,7 @@ defmodule Harness.Lander do
         writeback(project, request, pushed)
         sync_local_target(repo, target, project, request)
         enqueue_audit(project, request, base_sha)
-        prune_landed_run(repo, request)
+        prune_landed_run(repo, request, target, pushed)
         {:landed, pushed}
 
       {:push_rejected, _output} = rejected ->
@@ -946,21 +946,31 @@ defmodule Harness.Lander do
     end
   end
 
-  @spec prune_landed_run(String.t(), request()) :: :ok
-  defp prune_landed_run(repo, request) do
-    # The push is the point of no return. `Worktree.cleanup_for_run/2` carries
+  @spec prune_landed_run(String.t(), request(), String.t(), String.t()) :: :ok
+  defp prune_landed_run(repo, request, target, landed_sha) do
+    # The push is the point of no return. `Worktree.cleanup_landed_run/4` carries
     # the Harness.Run.Registry liveness guard, so a still-registered run keeps
-    # its branch and implementer worktree even on this best-effort cleanup path.
-    case Worktree.cleanup_for_run(repo, request.run_id) do
+    # its branch and implementer worktree. The settled gen_statem stays
+    # registered through terminal_linger, so a live refusal is retried later
+    # rather than left as a permanent leak.
+    opts = [landed_sha: landed_sha]
+
+    case Worktree.cleanup_landed_run(repo, request.run_id, target, opts) do
       :ok ->
         warn_on_prune_leftovers(repo, request)
-        :ok
+
+      {:error, :live_run} ->
+        Logger.warning(
+          "harness lander: run cleanup refused after landing run #{request.run_id}: still live; scheduling retry"
+        )
+
+        Worktree.schedule_landed_cleanup(repo, request.run_id, target, opts)
 
       {:error, reason} ->
         Logger.warning("harness lander: run cleanup failed after landing run #{request.run_id}: #{inspect(reason)}")
-
-        :ok
     end
+
+    :ok
   end
 
   @spec warn_on_prune_leftovers(String.t(), request()) :: :ok

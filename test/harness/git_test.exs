@@ -9,6 +9,17 @@ defmodule Harness.GitTest do
   @git_push_failed 1
   @git_push_ok 0
 
+  describe "ancestor?/3" do
+    test "is true when the first ref is an ancestor of the second" do
+      repo = GitFixture.init_repo()
+      head = String.trim(GitFixture.git!(repo, ["rev-parse", "HEAD"]))
+
+      assert Git.ancestor?(repo, head, "HEAD")
+      assert Git.ancestor?(repo, "HEAD", "HEAD")
+      refute Git.ancestor?(repo, "missing", "HEAD")
+    end
+  end
+
   describe "fetch_origin/1" do
     test "fetches origin in a clone" do
       %{repo: repo} = GitFixture.init_with_origin()

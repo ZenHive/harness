@@ -156,6 +156,27 @@ defmodule Harness.LanderTest do
     status == 0
   end
 
+  @eventually_tries 50
+  @eventually_delay_ms 20
+
+  @spec assert_pruned(map(), pos_integer()) :: :ok
+  defp assert_pruned(ctx, tries \\ @eventually_tries)
+
+  defp assert_pruned(ctx, tries) when tries > 1 do
+    if branch_exists?(ctx.repo, ctx.request.branch) or File.dir?(ctx.run_worktree.path) do
+      Process.sleep(@eventually_delay_ms)
+      assert_pruned(ctx, tries - 1)
+    else
+      :ok
+    end
+  end
+
+  defp assert_pruned(ctx, 1) do
+    refute branch_exists?(ctx.repo, ctx.request.branch)
+    refute File.dir?(ctx.run_worktree.path)
+    :ok
+  end
+
   @spec landing_root(map()) :: String.t()
   defp landing_root(ctx) do
     Path.join([ctx.worktree_base, Path.basename(ctx.repo), "landing"])
@@ -171,7 +192,15 @@ defmodule Harness.LanderTest do
     worktree_base = Path.join(tmp_dir, "worktrees")
     previous_worktree = Application.get_env(:harness, :worktree)
     previous_result_store = Application.get_env(:harness, :result_store)
-    Application.put_env(:harness, :worktree, Keyword.put(previous_worktree || [], :base_dir, worktree_base))
+
+    Application.put_env(
+      :harness,
+      :worktree,
+      previous_worktree
+      |> Keyword.put(:base_dir, worktree_base)
+      |> Keyword.put(:landed_cleanup_retry_ms, 20)
+      |> Keyword.put(:landed_cleanup_retries, 5)
+    )
 
     base_sha = sha(repo, "HEAD")
 
@@ -249,7 +278,7 @@ defmodule Harness.LanderTest do
       assert record.landed_sha == landed
     end
 
-    test "swallows run-prune refusal after the push and leaves landed state intact", ctx do
+    test "refuses post-land prune while the run is live, then retries once it is not", ctx do
       {:ok, _} = Registry.register(Harness.Run.Registry, ctx.request.run_id, nil)
 
       log =
@@ -258,10 +287,13 @@ defmodule Harness.LanderTest do
           assert landed == ctx.branch_tip
         end)
 
-      assert log =~ "run cleanup failed after landing run run-x"
+      assert log =~ "run cleanup refused after landing run run-x"
       assert sha(ctx.origin, "refs/heads/main") == ctx.branch_tip
       assert branch_exists?(ctx.repo, ctx.request.branch)
       assert File.dir?(ctx.run_worktree.path)
+
+      Registry.unregister(Harness.Run.Registry, ctx.request.run_id)
+      assert_pruned(ctx)
     end
 
     test "retries landed_sha write when a verification read still sees nil", ctx do

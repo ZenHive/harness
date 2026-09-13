@@ -102,9 +102,15 @@ defmodule Harness.Git do
     end
   end
 
-  # `merge-base --is-ancestor A B` exits 0 iff A is an ancestor of (or equal to) B.
+  @doc """
+  Whether `maybe_ancestor` is an ancestor of (or equal to) `descendant`.
+
+  Missing or unresolvable refs return `false` rather than an error — this is a
+  reachability probe, not a git-invocation wrapper.
+  """
   @spec ancestor?(String.t(), String.t(), String.t()) :: boolean()
-  defp ancestor?(repo, maybe_ancestor, descendant) do
+  def ancestor?(repo, maybe_ancestor, descendant)
+      when is_binary(repo) and is_binary(maybe_ancestor) and is_binary(descendant) do
     match?({:ok, _output}, run(["merge-base", "--is-ancestor", maybe_ancestor, descendant], repo))
   end
 

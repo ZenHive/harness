@@ -27,7 +27,11 @@ defmodule Harness.Worktree do
   the run's deliverable, so teardown removes only the working directory, never
   the branch. Deleting the branch or merging it back is the orchestrator's call.
   A crashed run that never reaches `finish/3` is reaped by the boot-time sweep in
-  `Harness.Worktree.Sweeper`.
+  `Harness.Worktree.Sweeper`. After a successful auto-land, `cleanup_landed_run/4`
+  deletes the run branch and implementer worktree only when the commits are
+  reachable from the project's target; a still-live run schedules a bounded
+  retry (`schedule_landed_cleanup/4`). Historical leftovers are planned and
+  reclaimed by `Harness.Worktree.Reclaim`.
 
   ## Configuration
 
@@ -41,12 +45,17 @@ defmodule Harness.Worktree do
     * `:sweep_on_boot` — whether `Harness.Application` runs the boot-time
       orphan sweep (`Harness.Worktree.Sweeper`) at application start.
       Default `true`.
+    * `:landed_cleanup_retry_ms` / `:landed_cleanup_retries` — delay and bound
+      for post-land cleanup retries after a live-run refusal. Defaults cover
+      `terminal_linger` so a settled gen_statem can unregister before the
+      branch is deleted.
   """
 
   alias Harness.AgentAdapter.RulesInjection
   alias Harness.Git
   alias Harness.Project
   alias Harness.Run.RetryPolicy
+  alias Harness.Run.TaskSupervisor
 
   require Logger
 
@@ -746,8 +755,9 @@ defmodule Harness.Worktree do
   run owns its checkout, and no retry/rescue path may reap it.
 
   Idempotent and best-effort: every step tolerates "already gone", and a git
-  failure on one step never prevents the others. Returns `{:error, :live_run}`
-  only when the liveness guard refuses to touch a registered run.
+  failure on one step never prevents the others (failures are logged). Returns
+  `{:error, :live_run}` only when the liveness guard refuses to touch a registered
+  run.
   """
   @spec cleanup_for_run(String.t(), String.t()) :: :ok | {:error, :live_run}
   def cleanup_for_run(repo, run_id) when is_binary(repo) and is_binary(run_id) do
@@ -759,31 +769,265 @@ defmodule Harness.Worktree do
 
       {:error, :live_run}
     else
-      do_cleanup_for_run(repo, run_id)
+      do_cleanup_for_run(repo, run_id, [])
     end
   end
 
-  @spec do_cleanup_for_run(String.t(), String.t()) :: :ok
-  defp do_cleanup_for_run(repo, run_id) do
-    branch = @branch_prefix <> run_id
+  @doc """
+  Conservative post-land cleanup: removes `harness/<run_id>` and its worktree
+  only when the run is no longer live and its commits are reachable from `target`.
 
-    Enum.each(worktree_paths_for_branch(repo, branch), fn path ->
-      with_write_lock(path, fn -> Git.run(["worktree", "remove", "--force", path], repo) end)
-    end)
+  Reachability is `git merge-base --is-ancestor` against `origin/<target>` and
+  `refs/heads/<target>`. `opts[:landed_sha]` is an extra candidate (the SHA the
+  lander just pushed). A retained-on-failure worktree is left untouched.
 
-    _ = Git.run(["worktree", "prune"], repo)
-    _ = Git.run(["branch", "-D", branch], repo)
-    :ok
+  Returns `{:error, :live_run}` when the gen_statem is still registered,
+  `{:error, :not_reachable}` when the commits are not on the target, and
+  `{:error, :retained}` when the failure marker is present.
+  """
+  @spec cleanup_landed_run(String.t(), String.t(), String.t(), keyword()) ::
+          :ok | {:error, :live_run | :not_reachable | :retained}
+  def cleanup_landed_run(repo, run_id, target, opts \\ [])
+      when is_binary(repo) and is_binary(run_id) and is_binary(target) do
+    cond do
+      live_run?(run_id) ->
+        {:error, :live_run}
+
+      retained_run?(repo, run_id, opts) ->
+        {:error, :retained}
+
+      not reachable_from_target?(repo, run_id, target, opts) ->
+        {:error, :not_reachable}
+
+      true ->
+        do_cleanup_for_run(repo, run_id, opts)
+    end
   end
 
-  # Mechanical liveness signal: a run_id registered in Harness.Run.Registry owns
-  # a live gen_statem. Guarded against the registry being unstarted (no live runs
-  # ⇒ false) so cleanup never crashes on a bare unit boot.
+  @doc false
+  @spec schedule_landed_cleanup(String.t(), String.t(), String.t(), keyword()) :: :ok
+  def schedule_landed_cleanup(repo, run_id, target, opts \\ [])
+      when is_binary(repo) and is_binary(run_id) and is_binary(target) do
+    attempt = Keyword.get(opts, :attempt, 1)
+    max_attempts = landed_cleanup_retries()
+
+    if attempt > max_attempts do
+      Logger.warning(
+        "Harness.Worktree.schedule_landed_cleanup exhausted retries for run #{run_id} " <>
+          "(#{max_attempts} attempts); leaving branch/worktree in place."
+      )
+
+      :ok
+    else
+      enqueue_landed_cleanup_retry(repo, run_id, target, opts, attempt)
+    end
+  end
+
+  @doc false
   @spec live_run?(String.t()) :: boolean()
-  defp live_run?(run_id) do
+  def live_run?(run_id) when is_binary(run_id) do
     case Process.whereis(@run_registry) do
       nil -> false
       _pid -> Registry.lookup(@run_registry, run_id) != []
+    end
+  end
+
+  @doc false
+  @spec run_branch(String.t()) :: String.t()
+  def run_branch(run_id) when is_binary(run_id), do: @branch_prefix <> run_id
+
+  @doc false
+  @spec run_dir(String.t(), String.t(), keyword()) :: String.t()
+  def run_dir(project_name, run_id, opts \\ []) when is_binary(project_name) and is_binary(run_id) do
+    Path.join([base_dir(opts), project_name, run_id])
+  end
+
+  @spec enqueue_landed_cleanup_retry(String.t(), String.t(), String.t(), keyword(), pos_integer()) :: :ok
+  defp enqueue_landed_cleanup_retry(repo, run_id, target, opts, attempt) do
+    delay = landed_cleanup_retry_ms()
+    retry_opts = Keyword.put(opts, :attempt, attempt)
+
+    case Process.whereis(TaskSupervisor) do
+      nil ->
+        Logger.warning(
+          "Harness.Worktree.schedule_landed_cleanup: Run.TaskSupervisor is down; " <>
+            "cannot retry landed cleanup for #{run_id}."
+        )
+
+        :ok
+
+      _pid ->
+        {:ok, _pid} =
+          Task.Supervisor.start_child(TaskSupervisor, fn ->
+            Process.sleep(delay)
+            retry_landed_cleanup(repo, run_id, target, retry_opts)
+          end)
+
+        :ok
+    end
+  end
+
+  @spec retry_landed_cleanup(String.t(), String.t(), String.t(), keyword()) :: :ok
+  defp retry_landed_cleanup(repo, run_id, target, opts) do
+    attempt = Keyword.get(opts, :attempt, 1)
+
+    case cleanup_landed_run(repo, run_id, target, opts) do
+      :ok ->
+        Logger.info("Harness.Worktree: landed cleanup retry removed run #{run_id}")
+        :ok
+
+      {:error, :live_run} ->
+        Logger.info("Harness.Worktree: landed cleanup retry #{attempt} still live for #{run_id}")
+        schedule_landed_cleanup(repo, run_id, target, Keyword.put(opts, :attempt, attempt + 1))
+
+      {:error, reason} ->
+        Logger.warning("Harness.Worktree: landed cleanup retry failed for run #{run_id}: #{inspect(reason)}")
+
+        :ok
+    end
+  end
+
+  @spec do_cleanup_for_run(String.t(), String.t(), keyword()) :: :ok
+  defp do_cleanup_for_run(repo, run_id, opts) do
+    branch = run_branch(run_id)
+
+    extra =
+      case Keyword.get(opts, :path) do
+        path when is_binary(path) -> [path]
+        _missing -> []
+      end
+
+    paths = Enum.uniq(worktree_paths_for_branch(repo, branch) ++ leftover_run_dirs(run_id, opts) ++ extra)
+
+    Enum.each(paths, fn path ->
+      with_write_lock(path, fn ->
+        remove_registered_worktree(repo, path)
+        remove_leftover_run_dir(path)
+      end)
+    end)
+
+    prune_worktrees(repo)
+    delete_branch_if_present(repo, branch)
+    :ok
+  end
+
+  @spec remove_registered_worktree(String.t(), String.t()) :: :ok
+  defp remove_registered_worktree(repo, path) do
+    case Git.run(["worktree", "remove", "--force", path], repo) do
+      {:ok, _output} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("Harness.Worktree.cleanup_for_run worktree remove failed for #{path}: #{inspect(reason)}")
+        :ok
+    end
+  end
+
+  @spec prune_worktrees(String.t()) :: :ok
+  defp prune_worktrees(repo) do
+    case Git.run(["worktree", "prune"], repo) do
+      {:ok, _output} ->
+        :ok
+
+      {:error, reason} ->
+        Logger.warning("Harness.Worktree.cleanup_for_run worktree prune failed for #{repo}: #{inspect(reason)}")
+        :ok
+    end
+  end
+
+  @spec delete_branch_if_present(String.t(), String.t()) :: :ok
+  defp delete_branch_if_present(repo, branch) do
+    case Git.run(["show-ref", "--verify", "--quiet", "refs/heads/" <> branch], repo) do
+      {:ok, _output} ->
+        case Git.run(["branch", "-D", branch], repo) do
+          {:ok, _output} ->
+            :ok
+
+          {:error, reason} ->
+            Logger.warning("Harness.Worktree.cleanup_for_run branch -D #{branch} failed: #{inspect(reason)}")
+            :ok
+        end
+
+      {:error, _reason} ->
+        :ok
+    end
+  end
+
+  @spec leftover_run_dirs(String.t(), keyword()) :: [String.t()]
+  defp leftover_run_dirs(run_id, opts) do
+    [base_dir(opts), "*", run_id]
+    |> Path.join()
+    |> Path.wildcard()
+    |> Enum.filter(&File.dir?/1)
+  end
+
+  @spec remove_leftover_run_dir(String.t()) :: :ok
+  # Leftover run dirs are under the configured worktree root, not external input.
+  # sobelow_skip ["Traversal.FileModule"]
+  defp remove_leftover_run_dir(path) do
+    cond do
+      retained?(path) ->
+        :ok
+
+      active?(path) ->
+        :ok
+
+      true ->
+        case File.rm_rf(path) do
+          {:ok, _removed} ->
+            :ok
+
+          {:error, reason, file} ->
+            Logger.warning("Harness.Worktree.cleanup_for_run leftover dir remove failed for #{file}: #{inspect(reason)}")
+
+            :ok
+        end
+    end
+  end
+
+  @spec retained_run?(String.t(), String.t(), keyword()) :: boolean()
+  defp retained_run?(repo, run_id, opts) do
+    paths = worktree_paths_for_branch(repo, run_branch(run_id)) ++ run_dir_candidates(run_id, opts)
+    Enum.any?(Enum.uniq(paths), &retained?/1)
+  end
+
+  @spec run_dir_candidates(String.t(), keyword()) :: [String.t()]
+  defp run_dir_candidates(run_id, opts) do
+    [base_dir(opts), "*", run_id]
+    |> Path.join()
+    |> Path.wildcard()
+    |> Enum.filter(&File.dir?/1)
+  end
+
+  @spec reachable_from_target?(String.t(), String.t(), String.t(), keyword()) :: boolean()
+  defp reachable_from_target?(repo, run_id, target, opts) do
+    candidates = Enum.filter([Keyword.get(opts, :landed_sha), run_branch(run_id)], &(is_binary(&1) and &1 != ""))
+
+    target_refs = ["refs/remotes/origin/" <> target, "refs/heads/" <> target]
+
+    Enum.any?(candidates, fn candidate ->
+      Enum.any?(target_refs, &Git.ancestor?(repo, candidate, &1))
+    end)
+  end
+
+  @spec landed_cleanup_retry_ms() :: pos_integer()
+  defp landed_cleanup_retry_ms do
+    case config(:landed_cleanup_retry_ms) do
+      n when is_integer(n) and n > 0 -> n
+      _other -> 1_000
+    end
+  end
+
+  @spec landed_cleanup_retries() :: pos_integer()
+  defp landed_cleanup_retries do
+    case config(:landed_cleanup_retries) do
+      n when is_integer(n) and n > 0 ->
+        n
+
+      _other ->
+        linger = Keyword.get(Application.get_env(:harness, :run, []), :terminal_linger, 5_000)
+        delay = landed_cleanup_retry_ms()
+        div(linger + delay - 1, delay) + 2
     end
   end
 

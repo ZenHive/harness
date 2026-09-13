@@ -126,6 +126,7 @@ defmodule Harness.Worktree.Reaper do
         :ok
 
       {:error, :live_run} ->
+        Logger.warning("worktree reaper: run #{run_id} still registered after retry; leaving worktree in place")
         :ok
     end
   end

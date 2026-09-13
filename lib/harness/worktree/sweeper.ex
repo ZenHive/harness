@@ -12,6 +12,10 @@ defmodule Harness.Worktree.Sweeper do
   # The sweep self-discovers the target repos: a git worktree directory holds a
   # `.git` *file* of the form `gitdir: <repo>/.git/worktrees/<id>`, so the parent
   # repo is recovered without harness having to know it up front.
+  #
+  # Landed-branch backlog and filesystem orphans git cannot see (unregistered
+  # directories, stale `.git` back-links after a moved main checkout) are
+  # `Harness.Worktree.Reclaim`, not this boot sweep.
 
   alias Harness.Git
   alias Harness.Worktree

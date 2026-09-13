@@ -968,6 +968,59 @@ defmodule Harness.WorktreeTest do
     end
   end
 
+  describe "cleanup_landed_run/4" do
+    test "removes a reachable, non-live landed branch and worktree" do
+      {repo, wt} = create_worktree()
+      GitFixture.git!(repo, ["merge", "--ff-only", wt.branch])
+
+      assert :ok = Worktree.cleanup_landed_run(repo, wt.id, "main")
+
+      refute File.dir?(wt.path)
+      assert GitFixture.git!(repo, ["branch", "--list", wt.branch]) == ""
+    end
+
+    test "refuses while the run is live even when the commit is on the target" do
+      {repo, wt} = create_worktree()
+      GitFixture.git!(repo, ["merge", "--ff-only", wt.branch])
+      parent = self()
+
+      live =
+        spawn(fn ->
+          {:ok, _} = Registry.register(Harness.Run.Registry, wt.id, nil)
+          send(parent, :registered)
+          Process.sleep(:infinity)
+        end)
+
+      assert_receive :registered
+      on_exit(fn -> Process.exit(live, :kill) end)
+
+      assert {:error, :live_run} = Worktree.cleanup_landed_run(repo, wt.id, "main")
+      assert File.dir?(wt.path)
+      assert GitFixture.git!(repo, ["branch", "--list", wt.branch]) =~ wt.branch
+    end
+
+    test "retains an unlanded sole-copy branch" do
+      {repo, wt} = create_worktree()
+      File.write!(Path.join(wt.path, "sole.txt"), "only here\n")
+      GitFixture.git!(wt.path, ["add", "sole.txt"])
+      GitFixture.git!(wt.path, ["commit", "-q", "-m", "sole copy"])
+
+      assert {:error, :not_reachable} = Worktree.cleanup_landed_run(repo, wt.id, "main")
+      assert File.dir?(wt.path)
+      assert GitFixture.git!(repo, ["branch", "--list", wt.branch]) =~ wt.branch
+    end
+
+    test "retains a failure-marked worktree" do
+      {repo, wt} = create_worktree()
+      GitFixture.git!(repo, ["merge", "--ff-only", wt.branch])
+      assert :ok = Worktree.finish(wt, :failure)
+
+      assert {:error, :retained} = Worktree.cleanup_landed_run(repo, wt.id, "main")
+      assert File.dir?(wt.path)
+      assert GitFixture.git!(repo, ["branch", "--list", wt.branch]) =~ wt.branch
+    end
+  end
+
   describe "retained?/1" do
     test "is false for a fresh worktree, true once retained" do
       {_repo, wt} = create_worktree()
