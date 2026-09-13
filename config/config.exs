@@ -223,8 +223,8 @@ if config_env() == :test do
 
   # Disable the node-pressure admission gate (Task 202) by default so worker
   # tests aren't coupled to the live host's free RAM; the gate's own tests
-  # override mem_highwater_kb to a deterministic positive value.
-  config :harness, :run, mem_highwater_kb: 0
+  # override mem_lowwater_kb to a deterministic positive value.
+  config :harness, :run, mem_lowwater_kb: 0
 
   # repo_enabled is false in test, so the production settings store would be the
   # ephemeral no-op backend. The suite needs a *persistent* (within-BEAM) store

@@ -92,15 +92,17 @@ result_store = Application.get_env(:harness, :result_store)
 # Defaults live in Harness.Run; set these to tune the spawned-tree RSS ceiling
 # (KiB) or sample cadence (ms).
 #
-# Node-pressure admission gate (Task 202) — the aggregate companion to the
-# per-run cap — is also on this key:
-#   config :harness, :run, mem_highwater_kb: 40 * 1024 * 1024, mem_pressure_snooze: 30
-# When host resident memory is over mem_highwater_kb (KiB), Harness.Run.Worker
-# snoozes NEW run admission mem_pressure_snooze seconds instead of spawning
-# another concurrent tree. Unset, mem_highwater_kb defaults to 85% of detected
-# host RAM (or fails open if host RAM can't be probed); an explicit value ≤ 0
-# disables the gate. mem_pressure_snooze defaults to 30. Defaults live in
-# Harness.Run.Worker.
+# Node-pressure admission gate (Task 428): Linux MemAvailable measures host
+# headroom in KiB. NEW runs snooze at or below mem_lowwater_kb:
+#   config :harness, :run, mem_lowwater_kb: 8 * 1024 * 1024, mem_pressure_snooze: 30
+# Unset, the reserve defaults to 10% of detected host RAM. Values ≤ 0 disable
+# the gate; unavailable samples (including non-Linux) admit. Snooze defaults to
+# 30 seconds. HARNESS_NODE_MEM_LOWWATER_GB overrides the reserve at boot in
+# integer GiB; set it to 0 to disable admission pressure checks.
+# Migration: mem_highwater_kb is removed and ignored. Replace it with
+# mem_lowwater_kb or HARNESS_NODE_MEM_LOWWATER_GB, choosing a headroom reserve,
+# not the old RSS ceiling. The comparison reverses, and RSS sums have no
+# reliable conversion to available memory. Migrate an old disable value to 0.
 config :harness, :run, max_hold_timeout: 1_800_000
 
 # Per-host run memory ceiling. This preserves the old local 18 GB tuning without
@@ -108,6 +110,10 @@ config :harness, :run, max_hold_timeout: 1_800_000
 # HARNESS_RUN_MEM_THRESHOLD_GB=18 to cap each spawned agent tree at 18 GiB RSS.
 if threshold_gb = System.get_env("HARNESS_RUN_MEM_THRESHOLD_GB") do
   config :harness, :run, mem_threshold_kb: String.to_integer(threshold_gb) * 1024 * 1024
+end
+
+if lowwater_gb = System.get_env("HARNESS_NODE_MEM_LOWWATER_GB") do
+  config :harness, :run, mem_lowwater_kb: String.to_integer(lowwater_gb) * 1024 * 1024
 end
 
 if is_nil(result_store) do

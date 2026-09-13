@@ -44,19 +44,14 @@ defmodule Harness.Run.Worker do
 
   @run_id_random_bytes 4
 
-  # Node-pressure admission gate (Task 202): when host resident memory is over the
-  # high-water mark, NEW run admission snoozes this many seconds. Pressure is
+  # Node-pressure admission gate: when host headroom is at or below the
+  # low-water mark, NEW run admission snoozes this many seconds. Pressure is
   # transient (other runs settle + free RAM), so a fixed snooze — not exponential
   # backoff — is the right wait. Overridable via :harness :run, :mem_pressure_snooze.
   @default_node_pressure_snooze_seconds 30
 
-  # Default high-water mark, as a percent of host physical RAM, when
-  # :harness :run, :mem_highwater_kb is unset — leaves headroom under host RAM.
-  # The sampler (sum of per-process `ps` RSS) double-counts shared pages, so it
-  # over-reads real usage — notably right after boot, when macOS holds most RAM
-  # as reclaimable active/inactive cache. 95 keeps a genuine-OOM backstop while
-  # not tripping on that over-count; lower it via :harness :run, :mem_highwater_kb.
-  @default_node_pressure_percent 95
+  # Reserve 10% of physical RAM when :mem_lowwater_kb is unset.
+  @default_node_pressure_percent 10
 
   # Hard ceiling on mechanical (setup-failure) retries. Snoozes do not consume
   # Oban's max_attempts, so without this a permanently broken environment would
@@ -258,61 +253,54 @@ defmodule Harness.Run.Worker do
   defp ingest_job_items(_args, item_id, project, agent),
     do: ingest_roadmap({:id, item_id}, project: project, agent: agent)
 
-  # Mechanical node-pressure admission gate (Task 202): the aggregate companion to
-  # the per-run MemoryGuard watchdog. Before a NEW run's gen_statem is spawned,
-  # sample host resident memory (the same `ps` substrate) and snooze admission
-  # when it is over the high-water mark — so N well-behaved concurrent trees
-  # cannot collectively OOM the host. Purely sample + threshold + snooze: no
-  # judgment, no output parsing. It touches no run already in flight (those live
-  # in their own gen_statem; this runs before one is spawned), and a snooze does
-  # not consume Oban's max_attempts, so the job is held, never discarded. Fails
-  # OPEN (admit) when the mark resolves to 0 — no host-RAM probe and no explicit
-  # config — so dispatch is never deadlocked.
+  # Sample + compare + snooze before spawning a NEW run. Snoozes do not consume
+  # Oban's max_attempts. Disabled marks and unavailable samples admit.
   @spec node_pressure_disposition(Oban.Job.t()) :: :ok | {:snooze, pos_integer()}
   defp node_pressure_disposition(%Oban.Job{} = job) do
-    highwater = node_pressure_highwater_kb()
+    lowwater = node_pressure_lowwater_kb()
 
-    cond do
-      highwater <= 0 -> :ok
-      node_pressure_sample_kb() <= highwater -> :ok
-      true -> snooze_under_pressure(job, highwater)
+    if lowwater <= 0 do
+      :ok
+    else
+      case node_pressure_sample_kb() do
+        {:ok, available} when available <= lowwater -> snooze_under_pressure(job, lowwater)
+        {:ok, _available} -> :ok
+        {:error, :unavailable} -> :ok
+      end
     end
   end
 
   @spec snooze_under_pressure(Oban.Job.t(), pos_integer()) :: {:snooze, pos_integer()}
-  defp snooze_under_pressure(%Oban.Job{id: id}, highwater) do
+  defp snooze_under_pressure(%Oban.Job{id: id}, lowwater) do
     seconds = node_pressure_snooze_seconds()
 
     Logger.info(
-      "harness run worker: host memory over #{highwater} KiB high-water mark; snoozing job #{inspect(id)} #{seconds}s"
+      "harness run worker: host memory headroom at or below #{lowwater} KiB low-water mark; snoozing job #{inspect(id)} #{seconds}s"
     )
 
     {:snooze, seconds}
   end
 
-  # Test seam: `:node_pressure_sampler` (a 0-arity fn → KiB) lets tests drive the
-  # gate without depending on the live host's memory. Defaults to the real
-  # aggregate `ps` sum.
-  @spec node_pressure_sample_kb() :: non_neg_integer()
+  # Test seam: a 0-arity sampler with the same tagged result as host_available_kb/0.
+  @spec node_pressure_sample_kb() :: {:ok, non_neg_integer()} | {:error, :unavailable}
   defp node_pressure_sample_kb do
     case Application.get_env(:harness, :node_pressure_sampler) do
       fun when is_function(fun, 0) -> fun.()
-      _other -> MemoryGuard.host_rss_kb()
+      _other -> MemoryGuard.host_available_kb()
     end
   end
 
-  # An explicit integer wins (≤ 0 disables the gate — the fail-open escape hatch);
-  # only an unset key derives the headroom default from host RAM.
-  @spec node_pressure_highwater_kb() :: integer()
-  defp node_pressure_highwater_kb do
-    case configured(:mem_highwater_kb) do
+  # An explicit integer wins; values ≤ 0 disable the gate.
+  @spec node_pressure_lowwater_kb() :: integer()
+  defp node_pressure_lowwater_kb do
+    case configured(:mem_lowwater_kb) do
       kb when is_integer(kb) -> kb
-      _other -> default_highwater_kb()
+      _other -> default_lowwater_kb()
     end
   end
 
-  @spec default_highwater_kb() :: non_neg_integer()
-  defp default_highwater_kb do
+  @spec default_lowwater_kb() :: non_neg_integer()
+  defp default_lowwater_kb do
     case MemoryGuard.host_total_kb() do
       total when is_integer(total) and total > 0 -> div(total * @default_node_pressure_percent, 100)
       _other -> 0

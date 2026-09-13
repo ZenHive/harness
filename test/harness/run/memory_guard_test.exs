@@ -83,6 +83,67 @@ defmodule Harness.Run.MemoryGuardTest do
     end
   end
 
+  describe "host_available_kb/1" do
+    test "samples live Linux headroom, or fails open on other platforms" do
+      case :os.type() do
+        {:unix, :linux} ->
+          assert {:ok, available} = MemoryGuard.host_available_kb()
+          assert available >= 0
+          assert available <= MemoryGuard.host_total_kb()
+
+        _other ->
+          assert MemoryGuard.host_available_kb() == {:error, :unavailable}
+      end
+    end
+
+    @tag :tmp_dir
+    test "reads MemAvailable rather than MemFree or MemTotal", %{tmp_dir: dir} do
+      path = Path.join(dir, "meminfo")
+      File.write!(path, "MemTotal: 9000 kB\nMemFree: 100 kB\nMemAvailable:   4000 kB\n")
+
+      assert MemoryGuard.host_available_kb(os_type: {:unix, :linux}, meminfo_reader: fn -> File.read(path) end) ==
+               {:ok, 4000}
+
+      File.write!(path, "MemAvailable: 0 kB\n")
+
+      assert MemoryGuard.host_available_kb(os_type: {:unix, :linux}, meminfo_reader: fn -> File.read(path) end) ==
+               {:ok, 0}
+    end
+
+    @tag :tmp_dir
+    test "unreadable, missing and malformed samples are unavailable", %{tmp_dir: dir} do
+      path = Path.join(dir, "meminfo")
+      opts = [os_type: {:unix, :linux}, meminfo_reader: fn -> File.read(path) end]
+
+      assert MemoryGuard.host_available_kb(os_type: {:unix, :linux}, meminfo_reader: fn -> File.read(dir) end) ==
+               {:error, :unavailable}
+
+      assert MemoryGuard.host_available_kb(opts) == {:error, :unavailable}
+
+      for contents <- [
+            "",
+            "MemFree: 100 kB\n",
+            "MemAvailable: -1 kB\n",
+            "MemAvailable: invalid kB\n",
+            "MemAvailable: 12 MB\n"
+          ] do
+        File.write!(path, contents)
+        assert MemoryGuard.host_available_kb(opts) == {:error, :unavailable}
+      end
+    end
+
+    @tag :tmp_dir
+    test "non-Linux platforms fail open even if the path exists", %{tmp_dir: dir} do
+      path = Path.join(dir, "meminfo")
+      File.write!(path, "MemAvailable: 0 kB\n")
+
+      for os_type <- [{:unix, :darwin}, {:unix, :freebsd}, {:win32, :nt}] do
+        assert MemoryGuard.host_available_kb(os_type: os_type, meminfo_reader: fn -> File.read(path) end) ==
+                 {:error, :unavailable}
+      end
+    end
+  end
+
   describe "host pressure substrate (Task 202)" do
     test "host_rss_kb sums resident memory across the process table" do
       # At minimum this test's own BEAM is resident, so the aggregate is positive.

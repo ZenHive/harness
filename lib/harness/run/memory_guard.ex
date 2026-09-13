@@ -23,11 +23,14 @@ defmodule Harness.Run.MemoryGuard do
   per-run cap is the runaway backstop, the queue limits are the steady-state
   bound.
 
-  `host_rss_kb/0` + `host_total_kb/0` are the substrate for the aggregate
-  companion to the per-run cap: `Harness.Run.Worker`'s node-pressure admission
-  gate (Task 202) samples `host_rss_kb/0` and snoozes a NEW run when it is over a
-  configurable high-water mark (defaulting to a fraction of `host_total_kb/0`),
-  so well-behaved concurrent trees cannot collectively OOM the host.
+  `host_available_kb/0` reads Linux `MemAvailable`, the kernel's estimate of
+  memory allocatable without swapping, including reclaimable cache. The worker
+  snoozes NEW admission at or below a configurable headroom reserve (default:
+  10% of `host_total_kb/0`). Unavailable samples admit, including on non-Linux
+  platforms. This is a host-wide pressure backstop, not a per-tenant budget.
+
+  `host_rss_kb/0` is NOT a memory-pressure measure: it double-counts shared
+  pages across processes and is not the admission gate's input.
   """
 
   alias Harness.AgentAdapter.OSProcess
@@ -62,8 +65,8 @@ defmodule Harness.Run.MemoryGuard do
 
   @doc """
   Total resident memory (KiB) summed across every process in the host table —
-  the aggregate-pressure sample feeding the node-pressure admission gate (Task
-  202). Mechanical sum of `ps -o rss=`; 0 when `ps` is unavailable.
+  a diagnostic sum that double-counts shared pages, not a pressure measure or
+  admission-gate input. Returns 0 when `ps` is unavailable.
   """
   @spec host_rss_kb() :: non_neg_integer()
   def host_rss_kb do
@@ -71,10 +74,35 @@ defmodule Harness.Run.MemoryGuard do
   end
 
   @doc """
+  Available host memory (KiB), or `{:error, :unavailable}` when it cannot be read.
+
+  Reads Linux `/proc/meminfo`'s `MemAvailable`; zero is a valid exhausted sample.
+  Other platforms fail open. Options `:os_type` and `:meminfo_reader` permit
+  injecting the platform and a zero-arity file reader at the I/O boundary.
+  """
+  @spec host_available_kb(keyword()) :: {:ok, non_neg_integer()} | {:error, :unavailable}
+  def host_available_kb(opts \\ []) do
+    case Keyword.get_lazy(opts, :os_type, &:os.type/0) do
+      {:unix, :linux} ->
+        reader = Keyword.get(opts, :meminfo_reader, fn -> File.read("/proc/meminfo") end)
+
+        with {:ok, contents} <- reader.(),
+             [_line, kb] <- Regex.run(~r/^MemAvailable:[ \t]+(\d+)[ \t]+kB[ \t]*$/m, contents) do
+          {:ok, String.to_integer(kb)}
+        else
+          _other -> {:error, :unavailable}
+        end
+
+      _other ->
+        {:error, :unavailable}
+    end
+  end
+
+  @doc """
   Total physical RAM (KiB) of the host, or 0 when it cannot be determined.
 
   Mechanical probe: `sysctl hw.memsize` on macOS, `/proc/meminfo` on Linux. Used
-  only to derive a headroom-leaving default high-water mark for the node-pressure
+  only to derive the default low-water headroom reserve for the node-pressure
   gate; 0 on any other platform or read failure, which makes the gate fail open
   (admit) rather than deadlock dispatch.
   """
