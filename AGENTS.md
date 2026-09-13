@@ -318,7 +318,7 @@ Hand-build when harness cannot perform or judge the work:
 
 ### Running a Task
 
-**Prerequisites:** long-lived harness BEAM (`iex -S mix` in the harness checkout), target project registered in `Harness.ProjectRegistry`, clean `git status` on the target's dispatch branch (runs fork worktrees off `HEAD`).
+**Prerequisites:** long-lived harness BEAM (`iex -S mix` in the harness checkout), target project registered in `Harness.ProjectRegistry`, clean `git status` on the target's dispatch branch (runs fork worktrees off `HEAD`). **Roadmap ingest and writeback self-sync when they can.** The run's *code* base is fresh (Task 196: with a `target_branch` set, `Run.Actions.Worktree.worktree_opts/1` fetches and forks off `origin/<target>`). `dispatch-task` / `dispatch-bundle` now also fetch the roadmap branch and fast-forward the `project.roadmap_path` checkout (`Harness.Git.TargetSync.sync_checkout/2`, ff-only, never `--force`) before `rmap` runs, and the writeback path does the same before the `roadmap: task <id> -> in_progress` commit, so a task you filed and pushed from another host is visible without a manual pull. The residual operator action is a **dirty, non-ff-diverged, detached, or self-host** checkout — those skip with a witnessed log and ingest proceeds on the on-disk file; sync them by hand (`git -C <roadmap_path> pull --ff-only`) before dispatching. (Observed 2026-09-11 on mpp as a miss when the node's checkout had not been pulled; clean same-host clones now self-heal.)
 
 **Three dispatch paths** (prefer top to bottom):
 
@@ -403,12 +403,17 @@ The recovery primitives (`reland`/`rereview`/`resume_failed`) read the persisted
 
 ### Autonomous Landing
 
-Projects with `landing_policy: :auto` and `target_branch`:
+Projects with `landing_policy: :auto` or `:pr` and a non-empty `target_branch`:
 
 1. Approved run enqueues one job on serialized `landing_<name>` Oban queue (limit 1)
 2. `Harness.Lander.land/1` rebases `harness/<run-id>` onto `origin/<target>` in a detached worktree
-3. **ff-pushes without re-verification** — the reviewer already gated the work
-4. Successful push enqueues post-merge audit; advances rmap (`done --verified --verified-by <reviewer> --verification-ref harness-run:<run-id> --shipped-in <sha>`)
+3. **`:auto`** — **ff-pushes without re-verification** — the reviewer already gated the work.
+   **`:pr`** — force-with-lease-pushes the rebased tip to `origin/harness/<run-id>` (never the
+   target) and opens a GitHub pull request with `gh` (`gh pr create --base <target> --head harness/<run-id>`).
+   `Git.TargetSync` is not run. A missing or unauthenticated `gh` fails the landing job with a
+   witnessed reason, retains the branch, and never falls back to a direct push.
+4. **`:auto`** — successful push enqueues post-merge audit; advances rmap (`done --verified --verified-by <reviewer> --verification-ref harness-run:<run-id> --shipped-in <sha>`).
+   **`:pr`** — writeback is deferred: the rmap task stays `in_progress` (`rmap status <id> in_progress --landing-ref <url>` when rmap supports the flag; an older binary is logged and tolerated), the run record stores `pr_url`, and a `:pr_opened` witness fires. `Harness.Lander.PRPoller` (Oban cron, default every 5 minutes) reads `gh pr view --json state,mergeCommit,mergedAt`. MERGED performs the same three effects `:auto` does at push time (rmap `done --shipped-in <merge sha>` + post-merge audit + `:landed`). CLOSED-unmerged marks the task `blocked` with `PR <url> closed unmerged` in the reason and retains the branch — never reset to pending, never re-dispatched. OPEN is a no-op. A run is written back at most once.
 
 Conflict / push-rejected retains the branch for repair — never lands red. Witness notification (read-only sink) alerts the operator; it is **not** a merge gate.
 
@@ -420,7 +425,8 @@ kills a tool call that emits no progress for its idle timeout (Claude Code's def
 and the runs keep going regardless. Worse, awaiting the wrong signal: **await returns at
 reviewer settle, which fires BEFORE the serialized `landing_<name>` job rebases and
 ff-pushes** — so even a successful `approve` means "approved and *queued* to land," never
-"on `origin/<target>`."
+"on `origin/<target>`." Under `landing_policy: :pr` the same gap is longer: MERGE opens a
+PR instead of pushing the target, and rmap `done --shipped-in` waits for that PR to merge.
 
 **The primitive that actually works — watch the target branch for the lander's own
 commits.** The lander pushes `task <id> -> done (shipped <sha>)` to `origin/<target>`;
