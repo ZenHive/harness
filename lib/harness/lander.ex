@@ -223,7 +223,6 @@ defmodule Harness.Lander do
         deliver(project.landing_policy, repo, tip, target, base_sha, project, request)
       else
         {:conflict, _output} = conflict -> conflict
-        {:push_rejected, _output} = rejected -> rejected
         {:error, reason} -> {:error, reason}
       end
 
