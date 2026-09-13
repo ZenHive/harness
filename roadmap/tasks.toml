@@ -13212,15 +13212,15 @@ shipped_in = "fac94e3616648d5a3aa0d02b7cc6de360b935552"
 id = "426"
 phase = 11
 bundle = "autolanding"
-status = "pending"
+status = "in_progress"
 title = "landing_policy :pr — land approved runs as a GitHub pull request instead of a direct ff-push"
 scores = { d = 6, b = 7, u = 6 }
 acceptance_criteria = ["%Harness.Project{} accepts landing_policy :pr; OptionalFields.cast/2, Landing.Settings.set/4 and the Settings LiveView accept it with a required target_branch and reject it without one using the existing :target_branch_required error; registration-time config and the persisted settings overlay both round-trip :pr across a node restart", "A reviewer-approved run on a :pr project rebases in the detached landing worktree, pushes the tip to origin/harness/<run-id>, opens a PR against target_branch via gh, records pr_url on the run record, fires a :pr_opened notification, and leaves the rmap task in_progress — nothing is pushed to origin/<target>", "A rebase conflict under :pr takes the identical Task 189 resolver → blocked path as :auto (resilience tests cover it); a missing or unauthenticated gh fails the landing job with a witnessed reason, retains the branch, and never falls back to a direct push", "A cron-driven poller reads the PR state mechanically: MERGED advances rmap to done --verified --verified-by <reviewer> --verification-ref harness-run:<run-id> --shipped-in <merge sha>, enqueues the post-merge audit for the merged range, and fires :landed; CLOSED-unmerged marks the task blocked with the PR URL in the reason and retains the branch; OPEN is a no-op — and a run is written back at most once (re-polling a merged PR is idempotent)", "Live integration test (tagged :integration) opens a real PR from a throwaway branch against a scratch target branch on a repo the operator names via env, asserts the observed URL/state semantics through gh pr view, pins one real gh error (e.g. PR already exists for the head, or missing auth), and flunks with exact export instructions when the env/gh auth is missing — never a silent skip; the Port wrapper unit tests stub gh only with shapes observed in that live run", "Existing :auto and :manual behaviour is byte-unchanged: lander_test, settings_test, settlement tests pass without modification; a :pr project never runs Git.TargetSync", "On PR open the lander records the PR URL on the rmap task via `rmap status <id> in_progress --landing-ref <url>` (Roadmap.mark_in_progress gains the opt); an rmap binary that rejects the flag is logged and tolerated, never a failed landing job — covered by a stub-rmap unit test in both shapes", "docs/agent-gate-workflow.md, priv/includes/harness-workflow.md (Autonomous Landing section) and skills/harness-driver/SKILL.md document the third policy and the deferred writeback; scripts/sync-harness-skills.sh run so the installed include matches"]
 out_of_scope = ["GitHub webhooks or any push-based merge notification — polling only", "Auto-merging the PR from harness (the PR exists so a human or a repo rule merges it; harness never merges its own PR)", "GitLab / non-GitHub forges — gh only", "Reviewer-stage changes: the PR is opened only after approve; no PR-based review loop, no reviewer comments on the PR", "Removing the landing_<name> queue serialization for :pr projects"]
-cross_repo = [{ repo = "rmap", task_id = 56, relation = "blocked_by" }]
 files_to_modify = ["lib/harness/lander.ex", "lib/harness/project.ex", "lib/harness/landing/settings.ex", "lib/harness/run/actions/settlement.ex"]
 touches = ["lib/harness/lander.ex", "lib/harness/lander/worker.ex", "lib/harness/project.ex", "lib/harness/project_registry/optional_fields.ex", "lib/harness/landing/settings.ex", "lib/harness/run/actions/settlement.ex", "lib/harness/notification/event.ex", "lib/harness/result_store/", "lib/harness/dashboard/live/settings_live.ex", "test/harness/lander_test.exs", "test/harness/landing/settings_test.exs"]
 domains = ["otp", "git", "oban", "github"]
+cross_repo = [{ repo = "rmap", task_id = 56, relation = "blocked_by" }]
 assignee = "codex"
 model = "gpt-6-astra"
 body = """
@@ -13242,4 +13242,5 @@ Live-API authority: GitHub is an external system. The provider-owned contract is
 UPDATE 2026-09-13: rmap task 56 (cross_repo blocked_by) adds `rmap status <id> in_progress --landing-ref <ref>` so the open PR is visible in the roadmap. On PR open the lander writes the PR URL there via `Roadmap.mark_in_progress`; on merge `mark_landed` runs as before (rmap keeps landing_ref on done). Until rmap 56 ships, the lander must tolerate an rmap binary without the flag: log the writeback failure, keep pr_url on the run record, do not fail the landing job.
 """
 created_at = "2026-09-13"
+started_at = "2026-09-13"
 scored_at = "2026-09-13"
