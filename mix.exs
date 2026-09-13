@@ -122,10 +122,10 @@ defmodule Harness.MixProject do
   defp deps do
     [
       # Core
-      # Tree-scoped terminate lives in this package copy of OSProcess so every
-      # adapter.terminate/1, Driver timeout, and MemoryGuard.kill_tree/1 share
-      # one implementation. Pin is the vendor checkout, not a git SHA.
-      {:harness_agent_adapter, path: "vendor/harness_agent_adapter"},
+      # Shared AgentAdapter subsystem (Task 397). Tree-scoped terminate
+      # (OSProcess.kill_tree/1) is on this SHA (Task 418).
+      {:harness_agent_adapter,
+       git: "https://github.com/ZenHive/harness_agent_adapter.git", ref: "d5ee0e2e426ffd72527ee6d59780e474af06863f"},
       {:descripex, "~> 0.8"},
       # Compile-time option-schema validation for the Harness.Dispatch.RunTool macro DSL.
       {:nimble_options, "~> 1.0"},
