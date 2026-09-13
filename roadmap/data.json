@@ -17158,7 +17158,7 @@
       "id": "377",
       "phase": 23,
       "bundle": "resilience",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Retry safe post-land cleanup and reclaim historical run branches/worktree orphans",
       "scores": {
         "d": 4,
@@ -17193,6 +17193,7 @@
       ],
       "body": "The original task premise was wrong: successful landing cleanup already exists.\n`Harness.Lander` calls `prune_landed_run/3`, which delegates to\n`Worktree.cleanup_for_run/2`; `lander_test.exs` proves successful lands remove the\nbranch/worktree, and `Harness.Worktree.Sweeper` performs a boot sweep. Task 275 and\ncommit 469216b introduced that behavior.\n\nThe residual defect is that cleanup may be refused while the run is still considered live,\nwith no later retry after liveness clears. Historical branches therefore accumulate even\nthough the happy path is implemented. Diagnose and close that timing/retry gap, then provide\na conservative maintenance path for the backlog: delete only when the run's commits are\nprovably reachable from the configured target; retain the sole copy of failed/unlanded work.\n\nTwo filesystem orphan classes also need observable handling. Some directories outlive git\nregistration, so `git worktree list/prune` cannot see them. Others keep a `.git` file whose\nback-link names a moved or renamed main checkout; prune reports nothing and remove refuses\nthe worktree. Inspect the back-link and report whether `git worktree repair` can preserve the\nrun or whether landed/reachable data is safe to remove. The directory backlog was cleared by\nhand on 2026-08-07; the retained branch backlog and missing later-retry policy remain.\n",
       "created_at": "2026-08-03",
+      "started_at": "2026-09-13",
       "scored_at": "2026-08-07",
       "cross_repo": []
     },
