@@ -25,8 +25,14 @@ defmodule Harness.Roadmap do
       Harness.Roadmap.ingest({:id, "6"}, project_root: "/path/to/project")
       Harness.Roadmap.ingest({:id, "6"}, agent: :codex)
 
-  Ingestion is read-only: it never writes the roadmap back (claiming a task is
-  the run-lifecycle's concern).
+  Ingestion never mutates the roadmap via rmap (claiming a task is the
+  run-lifecycle's concern). When `roadmap_path` is a clean git work tree on the
+  roadmap branch (`roadmap_target_branch`, else the same derivation
+  `mark_landed/2` § Durability uses), it fetches that branch and fast-forwards
+  the checkout onto `origin/<target>` first (`Harness.Git.TargetSync.sync_checkout/2`)
+  so dispatch reads the tasks that are actually on origin. A dirty, diverged,
+  detached, self-host, or non-git checkout is left alone with a witnessed skip;
+  ingest then proceeds on the on-disk state.
 
   ## Renderable vs Executable Agents
 
@@ -49,10 +55,13 @@ defmodule Harness.Roadmap do
   alias __MODULE__.Ctx
   alias Harness.CapabilityDomain
   alias Harness.Git
+  alias Harness.Git.TargetSync
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Harness.Roadmap.Durable
   alias Harness.Roadmap.Item
+
+  require Logger
 
   defmodule Ctx do
     @moduledoc false
@@ -347,7 +356,10 @@ defmodule Harness.Roadmap do
     ## Durability
 
     The Git repository containing `project.roadmap_path` owns durable roadmap
-    commits. `project.roadmap_target_branch` names its branch explicitly; when
+    commits. Before the mutation, that checkout is fetched and fast-forwarded
+    onto the roadmap branch (`Harness.Git.TargetSync.sync_checkout/2`) so the
+    subsequent push is a fast-forward against origin. `project.roadmap_target_branch`
+    names its branch explicitly; when
     roadmap and source are the same repository, `project.target_branch` is the
     backward-compatible default. If the repository or branch cannot be resolved
     without guessing, the transition falls back to a plain local rmap write.
@@ -501,6 +513,7 @@ defmodule Harness.Roadmap do
     args = ["status", task_id | status_args]
 
     with :ok <- ensure_rmap(ctx.rmap_bin) do
+      _ = sync_roadmap_checkout(opts)
       apply_mutation(args, ctx, opts, task_id, label, fingerprint)
     end
   end
@@ -714,6 +727,8 @@ defmodule Harness.Roadmap do
   @spec build_ctx(keyword()) :: {:ok, Ctx.t()} | {:error, error()}
   defp build_ctx(opts) do
     with {:ok, root} <- resolve_root(opts) do
+      _ = sync_roadmap_checkout(opts)
+
       {:ok,
        %Ctx{
          root: root,
@@ -721,6 +736,75 @@ defmodule Harness.Roadmap do
          rmap_bin: Keyword.get(opts, :rmap_bin, "rmap")
        }}
     end
+  end
+
+  # Fetch + ff-only the roadmap checkout before rmap reads or local writes, so
+  # dispatch sees origin's tasks.toml and the writeback push is a fast-forward.
+  # A skip is logged and returned; the caller still proceeds on the on-disk file.
+  @spec sync_roadmap_checkout(keyword()) :: TargetSync.result() | :none
+  defp sync_roadmap_checkout(opts) do
+    case sync_target(opts) do
+      {:ok, repo, target} ->
+        repo
+        |> TargetSync.sync_checkout(target)
+        |> witness_sync()
+
+      :none ->
+        :none
+    end
+  end
+
+  @spec sync_target(keyword()) :: {:ok, String.t(), String.t()} | :none
+  defp sync_target(opts) do
+    case project_from_opts(opts) do
+      %Project{} = project ->
+        repo = git_root_or_path(project.roadmap_path)
+
+        case roadmap_target_branch(project, repo) do
+          {:ok, target} -> {:ok, repo, target}
+          :none -> :none
+        end
+
+      nil ->
+        :none
+    end
+  end
+
+  @spec project_from_opts(keyword()) :: Project.t() | nil
+  defp project_from_opts(opts) do
+    case Keyword.get(opts, :project) do
+      %Project{} = project ->
+        project
+
+      _ ->
+        lookup_project(Keyword.get(opts, :project_name))
+    end
+  end
+
+  @spec lookup_project(term()) :: Project.t() | nil
+  defp lookup_project(name) when is_binary(name) do
+    case ProjectRegistry.lookup(name) do
+      {:ok, %Project{} = project} -> project
+      _ -> nil
+    end
+  end
+
+  defp lookup_project(_name), do: nil
+
+  @spec git_root_or_path(String.t()) :: String.t()
+  defp git_root_or_path(path) do
+    case git_root(path) do
+      {:ok, root} -> root
+      :none -> Path.expand(path)
+    end
+  end
+
+  @spec witness_sync(TargetSync.result()) :: TargetSync.result()
+  defp witness_sync(:synced = synced), do: synced
+
+  defp witness_sync({:skipped, reason} = skipped) do
+    Logger.info("harness roadmap: checkout not fast-forwarded (#{reason})")
+    skipped
   end
 
   # Working-root precedence: an explicit %Project{} struct, then a registered

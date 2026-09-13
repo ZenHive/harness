@@ -12,13 +12,17 @@ defmodule Harness.Git.TargetSync do
   transition (the exact failure that motivated making roadmap writes durable in
   the first place). This is the shared, notification-free core of that local
   sync; callers decide how to surface a `{:skipped, reason}` (the lander emits a
-  witness event, durable writes log). `ensure_current/2` is the read-side
-  companion: it fetches `origin/<target>` and reports whether HEAD is behind,
-  without merging, fast-forwarding, or otherwise writing the working tree.
-  Callers that would *read* a checkout this module could not refresh (the cron
-  poller) use it to refuse rather than consume a stale `tasks.toml`.
+  witness event, durable writes log). Two read-side companions share the same
+  safety policy (ff-only, never `--force`, never a dirty / non-ff / self-host
+  write): `ensure_current/2` fetches and reports whether HEAD is behind without
+  touching the working tree (the cron poller refuses a stale `tasks.toml`);
+  `sync_checkout/2` fetches and fast-forwards the *working tree* when it is a
+  clean checkout of `<target>` (roadmap ingest and writeback), skipping with a
+  witnessed reason otherwise — including detached HEAD, a path that is not a
+  git work tree, and an off-target branch, where a ref-only update would leave
+  the files stale.
 
-  Mechanical only — four cases:
+  Mechanical only — four cases for `ff_local/2`:
 
     * operator off `<target>` → ff the local branch ref (working tree untouched),
     * operator on `<target>` with a clean tree → `merge --ff-only`,
@@ -83,6 +87,58 @@ defmodule Harness.Git.TargetSync do
       {:error, reason} -> {:skipped, "local #{target} sync skipped: #{inspect(reason)}; sync manually"}
     end
   end
+
+  @doc """
+  Fetches `origin/<target>` and fast-forwards this checkout onto it when that is
+  safe — on `<target>`, clean, fast-forwardable, not self-host.
+
+  Unlike `ff_local/2`, this never updates a branch ref while the working tree is
+  on another branch or detached: callers that *read* the checkout (roadmap
+  ingest, writeback) would otherwise see `:synced` while the files stayed stale.
+  A path that is not a git work tree, a detached HEAD, an off-target branch, a
+  dirty tree, a non-ff divergence, or a self-host checkout returns `{:skipped,
+  reason}` and is left exactly as found. Never `--force`.
+  """
+  @spec sync_checkout(String.t(), String.t()) :: result()
+  def sync_checkout(repo, target) when is_binary(repo) and is_binary(target) do
+    if inside_work_tree?(repo) do
+      do_sync_checkout(repo, target)
+    else
+      {:skipped, "not a git work tree; local #{target} not fast-forwarded; sync manually"}
+    end
+  end
+
+  @spec do_sync_checkout(String.t(), String.t()) :: result()
+  defp do_sync_checkout(repo, target) do
+    with :ok <- fetch_remote_target(repo, target),
+         :ok <- reject_self_host(repo, target),
+         {:ok, branch} <- current_branch(repo),
+         :ok <- require_on_target(branch, target) do
+      sync_checked_out(repo, target)
+    else
+      {:skipped, _reason} = skipped -> skipped
+      {:error, reason} -> {:skipped, "local #{target} sync skipped: #{inspect(reason)}; sync manually"}
+    end
+  end
+
+  @spec inside_work_tree?(String.t()) :: boolean()
+  defp inside_work_tree?(repo) do
+    case Git.run(["rev-parse", "--is-inside-work-tree"], repo) do
+      {:ok, output} -> String.trim(output) == "true"
+      {:error, _reason} -> false
+    end
+  end
+
+  @spec require_on_target(String.t(), String.t()) :: :ok | {:skipped, String.t()}
+  defp require_on_target("", target) do
+    {:skipped, "detached HEAD; local #{target} not fast-forwarded; sync manually"}
+  end
+
+  defp require_on_target(branch, target) when branch != target do
+    {:skipped, "on #{branch}, not #{target}; local #{target} not fast-forwarded; sync manually"}
+  end
+
+  defp require_on_target(_branch, _target), do: :ok
 
   @spec fetch_remote_target(String.t(), String.t()) :: :ok | {:error, term()}
   defp fetch_remote_target(repo, target) do

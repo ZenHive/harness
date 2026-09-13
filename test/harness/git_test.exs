@@ -135,6 +135,105 @@ defmodule Harness.GitTest do
     end
   end
 
+  describe "TargetSync.sync_checkout/2" do
+    test "fast-forwards HEAD when operator is on target with a clean tree" do
+      %{origin: origin, repo: repo} = GitFixture.init_with_origin()
+      advance_origin(origin)
+
+      assert :synced = TargetSync.sync_checkout(repo, "main")
+
+      assert rev(repo, "HEAD") == rev(origin, "refs/heads/main")
+      assert File.read!(Path.join(repo, "ahead-1.txt")) == "1\n"
+    end
+
+    test "skips when operator is on target with a dirty tree" do
+      %{origin: origin, repo: repo} = GitFixture.init_with_origin()
+      advance_origin(origin)
+      local_head = rev(repo, "HEAD")
+      File.write!(Path.join(repo, "scratch.txt"), "local\n")
+
+      assert {:skipped, reason} = TargetSync.sync_checkout(repo, "main")
+
+      assert reason =~ "local main behind origin by 1"
+      assert reason =~ "sync manually"
+      assert rev(repo, "HEAD") == local_head
+      assert File.read!(Path.join(repo, "scratch.txt")) == "local\n"
+    end
+
+    test "skips a detached HEAD instead of fast-forwarding the working tree" do
+      %{origin: origin, repo: repo} = GitFixture.init_with_origin()
+      advance_origin(origin)
+      GitFixture.git!(repo, ["checkout", "--detach", "-q"])
+      detached_head = rev(repo, "HEAD")
+
+      assert {:skipped, reason} = TargetSync.sync_checkout(repo, "main")
+
+      assert reason =~ "detached HEAD"
+      assert reason =~ "sync manually"
+      assert rev(repo, "HEAD") == detached_head
+      refute File.exists?(Path.join(repo, "ahead-1.txt"))
+    end
+
+    test "skips a path that is not a git work tree" do
+      plain = GitFixture.tmp_base(name: "not-a-git-work-tree")
+      File.mkdir_p!(plain)
+      File.write!(Path.join(plain, "scratch.txt"), "not git\n")
+
+      assert {:skipped, reason} = TargetSync.sync_checkout(plain, "main")
+
+      assert reason =~ "not a git work tree"
+      assert reason =~ "sync manually"
+      assert File.read!(Path.join(plain, "scratch.txt")) == "not git\n"
+    end
+
+    test "leaves a non-ff local target untouched instead of forcing it" do
+      %{origin: origin, repo: repo} = GitFixture.init_with_origin()
+      File.write!(Path.join(repo, "local.txt"), "operator\n")
+      GitFixture.git!(repo, ["add", "local.txt"])
+      GitFixture.git!(repo, ["commit", "-q", "-m", "operator work"])
+      local_head = rev(repo, "HEAD")
+      advance_origin(origin)
+
+      assert {:skipped, reason} = TargetSync.sync_checkout(repo, "main")
+
+      assert reason =~ "local main behind origin by 1"
+      assert reason =~ "sync manually"
+      assert rev(repo, "HEAD") == local_head
+      assert File.read!(Path.join(repo, "local.txt")) == "operator\n"
+    end
+
+    test "skips an off-target working tree instead of only moving the branch ref" do
+      %{origin: origin, repo: repo} = GitFixture.init_with_origin()
+      GitFixture.git!(repo, ["checkout", "-b", "side"])
+      side_head = rev(repo, "HEAD")
+      main_before = rev(repo, "main")
+      advance_origin(origin)
+
+      assert {:skipped, reason} = TargetSync.sync_checkout(repo, "main")
+
+      assert reason =~ "on side, not main"
+      assert reason =~ "sync manually"
+      assert rev(repo, "HEAD") == side_head
+      assert rev(repo, "main") == main_before
+      refute File.exists?(Path.join(repo, "ahead-1.txt"))
+    end
+
+    test "self-host skip names the case and leaves HEAD unmoved" do
+      %{origin: origin, repo: repo} = GitFixture.init_with_origin()
+      advance_origin(origin)
+      stub_node_source_root(repo)
+      local_head = rev(repo, "HEAD")
+
+      assert {:skipped, reason} = TargetSync.sync_checkout(repo, "main")
+
+      assert reason =~ "self-host:"
+      assert reason =~ "local main behind origin by 1"
+      assert reason =~ "sync manually"
+      assert rev(repo, "HEAD") == local_head
+      refute File.exists?(Path.join(repo, "ahead-1.txt"))
+    end
+  end
+
   describe "TargetSync.ensure_current/2" do
     test "fetches and names how far the checkout is behind without modifying it" do
       %{origin: origin, repo: repo} = GitFixture.init_with_origin()
