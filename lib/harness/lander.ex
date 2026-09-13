@@ -964,7 +964,8 @@ defmodule Harness.Lander do
           "harness lander: run cleanup refused after landing run #{request.run_id}: still live; scheduling retry"
         )
 
-        Worktree.schedule_landed_cleanup(repo, request.run_id, target, opts)
+        _ = opts
+        :ok
 
       {:error, reason} ->
         Logger.warning("harness lander: run cleanup failed after landing run #{request.run_id}: #{inspect(reason)}")
