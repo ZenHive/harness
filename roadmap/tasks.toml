@@ -13323,3 +13323,30 @@ Found while diagnosing six production runs killed as {:memory_runaway, ...} at 6
 """
 created_at = "2026-09-13"
 scored_at = "2026-09-13"
+
+[[task]]
+id = "429"
+phase = 4
+bundle = "multi-agent"
+status = "pending"
+title = "ProjectCache is Linux-only: make its runtime prerequisites and tests pass on a macOS operator machine so the architect-seat mix ci gate can go green there"
+scores = { d = 4, b = 5, u = 4 }
+markers = ["bug"]
+acceptance_criteria = ["On macOS with util-linux's setsid and flock on PATH, the whole ProjectCache test surface passes under mix ci, including the four tests named in the body (command_test 'startup honors short deadlines…', copy_cancellation 'crash_cleanup waits…', project_cache_plt_test, project_cache_seed_plt_test). A missing setsid or flock surfaces once, at preparation start, as a named {:missing_executable, name} error carrying the darwin install hint — never as dozens of unrelated per-test failures.", "PLT relocation compares canonical (realpath) paths: a staging directory under a symlinked tmp root (macOS /var/folders -> /private/var) still relocates, and a test that builds the fixture under a deliberately symlinked tmp dir on any OS asserts the relocated PLT checks clean (dialyzer 'File not found: …/.building-…/source/…' is the failure this pins).", "The two PATH-shadowing tests (fake setsid wrapper in command_test, fake cp in copy_cancellation_test) pass on darwin: either the code resolves setsid and cp via PATH at every call on every OS, or the tests inject the executable explicitly — and the darwin clone path (cp -c) is exercised by a test either way.", "CLAUDE.md § Commands names the macOS prerequisite (brew install util-linux; setsid and flock on PATH) so the architect-seat mix ci gate is runnable on the operator laptop; AGENTS.md regenerated via the marketplace sync script.", "mix check.dispatch green plus focused mix test.json on the touched files; Linux behaviour unchanged — the 40 cache tests that already pass on darwin stay green and their assertions are not weakened."]
+out_of_scope = ["Replacing setsid with a Port-native process-group scheme (task 200's MemoryGuard history already records that macOS lacks setsid; this task makes the existing setsid design portable, not a new design).", "Cache key / generation semantics (task 423) and seed reuse (the 1f8d052 seed work).", "The operator's global git core.hooksPath (fixed in dotfiles on 2026-09-13; it shadowed the durable_test post-receive hook, unrelated to ProjectCache)."]
+files_to_modify = ["lib/harness/project_cache/command.ex", "lib/harness/project_cache/artifacts.ex", "CLAUDE.md"]
+touches = ["lib/harness/project_cache/command.ex", "lib/harness/project_cache/artifacts.ex", "lib/harness/project_cache.ex", "lib/harness/worktree.ex", "test/harness/project_cache/", "test/harness/project_cache_plt_test.exs", "test/harness/project_cache_seed_plt_test.exs", "CLAUDE.md", "AGENTS.md"]
+assignee = "cursor"
+model = "cursor-grok-4.6-high"
+body = """
+Evidence, 2026-09-13, architect seat after task 426 landed (origin/main 099f05d): `mix ci` on the operator's macOS laptop failed with 41 test failures, none caused by 424/426. 37 were `{:missing_executable, "setsid"}` / `{:missing_executable, "flock"}` across every ProjectCache test — `Harness.ProjectCache.Command.run/6` spawns `setsid --wait sh -c …` and the lock path spawns `flock`, both util-linux binaries that macOS does not ship; the hard dependency arrived with 13f2261 (PR #3, 2026-09-08) and is documented nowhere. One more (durable_test 'a push origin does not retain…') was the operator's global core.hooksPath shadowing the fixture's post-receive hook — fixed in dotfiles, not a harness defect.
+
+After `brew install util-linux` and symlinking only setsid and flock into /opt/homebrew/bin, 40 of 44 cache tests pass and four fail deterministically (re-run in isolation, same result):
+
+1. test/harness/project_cache/command_test.exs:134 'startup honors short deadlines and owner cancellation before running user code' — 'startup did not reach barrier'. The test prepends a fake `setsid` shell wrapper to PATH; the wrapper's `ready` file never appears, so the real setsid was used or the wrapper was never exec'd. Premise unverified: `open/4` calls System.find_executable at every call, so PATH shadowing should work — find out why it does not on darwin (fork-then-exec of util-linux setsid when already a group leader? BEAM PATH caching?).
+2. test/harness/project_cache/copy_cancellation_test.exs:11 'crash_cleanup waits for a cancelled preparation copy to finish cleanup' — 'Unexpectedly received message {ref, :ok}': the cancelled copy finished immediately, i.e. the fake `cp` barrier in PATH was never hit. Premise unverified: on darwin `Worktree.clone_copy/3` takes the `cp -c` branch via a path that bypasses the PATH-injected cp, or falls back to File.cp_r.
+3. test/harness/project_cache_plt_test.exs:10 and 4. test/harness/project_cache_seed_plt_test.exs:10 — dialyzer 'File not found: /private/var/folders/…/<key>.building-XXXX/source/_build/dev/lib/…/ebin/….beam'. The PLT still references the staging directory after relocation. Premise unverified: relocation rewrites paths by prefix using the staging path as harness knows it (/var/folders/…) while dialyzer recorded the realpath (/private/var/…), so the prefix never matches on a symlinked tmp root; Linux tmp has no such symlink, which is why the deployed node never sees this.
+
+The deployed node (Linux) is unaffected. What is broken is the operator's architect-seat gate: harness-workflow § Orchestrator Loop requires `mix ci` on the landed base after every wave, and on the laptop that gate cannot be green for this surface — so 37 spurious failures hide any real integration regression. Make the surface portable (or fail loudly with a named prerequisite), pin the realpath relocation with a test that runs on Linux too, and document the macOS prerequisite."""
+created_at = "2026-09-13"
+scored_at = "2026-09-13"
