@@ -115,6 +115,19 @@ defmodule Harness.RoadmapSyncTest do
       assert {:ok, %{tasks: tasks}} = Roadmap.next_bundle(ctx.project.name)
       assert Enum.any?(tasks, &(&1["id"] == @origin_only_id))
     end
+
+    test "list/2 opts out: the dashboard display read never fast-forwards the checkout", ctx do
+      ProjectRegistry.reset()
+      on_exit(&ProjectRegistry.reset/0)
+      assert :ok = ProjectRegistry.register(ctx.project)
+      local_head = local_tip(ctx.repo)
+
+      assert {:ok, tasks} = Roadmap.list(ctx.project.name)
+
+      refute Enum.any?(tasks, &(&1["id"] == @origin_only_id))
+      assert local_tip(ctx.repo) == local_head
+      refute File.read!(Path.join(ctx.repo, "roadmap/tasks.toml")) =~ ~s(id = "#{@origin_only_id}")
+    end
   end
 
   describe "ingest/2 skip is witnessed and never forced" do

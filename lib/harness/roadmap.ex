@@ -32,7 +32,9 @@ defmodule Harness.Roadmap do
   the checkout onto `origin/<target>` first (`Harness.Git.TargetSync.sync_checkout/2`)
   so dispatch reads the tasks that are actually on origin. A dirty, diverged,
   detached, self-host, or non-git checkout is left alone with a witnessed skip;
-  ingest then proceeds on the on-disk state.
+  ingest then proceeds on the on-disk state. `ready/1` and `next_bundle/1` (the
+  `dispatch-bundle` readers) sync the same way; `list/2` does not, because both
+  dashboards re-run it for every registered project on a 30s display tick.
 
   ## Renderable vs Executable Agents
 
@@ -289,7 +291,7 @@ defmodule Harness.Roadmap do
 
   @spec list(String.t(), String.t() | nil) :: {:ok, [map()]} | {:error, error()}
   def list(project_name, status \\ nil) when is_binary(project_name) do
-    with {:ok, ctx} <- build_ctx(project_name: project_name),
+    with {:ok, ctx} <- build_ctx(project_name: project_name, sync_checkout: false),
          :ok <- ensure_rmap(ctx.rmap_bin),
          {:ok, output} <- run_list(status, ctx) do
       decode_task_list(output)
@@ -741,8 +743,19 @@ defmodule Harness.Roadmap do
   # Fetch + ff-only the roadmap checkout before rmap reads or local writes, so
   # dispatch sees origin's tasks.toml and the writeback push is a fast-forward.
   # A skip is logged and returned; the caller still proceeds on the on-disk file.
+  #
+  # `sync_checkout: false` opts a caller out. `list/2` uses it: it is the display
+  # read both dashboards re-run for every registered project on a 30s tick, where
+  # a per-project network fetch would blow the panels' 5s task timeout and would
+  # fast-forward the operator's working tree from a monitoring page. The dispatch
+  # readers (ingest / ready / next_bundle) and the writeback keep the sync.
   @spec sync_roadmap_checkout(keyword()) :: TargetSync.result() | :none
   defp sync_roadmap_checkout(opts) do
+    if Keyword.get(opts, :sync_checkout, true), do: do_sync_roadmap_checkout(opts), else: :none
+  end
+
+  @spec do_sync_roadmap_checkout(keyword()) :: TargetSync.result() | :none
+  defp do_sync_roadmap_checkout(opts) do
     case sync_target(opts) do
       {:ok, repo, target} ->
         repo
