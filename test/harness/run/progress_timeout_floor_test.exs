@@ -1,9 +1,47 @@
 defmodule Harness.Run.ProgressTimeoutFloorTest do
-  use Harness.RunCase, async: true
+  use Harness.RunCase, async: false
 
   alias Harness.Run.Actions.Recovery
   alias Harness.Run.Actions.Reviewing
   alias Harness.Run.Actions.Worktree, as: WorktreeActions
+
+  setup do
+    prior = Application.fetch_env(:harness_agent_adapter, :run)
+    Application.put_env(:harness_agent_adapter, :run, progress_timeout: 300_000)
+
+    on_exit(fn ->
+      case prior do
+        {:ok, config} -> Application.put_env(:harness_agent_adapter, :run, config)
+        :error -> Application.delete_env(:harness_agent_adapter, :run)
+      end
+    end)
+  end
+
+  test "higher configured defaults reach every phase" do
+    Application.put_env(:harness_agent_adapter, :run, progress_timeout: 1_800_000)
+
+    for driver_opts <- [
+          &Reviewing.reviewer_driver_opts/2,
+          &WorktreeActions.driver_opts/2,
+          &Recovery.recovery_driver_opts/2
+        ] do
+      assert Keyword.fetch!(driver_opts.(timeout_data(nil), self()), :progress_timeout) == 1_800_000
+      assert Keyword.fetch!(driver_opts.(timeout_data(250), self()), :progress_timeout) == 250
+    end
+  end
+
+  test "missing configured defaults use the floor" do
+    Application.delete_env(:harness_agent_adapter, :run)
+    assert Run.reviewer_progress_timeout(nil) == 900_000
+    assert Run.implementer_progress_timeout(nil) == 900_000
+  end
+
+  test "zero and exact-floor overrides are preserved" do
+    for progress <- [0, 900_000] do
+      assert Run.reviewer_progress_timeout(progress) == progress
+      assert Run.implementer_progress_timeout(progress) == progress
+    end
+  end
 
   describe "reviewer progress-timeout floor" do
     test "nil progress (Driver default) is raised to the 15-min floor" do
@@ -12,8 +50,8 @@ defmodule Harness.Run.ProgressTimeoutFloorTest do
       assert Run.reviewer_progress_timeout(nil) == 900_000
     end
 
-    test "a progress override below the floor is raised to the floor" do
-      assert Run.reviewer_progress_timeout(150) == 900_000
+    test "an explicit progress override below the floor is preserved" do
+      assert Run.reviewer_progress_timeout(150) == 150
     end
 
     test "a progress override above the floor wins" do
@@ -30,8 +68,8 @@ defmodule Harness.Run.ProgressTimeoutFloorTest do
       assert Run.implementer_progress_timeout(nil) == 900_000
     end
 
-    test "a progress override below the floor is raised to the floor" do
-      assert Run.implementer_progress_timeout(1_000) == 900_000
+    test "an explicit progress override below the floor is preserved" do
+      assert Run.implementer_progress_timeout(1_000) == 1_000
     end
 
     test "a progress override above the floor wins" do
