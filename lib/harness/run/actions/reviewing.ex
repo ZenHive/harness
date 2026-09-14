@@ -759,10 +759,14 @@ defmodule Harness.Run.Actions.Reviewing do
   def reviewer_situation(%{implementer_empty_diff?: true}) do
     String.trim_trailing("""
     The implementer produced NO diff in this worktree. The transcript tail below shows what it
-    did — it may have hit a usage limit, crashed, or believed the work was already done. Decide
-    what the empty diff means:
-    - Already implemented / you can implement it: do the work or verify it, run the checks, approve.
-    - Nothing happened and nothing is salvageable: reject, and say why in your report.
+    did — it may have hit a usage limit, crashed, been refused by its provider, or believed the
+    work was already done. Decide what the empty diff means:
+    - The task is already satisfied on the base: verify that against the acceptance criteria, run
+      the checks, approve, and say in `report` what you verified.
+    - Otherwise reject. Do NOT implement the task yourself: you are the gate, and an
+      implementation you write here has no independent reviewer — a self-approved delivery is
+      exactly what this run exists to prevent. Quote in `report` why the implementer produced
+      nothing (the transcript tail) so the re-dispatch can route around it.
     """)
   end
 

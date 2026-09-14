@@ -411,11 +411,15 @@ defmodule Harness.ModelAvailabilityTest do
   end
 
   describe "dispatch gate" do
-    test "allows a pinned model absent from the advisory catalog" do
+    # 2026-09-14: an audit agent filed a task pinned to `gpt-5.1-codex-max-xhigh`
+    # from memory; the advisory catalog let it through, Codex 400'd on turn one,
+    # and the run still reached the reviewer. A pin outside the catalog is now
+    # rejected before any worktree spins up, with the real ids in the error.
+    test "rejects a pinned model absent from the catalog" do
       parent = self()
       install_catalog_probe()
 
-      project = ProjectFixture.from_repo(@sample, name: "advisory-model-gate", roadmap_path: @sample)
+      project = ProjectFixture.from_repo(@sample, name: "catalog-model-gate", roadmap_path: @sample)
       assert :ok = ProjectRegistry.register(project)
 
       seed_static_catalog(:cursor, [
@@ -424,13 +428,38 @@ defmodule Harness.ModelAvailabilityTest do
 
       assert :ok = Config.put({:agent_model, :cursor}, "gpt-unlisted", "test")
 
+      Application.put_env(:harness, :test_capture_pid, self())
+      Application.put_env(:harness, :notification_sinks, [CaptureSink])
+
       Application.put_env(:harness, :oban_insert, fn changeset ->
         send(parent, :oban_insert_called)
         {:ok, Ecto.Changeset.apply_action!(changeset, :insert)}
       end)
 
-      assert {:ok, _job} = Dispatch.task(project.name, "2", "cursor")
-      assert_receive :oban_insert_called
+      assert {:error, {:unavailable, :cursor, "gpt-unlisted", available: ["composer-2.5"]}} =
+               Dispatch.task(project.name, "2", "cursor")
+
+      refute_received :oban_insert_called
+      assert_receive {:notify, %Event{type: :model_unavailable}}
+    end
+
+    test "available?/2 gates on catalog membership only when a catalog exists" do
+      seed_static_catalog(:cursor, [
+        %{id: "composer-2.5", label: "Composer", annotations: []}
+      ])
+
+      assert ModelAvailability.available?(:cursor, "composer-2.5")
+      refute ModelAvailability.available?(:cursor, "composer-2.5-fast")
+
+      # builtin catalog counts too
+      assert ModelAvailability.available?(:codex, "gpt-6-astra")
+      refute ModelAvailability.available?(:codex, "gpt-5.1-codex-max-xhigh")
+
+      # a model-incapable adapter pins nothing; an agent with no catalog at all
+      # cannot be counted against and stays unverifiable
+      assert ModelAvailability.available?(:cursor, nil)
+      assert {:error, :catalog_unavailable} = ModelAvailability.catalog(:pi)
+      assert ModelAvailability.available?(:pi, "anything")
     end
 
     test "hard-rejects a blocked pair and returns the available list" do

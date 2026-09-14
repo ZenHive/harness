@@ -152,6 +152,12 @@ defmodule Harness.Run.ReviewerPromptTest do
       assert prompt =~ "The implementer produced NO diff"
       assert prompt =~ "Decide"
       assert prompt =~ "what the empty diff means"
+      # 2026-09-14 trading_dashboard run-1789394453452-509ac91f: the implementer
+      # 400'd on turn one, the reviewer implemented the whole task itself and
+      # approved its own work. The gate must not become the implementer.
+      assert prompt =~ "Do NOT implement the task yourself"
+      assert prompt =~ "no independent reviewer"
+      refute prompt =~ "you can implement it"
     end
   end
 end

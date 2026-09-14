@@ -718,7 +718,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
     Application.put_env(:harness, :test_capture_pid, self())
 
     Application.put_env(:harness, :roadmap_ready, fn _p ->
-      {:ok, ["130" |> task("codex") |> Map.put("model", "gpt-5.5")]}
+      {:ok, ["130" |> task("codex") |> Map.put("model", "gpt-5.6-sol")]}
     end)
 
     Application.put_env(:harness, :oban_insert, fn changeset ->
@@ -727,23 +727,23 @@ defmodule Harness.Cron.RoadmapPollerTest do
       {:ok, job}
     end)
 
-    assert :ok = ModelAvailability.block_model("codex", "gpt-5.5", reason: "quota")
+    assert :ok = ModelAvailability.block_model("codex", "gpt-5.6-sol", reason: "quota")
 
     log = capture_log(fn -> assert :ok = RoadmapPoller.perform(%Oban.Job{}) end)
 
     assert log =~ "task 130 dispatch suppressed"
     assert log =~ "adapter=Harness.AgentAdapter.Codex"
-    assert log =~ "reason={:model_unavailable, :codex, \"gpt-5.5\""
+    assert log =~ "reason={:model_unavailable, :codex, \"gpt-5.6-sol\""
     refute_received {:inserted, %{item_id: "130"}}
 
     assert_receive {:notify,
                     %Event{
                       type: :model_unavailable,
                       task_id: "130",
-                      outcome: %{agent: "codex", model: "gpt-5.5"}
+                      outcome: %{agent: "codex", model: "gpt-5.6-sol"}
                     }}
 
-    assert :ok = ModelAvailability.unblock_model("codex", "gpt-5.5")
+    assert :ok = ModelAvailability.unblock_model("codex", "gpt-5.6-sol")
     assert :ok = RoadmapPoller.perform(%Oban.Job{})
 
     assert_received {:inserted, %{item_id: "130", adapter_module: "Elixir.Harness.AgentAdapter.Codex"}}

@@ -57,6 +57,7 @@ defmodule Harness.Audit do
   alias Harness.Dashboard.OpsFeed
   alias Harness.Dashboard.OpsFeed.Op
   alias Harness.Git
+  alias Harness.ModelAvailability
   alias Harness.Notification
   alias Harness.Notification.Event
   alias Harness.Project
@@ -478,6 +479,13 @@ defmodule Harness.Audit do
     Harness does not decide what counts as a discovery; it does not score it, and reads nothing back — you decide
     whether to file and run the CLI yourself.
 
+    Routing for a filed task: `assignee` and `model` are required, and `model` MUST be one of the exact
+    catalog ids below, read from this node at audit time — never a model name from memory. An id that
+    is not in the assignee's catalog is rejected at dispatch and the task sits in the queue unrun.
+    Use the assignee's standing model unless the task names a reason for another catalog id.
+    `assignee = "human"` (no `model`) is only for work an agent cannot do.
+    #{routing_pins()}
+
     Reviewer-quality feedback loop — recent reviewer rejections for this project (a cross-family
     reviewer is THE gate, and rejection is rare by design). If a task in the landed range above also
     appears here and the work that actually landed looks sound, that rejection may have been a FALSE
@@ -494,6 +502,37 @@ defmodule Harness.Audit do
     "tail": "<failing output tail, empty on pass>"}. Harness never runs this build itself and never reads
     an exit code; it only persists the fact you write.
     """
+  end
+
+  # The live `assignee` → standing model + catalog facts the audit agent files
+  # against. Read from the node, never from the agent's training: agents' model
+  # ids churn and a remembered id is the exact failure this block exists for
+  # (`gpt-5.1-codex-max-xhigh`, filed by a claude auditor on 2026-09-14).
+  # Facts only — which agent to pick stays the agent's judgment.
+  @doc false
+  @spec routing_pins() :: String.t()
+  def routing_pins do
+    AgentRegistry.agents()
+    |> Enum.filter(fn {agent, _module} -> AgentSettings.enabled?(agent) end)
+    |> Enum.sort_by(fn {agent, _module} -> agent end)
+    |> Enum.map(&routing_pin_line/1)
+    |> case do
+      [] -> "  (no agent is enabled for dispatch on this node — file with assignee = \"human\")"
+      lines -> Enum.join(lines, "\n")
+    end
+  end
+
+  @spec routing_pin_line({atom(), module()}) :: String.t()
+  defp routing_pin_line({agent, _module}) do
+    standing = Config.agent_model(agent) || "(none configured)"
+
+    catalog =
+      case ModelAvailability.list_available_ids(agent) do
+        [] -> "(no catalog — model-incapable, or nothing selected)"
+        ids -> Enum.join(ids, ", ")
+      end
+
+    "  assignee = \"#{agent}\" — standing model = \"#{standing}\"; catalog: #{catalog}"
   end
 
   # Best-effort visibility: surface the agent's machine-readable summary in the

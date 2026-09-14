@@ -1,6 +1,6 @@
 defmodule Harness.ModelAvailability do
   @moduledoc """
-  Per-`{agent, model}` availability — advisory model catalogs and operator/failure blocks.
+  Per-`{agent, model}` availability — model catalogs (a dispatch gate: a pinned id must be in the agent's catalog) and operator/failure blocks.
 
   Composes with `Harness.AgentRegistry` at dispatch time: a run starts only when
   the adapter is agent-available **and** the resolved model pair is not blocked.
@@ -71,12 +71,28 @@ defmodule Harness.ModelAvailability do
   @spec probeable?(atom()) :: boolean()
   def probeable?(agent) when is_atom(agent), do: Map.has_key?(@probeable_agents, agent)
 
-  # Internal query (consumed by Dispatch/Run): catalog membership is advisory;
-  # only active operator/failure blocks hard-gate dispatch.
+  # Internal query (consumed by Dispatch/Run/cron): a pair dispatches only when
+  # no active operator/failure block covers it AND the model id is in the
+  # agent's catalog. Membership was advisory until 2026-09-14, when a post-merge
+  # audit agent filed a task pinned to `gpt-5.1-codex-max-xhigh` from memory:
+  # the pin passed, Codex 400'd on its first turn, and the run still reached the
+  # reviewer. A nil model (model-incapable adapter) and an agent with no
+  # catalog at all (nothing selected, probed, or builtin) stay unverifiable and
+  # pass — membership is a counted fact, and only a present catalog can count.
   @doc false
   @spec available?(atom(), String.t() | nil) :: boolean()
   def available?(agent, model) when is_atom(agent) do
-    not blocked_now?(agent, model)
+    not blocked_now?(agent, model) and in_catalog?(agent, model)
+  end
+
+  @spec in_catalog?(atom(), String.t() | nil) :: boolean()
+  defp in_catalog?(_agent, nil), do: true
+
+  defp in_catalog?(agent, model) when is_binary(model) do
+    case catalog(agent) do
+      {:ok, entries} -> Enum.any?(entries, &(&1.id == model))
+      {:error, :catalog_unavailable} -> true
+    end
   end
 
   # Internal query (consumed by Dispatch/Run): active block expiry, or nil.

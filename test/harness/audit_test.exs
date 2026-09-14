@@ -19,6 +19,7 @@ defmodule Harness.AuditTest do
   alias Harness.AgentAdapter.Pi
   alias Harness.AgentRegistry
   alias Harness.Audit
+  alias Harness.Config
   alias Harness.Dashboard.OpsFeed
   alias Harness.Dashboard.OpsFeed.Op
   alias Harness.GitFixture
@@ -603,6 +604,9 @@ defmodule Harness.AuditTest do
       assert prompt =~ "name the filed task id"
       assert prompt =~ "Do not leave TODO"
       assert prompt =~ "Harness does not decide what counts as a discovery"
+      assert prompt =~ "Routing for a filed task"
+      assert prompt =~ "never a model name from memory"
+      assert prompt =~ "rejected at dispatch"
       assert prompt =~ "Cold-build witness"
       assert prompt =~ "intentionally UN-warmed"
       assert prompt =~ "`cold_check`: {\"passed\": true|false"
@@ -779,6 +783,28 @@ defmodule Harness.AuditTest do
         # so the skip is the correct answer — but never because of enabled?.
         assert {:skipped, :no_audit_agent} = result
       end
+    end
+  end
+
+  describe "routing_pins/0 — the live assignee/model facts the auditor files against" do
+    # The 2026-09-14 audit (claude/claude-opus-5) filed trading_dashboard task 268
+    # with `model = "gpt-5.1-codex-max-xhigh"` — an id from training, not from
+    # this node. The prompt now carries the standing model and catalog per
+    # enabled agent so the fragment is written from facts.
+    test "renders each enabled agent's standing model and catalog ids" do
+      assert :ok = Config.put({:agent_model, :codex}, "gpt-6-astra", "test")
+
+      pins = Audit.routing_pins()
+
+      assert pins =~ ~s(assignee = "codex" — standing model = "gpt-6-astra")
+      assert pins =~ "gpt-5.6-sol"
+      refute pins =~ "gpt-5.1"
+    end
+
+    test "a disabled agent is not offered as an assignee" do
+      assert :ok = AgentSettings.set_enabled(:codex, false, "test")
+
+      refute Audit.routing_pins() =~ ~s(assignee = "codex")
     end
   end
 
