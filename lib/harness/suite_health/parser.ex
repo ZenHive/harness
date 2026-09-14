@@ -79,7 +79,7 @@ defmodule Harness.SuiteHealth.Parser do
       name =
         line
         |> String.trim_leading("test ")
-        |> String.split(" ... ")
+        |> String.split(" ... ", parts: 2)
         |> List.first()
         |> Kernel.||("unknown")
 
@@ -96,7 +96,7 @@ defmodule Harness.SuiteHealth.Parser do
       name =
         line
         |> String.trim_leading("--- FAIL: ")
-        |> String.split(" (")
+        |> String.split(" (", parts: 2)
         |> List.first()
         |> Kernel.||("unknown")
 

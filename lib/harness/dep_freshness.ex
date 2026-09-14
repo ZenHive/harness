@@ -78,16 +78,18 @@ defmodule Harness.DepFreshness do
   defp scan_freshness(%Project{} = project, repo_path, provider_opts) do
     project
     |> Providers.resolve()
+    # Chunks are prepended (never `++` onto the accumulator) and flattened in scan_result/1,
+    # which keeps each provider's own row order intact.
     |> Enum.reduce({[], []}, fn
       {:ok, language, provider}, {rows, errors} ->
         case provider.scan(project, repo_path, provider_opts) do
-          {:ok, provider_rows} -> {tag_rows(provider_rows, language) ++ rows, errors}
-          {:skipped, reason} -> {[Row.skipped(language, reason) | rows], errors}
-          {:error, reason} -> {[Row.skipped(language, reason) | rows], [{language, reason} | errors]}
+          {:ok, provider_rows} -> {[tag_rows(provider_rows, language) | rows], errors}
+          {:skipped, reason} -> {[[Row.skipped(language, reason)] | rows], errors}
+          {:error, reason} -> {[[Row.skipped(language, reason)] | rows], [{language, reason} | errors]}
         end
 
       {:skipped, language, reason}, {rows, errors} ->
-        {[Row.skipped(language, reason) | rows], errors}
+        {[[Row.skipped(language, reason)] | rows], errors}
     end)
     |> scan_result()
   end
@@ -95,9 +97,12 @@ defmodule Harness.DepFreshness do
   @spec tag_rows([Row.t()], atom()) :: [Row.t()]
   defp tag_rows(rows, language), do: Enum.map(rows, &%{&1 | language: language})
 
-  @spec scan_result({[Row.t()], [{atom(), term()}]}) :: {:ok, [Row.t()]} | {:error, {term(), [Row.t()]}}
-  defp scan_result({rows, []}), do: {:ok, Enum.reverse(rows)}
-  defp scan_result({rows, errors}), do: {:error, {{:provider_errors, Enum.reverse(errors)}, Enum.reverse(rows)}}
+  @spec scan_result({[[Row.t()]], [{atom(), term()}]}) :: {:ok, [Row.t()]} | {:error, {term(), [Row.t()]}}
+  defp scan_result({rows, []}), do: {:ok, flatten_chunks(rows)}
+  defp scan_result({rows, errors}), do: {:error, {{:provider_errors, Enum.reverse(errors)}, flatten_chunks(rows)}}
+
+  @spec flatten_chunks([[Row.t()]]) :: [Row.t()]
+  defp flatten_chunks(chunks), do: chunks |> Enum.reverse() |> Enum.concat()
 
   @spec record_scan_result(
           {:ok, [Row.t()]} | {:error, {term(), [Row.t()]}},

@@ -97,15 +97,20 @@ defmodule Harness.ProjectCache.Artifacts do
 
   @spec install(String.t(), String.t(), [String.t()]) :: {:ok, [String.t()]} | {:error, term()}
   defp install(stage, target, paths) do
-    Enum.reduce_while(paths, {:ok, []}, fn path, {:ok, installed} ->
+    paths
+    |> Enum.reduce_while({:ok, []}, fn path, {:ok, installed} ->
       destination = Path.join(target, path)
 
       case install_one(stage, target, path, destination) do
-        :copied -> {:cont, {:ok, installed ++ [path]}}
+        :copied -> {:cont, {:ok, [path | installed]}}
         :existing -> {:cont, {:ok, installed}}
         {:error, _} = error -> {:halt, error}
       end
     end)
+    |> case do
+      {:ok, installed} -> {:ok, Enum.reverse(installed)}
+      {:error, _reason} = error -> error
+    end
   end
 
   # Paths originate in the validated recipe and owned cache/worktree roots.

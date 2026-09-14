@@ -39,7 +39,7 @@ defmodule Harness.DependencyBump do
   def dispatch(project_name, adapter \\ "codex", model \\ nil, scrub_anthropic_key \\ true)
       when is_binary(project_name) and is_binary(adapter) and (is_nil(model) or is_binary(model)) and
              is_boolean(scrub_anthropic_key) do
-    with {:ok, project} <- lookup_project(project_name),
+    with {:ok, project} <- AgentGate.lookup_project(project_name),
          {:ok, adapter_pair} <- Registry.resolve(adapter),
          {:ok, snapshot} <- fetch_snapshot(project_name),
          {:ok, specs} <- build_task_specs(project, snapshot),
@@ -81,9 +81,6 @@ defmodule Harness.DependencyBump do
   end
 
   defp provider_specs({:skipped, _language, _reason}, _rows), do: []
-
-  @spec lookup_project(String.t()) :: {:ok, Project.t()} | {:error, {:unknown_project, String.t()}}
-  defp lookup_project(project_name), do: AgentGate.lookup_project(project_name)
 
   @spec fetch_snapshot(String.t()) :: {:ok, Snapshot.t()} | {:error, {:snapshot_not_found, String.t()} | term()}
   defp fetch_snapshot(project_name) do

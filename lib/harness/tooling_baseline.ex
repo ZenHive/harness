@@ -34,34 +34,38 @@ defmodule Harness.ToolingBaseline do
   defp scan_providers(%Project{} = project, repo_path, provider_opts) do
     project
     |> Providers.resolve()
+    # Chunks are prepended (never `++` onto the accumulator) and flattened in scan_result/1.
     |> Enum.reduce({[], [], []}, fn
       {:ok, language, provider}, {items, advisory, errors} ->
         case provider.scan(project, repo_path, provider_opts) do
           {:ok, %Snapshot{} = snapshot} ->
-            {items ++ snapshot.items, advisory ++ snapshot.advisory, errors}
+            {[snapshot.items | items], [snapshot.advisory | advisory], errors}
 
           {:skipped, reason} ->
             Logger.debug("harness tooling baseline: skipped #{project.name}: #{inspect({language, reason})}")
-            {items ++ [Item.skipped(language, reason)], advisory, errors}
+            {[[Item.skipped(language, reason)] | items], advisory, errors}
 
           {:error, reason} ->
-            {items ++ [Item.skipped(language, reason)], advisory, [{language, reason} | errors]}
+            {[[Item.skipped(language, reason)] | items], advisory, [{language, reason} | errors]}
         end
 
       {:skipped, language, reason}, {items, advisory, errors} ->
         Logger.debug("harness tooling baseline: skipped #{project.name}: #{inspect({language, reason})}")
-        {items ++ [Item.skipped(language, reason)], advisory, errors}
+        {[[Item.skipped(language, reason)] | items], advisory, errors}
     end)
     |> scan_result()
   end
 
-  @spec scan_result({[Item.t()], [term()], [{atom(), term()}]}) ::
+  @spec scan_result({[[Item.t()]], [[term()]], [{atom(), term()}]}) ::
           {:ok, Snapshot.t()} | {:error, term()}
   defp scan_result({items, advisory, []}) do
-    {:ok, Snapshot.build(items, advisory)}
+    {:ok, Snapshot.build(flatten_chunks(items), flatten_chunks(advisory))}
   end
 
   defp scan_result({_items, _advisory, errors}) do
     {:error, {:provider_errors, Enum.reverse(errors)}}
   end
+
+  @spec flatten_chunks([[term()]]) :: [term()]
+  defp flatten_chunks(chunks), do: chunks |> Enum.reverse() |> Enum.concat()
 end

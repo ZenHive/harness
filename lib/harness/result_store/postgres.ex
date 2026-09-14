@@ -521,7 +521,7 @@ defmodule Harness.ResultStore.Postgres do
   end
 
   @spec sum_rows([map()], atom()) :: non_neg_integer()
-  defp sum_rows(rows, key), do: rows |> Enum.map(&(Map.get(&1, key) || 0)) |> Enum.sum()
+  defp sum_rows(rows, key), do: Enum.sum_by(rows, &(Map.get(&1, key) || 0))
 
   @spec aggregate_by_facet_query() :: Ecto.Query.t()
   defp aggregate_by_facet_query do

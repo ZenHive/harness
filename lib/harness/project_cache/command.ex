@@ -146,10 +146,14 @@ defmodule Harness.ProjectCache.Command do
     |> Enum.with_index(1)
     |> Enum.reduce_while({:ok, []}, fn {command, index}, {:ok, outputs} ->
       case run(command, cwd, env, owner, deadline, capture) do
-        {:ok, output} -> {:cont, {:ok, outputs ++ [output]}}
+        {:ok, output} -> {:cont, {:ok, [output | outputs]}}
         {:error, reason} -> {:halt, {:error, {:preparation_command, index, reason}}}
       end
     end)
+    |> case do
+      {:ok, outputs} -> {:ok, Enum.reverse(outputs)}
+      {:error, _reason} = error -> error
+    end
   end
 
   @spec tail(binary()) :: binary()

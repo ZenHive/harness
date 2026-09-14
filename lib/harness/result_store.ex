@@ -723,7 +723,7 @@ defmodule Harness.ResultStore do
 
   @spec pending_suffix([String.t()]) :: String.t()
   defp pending_suffix([]), do: ""
-  defp pending_suffix(labels), do: "; pending migrations: " <> Enum.join(labels, ", ")
+  defp pending_suffix(labels), do: IO.iodata_to_binary(["; pending migrations: ", Enum.intersperse(labels, ", ")])
 
   @spec notify_persist_failed(LogRecord.t(), term(), String.t() | nil, [String.t()]) :: :ok
   defp notify_persist_failed(%LogRecord{} = record, reason, spilled_path, pending_labels) do

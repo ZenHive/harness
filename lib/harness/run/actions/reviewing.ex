@@ -769,8 +769,10 @@ defmodule Harness.Run.Actions.Reviewing do
   defp coalesced_task_outcome_instruction(%{item: %{task_ids: []}}), do: ""
 
   defp coalesced_task_outcome_instruction(%{item: %{task_ids: ids}}) do
-    "This is a coalesced run. In the verdict JSON, include `task_outcomes` with every task id marked `approved` or `rejected`; this run lands only as one unit. Required ids: " <>
-      Enum.join(ids, ", ")
+    IO.iodata_to_binary([
+      "This is a coalesced run. In the verdict JSON, include `task_outcomes` with every task id marked `approved` or `rejected`; this run lands only as one unit. Required ids: ",
+      Enum.intersperse(ids, ", ")
+    ])
   end
 
   # The one piece of situational framing the reviewer needs: whether the

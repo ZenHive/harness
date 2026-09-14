@@ -87,9 +87,10 @@ defmodule Harness.ProjectCache.Recipe do
 
   @spec paths?(term()) :: boolean()
   defp paths?(paths) do
-    strings?(paths) and Enum.all?(paths, &(relative_path?(&1) and hd(Path.split(&1)) != "complete.json")) and
-      not Enum.any?(paths, fn path ->
-        Enum.any?(paths -- [path], &(path == &1 or String.starts_with?(path, &1 <> "/")))
+    strings?(paths) and
+      Enum.all?(paths, fn path ->
+        relative_path?(path) and hd(Path.split(path)) != "complete.json" and
+          not Enum.any?(paths -- [path], &(path == &1 or String.starts_with?(path, &1 <> "/")))
       end)
   end
 

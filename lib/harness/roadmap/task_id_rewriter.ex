@@ -102,7 +102,7 @@ defmodule Harness.Roadmap.TaskIdRewriter do
   @spec complete_task_blocks?(String.t()) :: boolean()
   defp complete_task_blocks?(text) do
     blocks = task_blocks(text)
-    blocks != [] and Enum.map_join(blocks, "", & &1.body) == text
+    blocks != [] and Enum.map_join(blocks, & &1.body) == text
   end
 
   @spec rewrite_branch_collisions(String.t(), String.t()) :: {String.t(), [rewrite()]}

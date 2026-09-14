@@ -222,9 +222,14 @@ defmodule Harness.ProjectRegistry.Persistence do
 
   @spec validate_languages(term()) :: :ok | {:error, term()}
   defp validate_languages([_ | _] = languages) do
+    {atoms?, mixed?} =
+      Enum.reduce(languages, {true, false}, fn language, {atoms?, mixed?} ->
+        {atoms? and is_atom(language), mixed? or language == :mixed}
+      end)
+
     cond do
-      not Enum.all?(languages, &is_atom/1) -> {:error, {:invalid_languages, languages}}
-      Enum.member?(languages, :mixed) -> {:error, {:invalid_languages, :mixed}}
+      not atoms? -> {:error, {:invalid_languages, languages}}
+      mixed? -> {:error, {:invalid_languages, :mixed}}
       true -> :ok
     end
   end

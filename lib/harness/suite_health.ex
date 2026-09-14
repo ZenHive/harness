@@ -65,15 +65,22 @@ defmodule Harness.SuiteHealth do
     end
   end
 
-  @doc "Checks every registered project."
+  @doc """
+  Checks every registered project.
+
+  A per-project failure never halts the sweep: `check_project/2` already logs the
+  individual reason, and the names that failed are reported together at the end.
+  """
   @spec check_all(keyword()) :: :ok
   def check_all(opts \\ []) when is_list(opts) do
-    Enum.each(ProjectRegistry.list(), fn project ->
-      case check_project(project, opts) do
-        :ok -> :ok
-        {:error, _reason} -> :ok
-      end
-    end)
+    failed =
+      ProjectRegistry.list()
+      |> Enum.reject(&(check_project(&1, opts) == :ok))
+      |> Enum.map(& &1.name)
+
+    if failed != [] do
+      Logger.warning("harness suite health: check_all failed for #{Enum.join(failed, ", ")}")
+    end
 
     :ok
   end

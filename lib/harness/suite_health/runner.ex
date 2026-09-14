@@ -67,29 +67,23 @@ defmodule Harness.SuiteHealth.Runner do
   @spec run_commands(Project.t(), String.t(), [{atom(), {String.t(), [String.t()]}}], Bootstrap.runner()) ::
           {:ok, aggregate()} | {:error, term()}
   defp run_commands(project, worktree_path, commands, runner) do
-    commands
-    |> Enum.reduce_while({true, 0, [], []}, fn {_language, command}, {passed?, exit_code, failures, labels} ->
-      {output, status} = invoke_command(project, worktree_path, command, runner)
-      cmd_label = command_label(command)
-      test_failures = Parser.failing_tests(output, command)
-      cmd_passed? = Parser.passed?(output, command, status)
+    # Chunks are accumulated in reverse (prepend, not `++`) and flattened once below.
+    {passed?, exit_code, failure_chunks, labels} =
+      Enum.reduce(commands, {true, 0, [], []}, fn {_language, command}, {passed?, exit_code, failures, labels} ->
+        {output, status} = invoke_command(project, worktree_path, command, runner)
+        test_failures = Parser.failing_tests(output, command)
+        cmd_passed? = Parser.passed?(output, command, status)
 
-      if cmd_passed? do
-        {:cont, {passed? and cmd_passed?, max(exit_code, status), failures ++ test_failures, labels ++ [cmd_label]}}
-      else
-        {:cont, {false, max(exit_code, status), failures ++ test_failures, labels ++ [cmd_label]}}
-      end
-    end)
-    |> case do
-      {passed?, exit_code, failures, labels} ->
-        {:ok,
-         %{
-           passed: passed?,
-           exit_code: exit_code,
-           command: Enum.join(labels, " && "),
-           failing_tests: failures
-         }}
-    end
+        {passed? and cmd_passed?, max(exit_code, status), [test_failures | failures], [command_label(command) | labels]}
+      end)
+
+    {:ok,
+     %{
+       passed: passed?,
+       exit_code: exit_code,
+       command: labels |> Enum.reverse() |> Enum.join(" && "),
+       failing_tests: failure_chunks |> Enum.reverse() |> Enum.concat()
+     }}
   end
 
   @spec invoke_command(Project.t(), String.t(), {String.t(), [String.t()]}, Bootstrap.runner()) ::

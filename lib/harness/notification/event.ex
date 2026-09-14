@@ -167,7 +167,7 @@ defmodule Harness.Notification.Event do
   defp pending_part(outcome) do
     case event_field(outcome, :pending_migrations) do
       labels when is_list(labels) and labels != [] ->
-        "pending migrations: " <> Enum.join(labels, ", ")
+        IO.iodata_to_binary(["pending migrations: ", Enum.intersperse(labels, ", ")])
 
       _absent ->
         nil
