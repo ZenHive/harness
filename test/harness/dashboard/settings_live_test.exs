@@ -412,10 +412,14 @@ defmodule Harness.Dashboard.SettingsLiveTest do
   end
 
   test "adds free-text catalog models and toggles membership without a restart", %{conn: conn} do
+    SettingsStore.put(:model_catalog_static, %{
+      codex: [%{id: "codex-test-existing", label: "Existing test model", annotations: []}]
+    })
+
     {:ok, view, html} = live(conn, "/harness/settings")
 
     assert html =~ "Model catalog"
-    assert html =~ "gpt-5.5"
+    assert has_element?(view, "#model-catalog-toggle-codex-codex-test-existing[aria-checked=true]")
 
     html =
       view
