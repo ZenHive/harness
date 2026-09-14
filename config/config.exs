@@ -17,7 +17,15 @@ config :harness, CommandSink,
 config :harness, Endpoint,
   adapter: Bandit.PhoenixAdapter,
   url: [host: "localhost"],
-  http: [ip: {127, 0, 0, 1}, port: 4018],
+  # `shutdown_timeout` bounds how long a SIGTERM waits for open connections.
+  # The anubis SSE loop keeps looping through the `:shutdown` EXIT of its
+  # session, so every long-lived MCP client connection sits out the whole
+  # timeout, and ThousandIsland's acceptor pool tears its acceptors down
+  # serially — at the 15 s default, eight MCP clients ate the entire systemd
+  # TimeoutStopSec=120 before `Harness.Run.Supervisor` got its turn, so the
+  # SIGKILL landed with no run record written (2026-09-14 06:43). An SSE client
+  # is dropped by a restart either way; a second per connection is plenty.
+  http: [ip: {127, 0, 0, 1}, port: 4018, thousand_island_options: [shutdown_timeout: 1_000]],
   server: true,
   pubsub_server: Harness.PubSub,
   live_view: [signing_salt: "harness-dashboard-live-view-salt"],

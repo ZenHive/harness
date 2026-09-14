@@ -21,6 +21,7 @@ defmodule Harness.Dashboard.Router do
 
   alias Harness.Dashboard.MCPPlug
   alias Harness.Dashboard.MCPServer
+  alias Harness.Dashboard.RunsAPI
 
   pipeline :browser do
     plug(:accepts, ["html"])
@@ -38,6 +39,11 @@ defmodule Harness.Dashboard.Router do
     server: MCPServer,
     request_timeout: MCPServer.request_timeout_ms()
   )
+
+  # Plain JSON roster of registered runs for operator scripts (the autodeploy
+  # restart guard). Outside `:browser` — no session, no CSRF — and before the
+  # LiveView scope so `/harness/api/runs` never resolves to a LiveView route.
+  get("/harness/api/runs", RunsAPI, [])
 
   # Oban Web's scope must precede the LiveView scope so `/harness/oban`
   # routes to Oban Web rather than the dashboard LiveView.
