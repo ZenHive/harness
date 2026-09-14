@@ -272,6 +272,7 @@
 | Task 375 | ✅ | 🎁 **config-surface** · 🚀 **v0_16** · 🐛 Validate optional %Harness.Project{} fields at registration — an uncast concurrency_cap silently kills batch dispatch [D:2/B:6/U:6 → Eff:3.0?] 🎯 |
 | Task 412 | ⬜ | 🎁 **config-surface** · 🔒 Scope inherited credentials per project — every dispatched agent currently sees every registered project's keys [D:4/B:7/U:6 → Eff:1.62] 🚀 |
 | Task 416 | ✅ | 🎁 **reviewer-pair** · 🐛 Fix post-merge cold-check red for 1e345b9 [D:3/B:8/U:5 → Eff:2.17] 🎯 |
+| Task 432 | 🔶 | 🎁 **reviewer-pair** · 🐛 Fix post-merge cold-check red for c3beaaf [D:3/B:8/U:5 → Eff:2.17] 🎯 ⛔ post-merge cold check red for landed SHA c3beaafc605fb12c04401fbefa97fbbe85e3e5b8: ** (Mix) Unknown dependency :ecto given to :import_deps in the formatter configuration. Make sure the dependency is listed in your mix.exs for environment :dev and you have run "mix deps.get" |
 <!-- TASKS:END -->
 
 ---

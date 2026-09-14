@@ -20060,6 +20060,36 @@
       "created_at": "2026-09-13",
       "scored_at": "2026-09-13",
       "cross_repo": []
+    },
+    {
+      "id": "432",
+      "phase": 20,
+      "bundle": "reviewer-pair",
+      "status": "blocked",
+      "title": "Fix post-merge cold-check red for c3beaaf",
+      "scores": {
+        "d": 3,
+        "b": 8,
+        "u": 5
+      },
+      "eff": 2.17,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "The clean-build/check passes from a cold checkout at landed SHA c3beaafc605fb12c04401fbefa97fbbe85e3e5b8."
+      ],
+      "out_of_scope": [
+        "Reverting or unmerging the already-landed SHA"
+      ],
+      "body": "The post-merge audit AI reported a red cold check for landed SHA c3beaafc605fb12c04401fbefa97fbbe85e3e5b8.\n\n** (Mix) Unknown dependency :ecto given to :import_deps in the formatter configuration. Make sure the dependency is listed in your mix.exs for environment :dev and you have run \"mix deps.get\"",
+      "created_at": "2026-09-14",
+      "scored_at": "2026-09-14",
+      "blocked_reason": "post-merge cold check red for landed SHA c3beaafc605fb12c04401fbefa97fbbe85e3e5b8: ** (Mix) Unknown dependency :ecto given to :import_deps in the formatter configuration. Make sure the dependency is listed in your mix.exs for environment :dev and you have run \"mix deps.get\"",
+      "cross_repo": []
     }
   ]
 }
