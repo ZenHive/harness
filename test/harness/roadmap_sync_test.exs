@@ -116,6 +116,43 @@ defmodule Harness.RoadmapSyncTest do
       assert Enum.any?(tasks, &(&1["id"] == @origin_only_id))
     end
 
+    test "ready and next_bundle refuse when the sync skips and the checkout is behind origin", ctx do
+      ProjectRegistry.reset()
+      on_exit(&ProjectRegistry.reset/0)
+      assert :ok = ProjectRegistry.register(ctx.project)
+
+      File.write!(Path.join(ctx.repo, "scratch.txt"), "operator mid-edit\n")
+      local_head = local_tip(ctx.repo)
+
+      log =
+        capture_log(fn ->
+          assert {:error, {:roadmap_checkout_behind, "roadmap-sync-fixture", "main", 1}} =
+                   Roadmap.ready(project: ctx.project)
+
+          assert {:error, {:roadmap_checkout_behind, "roadmap-sync-fixture", "main", 1}} =
+                   Roadmap.next_bundle(ctx.project.name)
+        end)
+
+      assert log =~ "harness roadmap: checkout not fast-forwarded"
+      assert log =~ "sync manually"
+      assert local_tip(ctx.repo) == local_head
+      assert File.read!(Path.join(ctx.repo, "scratch.txt")) == "operator mid-edit\n"
+      refute File.read!(Path.join(ctx.repo, "roadmap/tasks.toml")) =~ ~s(id = "#{@origin_only_id}")
+    end
+
+    test "ready still reads a dirty checkout that is not behind origin", ctx do
+      ProjectRegistry.reset()
+      on_exit(&ProjectRegistry.reset/0)
+      assert :ok = ProjectRegistry.register(ctx.project)
+
+      assert {:ok, _ready} = Roadmap.ready(project: ctx.project)
+      File.write!(Path.join(ctx.repo, "scratch.txt"), "operator mid-edit\n")
+
+      assert {:ok, ready} = Roadmap.ready(project: ctx.project)
+      assert Enum.any?(ready, &(&1["id"] == @origin_only_id))
+      assert File.read!(Path.join(ctx.repo, "scratch.txt")) == "operator mid-edit\n"
+    end
+
     test "list/2 opts out: the dashboard display read never fast-forwards the checkout", ctx do
       ProjectRegistry.reset()
       on_exit(&ProjectRegistry.reset/0)
@@ -127,6 +164,20 @@ defmodule Harness.RoadmapSyncTest do
       refute Enum.any?(tasks, &(&1["id"] == @origin_only_id))
       assert local_tip(ctx.repo) == local_head
       refute File.read!(Path.join(ctx.repo, "roadmap/tasks.toml")) =~ ~s(id = "#{@origin_only_id}")
+    end
+
+    test "ready and next_bundle opt out of sync when sync_checkout: false", ctx do
+      ProjectRegistry.reset()
+      on_exit(&ProjectRegistry.reset/0)
+      assert :ok = ProjectRegistry.register(ctx.project)
+      local_head = local_tip(ctx.repo)
+
+      assert {:ok, ready} = Roadmap.ready(project: ctx.project, sync_checkout: false)
+      refute Enum.any?(ready, &(&1["id"] == @origin_only_id))
+
+      assert {:ok, %{tasks: tasks}} = Roadmap.next_bundle(ctx.project.name, sync_checkout: false)
+      refute Enum.any?(tasks, &(&1["id"] == @origin_only_id))
+      assert local_tip(ctx.repo) == local_head
     end
   end
 

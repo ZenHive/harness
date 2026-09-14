@@ -95,6 +95,10 @@ defmodule Harness.Cron.RoadmapPollerTest do
   end
 
   test "a dirty checkout skipped by TargetSync cannot redispatch a task already landed on origin" do
+    # Updated for Task 420: sync_checkout runs first (and skips the dirty tree);
+    # currency is still the gate, so the poller refuses with the same named
+    # error and never force-updates the working tree.
+
     parent = self()
     %{origin: origin, repo: repo} = GitFixture.init_with_origin(name: "cron-stale-roadmap")
     tasks_path = Path.join(repo, "roadmap/tasks.toml")
@@ -135,6 +139,55 @@ defmodule Harness.Cron.RoadmapPollerTest do
     refute_received :stale_roadmap_read
     refute_received {:inserted, _args}
     assert File.read!(Path.join(repo, "operator-settings.txt")) == "dirty\n"
+    assert File.read!(tasks_path) == "task 688 pending\n"
+  end
+
+  test "a clean checkout one commit behind is fast-forwarded and dispatches the origin-only ready task" do
+    parent = self()
+    %{origin: origin, repo: repo} = GitFixture.init_with_origin(name: "cron-heal-roadmap")
+    tasks_path = Path.join(repo, "roadmap/tasks.toml")
+    File.mkdir_p!(Path.dirname(tasks_path))
+    File.write!(tasks_path, "task 688 pending\n")
+    GitFixture.git!(repo, ["add", "roadmap/tasks.toml"])
+    GitFixture.git!(repo, ["commit", "-q", "-m", "add pending task"])
+    GitFixture.git!(repo, ["push", "-q", "origin", "main"])
+
+    lander = GitFixture.tmp_base(name: "cron-heal-lander")
+    {_output, 0} = System.cmd("git", ["clone", "-q", origin, lander], stderr_to_stdout: true)
+    GitFixture.git!(lander, ["config", "user.email", "lander@example.com"])
+    GitFixture.git!(lander, ["config", "user.name", "Lander"])
+    File.write!(Path.join(lander, "roadmap/tasks.toml"), "task 111 origin-only pending\n")
+    GitFixture.git!(lander, ["add", "roadmap/tasks.toml"])
+    GitFixture.git!(lander, ["commit", "-q", "-m", "add origin-only task 111"])
+    GitFixture.git!(lander, ["push", "-q", "origin", "main"])
+
+    refute File.read!(tasks_path) =~ "111"
+    local_head = repo |> GitFixture.git!(["rev-parse", "HEAD"]) |> String.trim()
+
+    project = ProjectFixture.from_repo(repo, name: "cron-heal-roadmap", target_branch: "main")
+    assert :ok = ProjectRegistry.register(project)
+    enable_project(project.name)
+
+    Application.put_env(:harness, :roadmap_ready, fn project ->
+      send(parent, :healed_roadmap_read)
+      toml = File.read!(Path.join(project.roadmap_path, "roadmap/tasks.toml"))
+
+      if String.contains?(toml, "111") do
+        {:ok, [task("111", "codex")]}
+      else
+        {:ok, [task("688", "codex")]}
+      end
+    end)
+
+    capture_inserts(parent)
+    assert :ok = RoadmapPoller.perform(%Oban.Job{})
+
+    assert_received :healed_roadmap_read
+    assert_received {:inserted, %{item_id: "111"}}
+    refute_received {:inserted, %{item_id: "688"}}
+    assert File.read!(tasks_path) =~ "111"
+    healed_head = repo |> GitFixture.git!(["rev-parse", "HEAD"]) |> String.trim()
+    refute healed_head == local_head
   end
 
   test "a current dirty checkout still dispatches — dirty is not a refusal reason" do

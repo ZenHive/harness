@@ -19,7 +19,9 @@ defmodule Harness.Dashboard.RoadmapLive do
   the same data on its own page; it does not remove it from the index.
 
   This view counts and displays roadmap facts from `rmap`'s structured output. It
-  does not compute agent recommendations or bespoke priority scores.
+  does not compute agent recommendations or bespoke priority scores. Display
+  reads pass `sync_checkout: false` so a 30s tick never fetches origin or
+  fast-forwards a checkout.
   """
 
   use Phoenix.LiveView, layout: {Harness.Dashboard.Layouts, :app}
@@ -210,7 +212,7 @@ defmodule Harness.Dashboard.RoadmapLive do
   defp next_bundle(project) do
     case Application.get_env(:harness, :roadmap_next_bundle) do
       fun when is_function(fun, 1) -> fun.(project)
-      _other -> Roadmap.next_bundle(project.name)
+      _other -> Roadmap.next_bundle(project.name, sync_checkout: false)
     end
   end
 
@@ -226,7 +228,7 @@ defmodule Harness.Dashboard.RoadmapLive do
   defp ready_tasks(project) do
     case Application.get_env(:harness, :roadmap_ready) do
       fun when is_function(fun, 1) -> fun.(project)
-      _other -> Roadmap.ready(project: project, fields: @ready_fields)
+      _other -> Roadmap.ready(project: project, fields: @ready_fields, sync_checkout: false)
     end
   end
 

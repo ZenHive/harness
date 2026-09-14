@@ -11,6 +11,7 @@ defmodule Harness.Dashboard.RoadmapLiveTest do
   # async: false because tests read singleton ProjectRegistry state.
   use Harness.Dashboard.ConnCase, async: false
 
+  alias Harness.GitFixture
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
 
@@ -126,6 +127,68 @@ defmodule Harness.Dashboard.RoadmapLiveTest do
       assert html =~ "Wave 1"
       assert html =~ "Follow-up wave"
       assert html =~ "Eff 1.25"
+    end
+
+    test "a roadmap tick with an unreachable origin never fetches and stays inside the drilldown timeout", %{
+      conn: conn
+    } do
+      if !System.find_executable("rmap") do
+        flunk("""
+        rmap CLI not found on PATH.
+
+        Harness.Dashboard.RoadmapLive shells out to `rmap` for drilldowns. Install
+        it and ensure it is on PATH before running this suite.
+        """)
+      end
+
+      test_pid = self()
+      {:ok, listen} = :gen_tcp.listen(0, [:binary, ip: {127, 0, 0, 1}, packet: :raw, active: false, reuseaddr: true])
+      {:ok, port} = :inet.port(listen)
+
+      {:ok, _acceptor} =
+        Task.start(fn ->
+          case :gen_tcp.accept(listen, 6_000) do
+            {:ok, sock} ->
+              send(test_pid, :origin_fetch_attempted)
+              :gen_tcp.close(sock)
+
+            {:error, _reason} ->
+              :ok
+          end
+        end)
+
+      on_exit(fn -> :gen_tcp.close(listen) end)
+
+      %{repo: repo} = GitFixture.init_with_origin(name: "roadmaplive-nosync")
+      sample = Path.expand("../../fixtures/sample_roadmap", __DIR__)
+      File.cp_r!(Path.join(sample, "roadmap"), Path.join(repo, "roadmap"))
+      GitFixture.git!(repo, ["add", "-A"])
+      GitFixture.git!(repo, ["commit", "-q", "-m", "seed roadmap"])
+      GitFixture.git!(repo, ["push", "-q", "origin", "main"])
+      GitFixture.git!(repo, ["remote", "set-url", "origin", "git://127.0.0.1:#{port}/unreachable.git"])
+
+      project =
+        ProjectFixture.from_repo(repo,
+          name: "roadmaplive-nosync",
+          target_branch: "main",
+          roadmap_target_branch: "main"
+        )
+
+      :ok = ProjectRegistry.register(project)
+
+      {elapsed_us, {:ok, view, html}} = :timer.tc(fn -> live(conn, "/harness/roadmap") end)
+
+      assert elapsed_us < 5_000_000
+      assert html =~ "roadmaplive-nosync"
+
+      {tick_us, _tick_html} =
+        :timer.tc(fn ->
+          send(view.pid, :roadmap_tick)
+          render(view)
+        end)
+
+      assert tick_us < 5_000_000
+      refute_received :origin_fetch_attempted
     end
   end
 

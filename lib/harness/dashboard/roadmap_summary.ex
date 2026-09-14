@@ -123,6 +123,7 @@ defmodule Harness.Dashboard.RoadmapSummary do
 
   @spec list_tasks(Project.t()) :: {:ok, [map()]} | {:error, term()}
   defp list_tasks(%Project{name: name} = project) do
+    # Display read: `Roadmap.list/2` already passes `sync_checkout: false`.
     case Application.get_env(:harness, :roadmap_list) do
       fun when is_function(fun, 1) -> fun.(project)
       _other -> Roadmap.list(name)

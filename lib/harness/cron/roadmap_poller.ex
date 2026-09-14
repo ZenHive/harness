@@ -40,14 +40,15 @@ defmodule Harness.Cron.RoadmapPoller do
   best-effort `TargetSync.ff_local/2` (witnessed skip, never `--force`, never a
   dirty/self-host working-tree write).
 
-  The **read path** (this poller's ready set) consults the **local**
-  `project.roadmap_path` checkout, but only after `TargetSync.ensure_current/2`
-  proves that checkout's HEAD is not behind `origin/<target>`. A TargetSync skip
-  is therefore not silent here: the next poll refuses with
-  `{:roadmap_checkout_behind, project, target, n}` (named project, branch, and
-  behind count) or `{:roadmap_currency_unproven, ...}` if currency cannot be
-  proven, and dispatches nothing. Origin wins the landed-or-not question; this
-  poller never fast-forwards or otherwise writes the operator's working tree.
+  The **read path** (this poller's ready set) is a dispatch-intent read: it
+  fetches `origin/<target>` and fast-forwards a *clean* `project.roadmap_path`
+  checkout (`TargetSync.sync_checkout/2`) before shelling `rmap ready`. A
+  clean-but-behind clone is healed and polled. A dirty, non-ff, detached,
+  non-git, or self-host checkout is never forced: if the skip leaves HEAD behind
+  origin, the poll refuses with `{:roadmap_checkout_behind, project, target, n}`
+  (named project, branch, and behind count) or `{:roadmap_currency_unproven, ...}`
+  if currency cannot be proven, and dispatches nothing. Currency is the gate;
+  cleanliness is not. TargetSync remains ff-only, never `--force`.
   """
 
   use Oban.Worker, queue: :cron, max_attempts: 1
@@ -457,7 +458,7 @@ defmodule Harness.Cron.RoadmapPoller do
     with :ok <- ensure_roadmap_current(project) do
       case Application.get_env(:harness, :roadmap_ready) do
         fun when is_function(fun, 1) -> fun.(project)
-        _other -> Roadmap.ready(project_root: project.roadmap_path, fields: @orchestrator_ready_fields)
+        _other -> Roadmap.ready(project: project, fields: @orchestrator_ready_fields)
       end
     end
   end
@@ -468,19 +469,27 @@ defmodule Harness.Cron.RoadmapPoller do
   defp ensure_roadmap_current(%Project{} = project) do
     with {:ok, repo} <- git_root(project.roadmap_path),
          {:ok, target} <- roadmap_target(project, repo) do
-      case TargetSync.ensure_current(repo, target) do
-        :current ->
-          :ok
-
-        {:error, {:checkout_behind, ^target, count}} ->
-          {:error, {:roadmap_checkout_behind, project.name, target, count}}
-
-        {:error, reason} ->
-          {:error, {:roadmap_currency_unproven, project.name, target, reason}}
+      case TargetSync.sync_checkout(repo, target) do
+        :synced -> :ok
+        {:skipped, _reason} -> refuse_if_behind(project, repo, target)
       end
     else
       :not_durable -> :ok
       {:error, reason} -> {:error, {:roadmap_currency_unproven, project.name, reason}}
+    end
+  end
+
+  @spec refuse_if_behind(Project.t(), String.t(), String.t()) :: :ok | {:error, term()}
+  defp refuse_if_behind(%Project{} = project, repo, target) do
+    case TargetSync.ensure_current(repo, target) do
+      :current ->
+        :ok
+
+      {:error, {:checkout_behind, ^target, count}} ->
+        {:error, {:roadmap_checkout_behind, project.name, target, count}}
+
+      {:error, reason} ->
+        {:error, {:roadmap_currency_unproven, project.name, target, reason}}
     end
   end
 

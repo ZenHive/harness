@@ -33,8 +33,11 @@ defmodule Harness.Roadmap do
   so dispatch reads the tasks that are actually on origin. A dirty, diverged,
   detached, self-host, or non-git checkout is left alone with a witnessed skip;
   ingest then proceeds on the on-disk state. `ready/1` and `next_bundle/1` (the
-  `dispatch-bundle` readers) sync the same way; `list/2` does not, because both
-  dashboards re-run it for every registered project on a 30s display tick.
+  `dispatch-bundle` readers) sync the same way, but they refuse with
+  `{:roadmap_checkout_behind, project, target, n}` when that skip leaves HEAD
+  behind `origin/<target>` — currency is the gate, cleanliness is not. `list/2`
+  and other display reads pass `sync_checkout: false` and never fetch, because
+  both dashboards re-run them for every registered project on a 30s tick.
 
   ## Renderable vs Executable Agents
 
@@ -104,6 +107,9 @@ defmodule Harness.Roadmap do
           | {:rmap_failed, [String.t()], integer(), String.t()}
           | {:rmap_spawn_failed, [String.t()], term()}
           | {:rmap_bad_output, term()}
+          | {:roadmap_checkout_behind, String.t(), String.t(), non_neg_integer()}
+          | {:roadmap_currency_unproven, String.t(), term()}
+          | {:roadmap_currency_unproven, String.t(), String.t(), term()}
 
   @typep failure :: {integer(), String.t(), [String.t()]} | {:spawn_error, term(), [String.t()]}
   @roadmap_lock_retry_delay_ms 25
@@ -251,7 +257,7 @@ defmodule Harness.Roadmap do
     returns: %{
       type: :tuple,
       description:
-        "{:ok, [task_map]} — every pending task whose deps are all done, excluding handbuild-marked tasks; mutually independent by construction, safe to fan out as one batch. Each map carries the --fields-projected keys (id, assignee, markers by default; the :fields opt widens them) — enough to route each task to its agent without a second rmap call. {:error, reason} per t:error/0 (unknown_project, rmap_not_found, roadmap_not_found, rmap_failed, rmap_bad_output)."
+        "{:ok, [task_map]} — every pending task whose deps are all done, excluding handbuild-marked tasks; mutually independent by construction, safe to fan out as one batch. Each map carries the --fields-projected keys (id, assignee, markers by default; the :fields opt widens them) — enough to route each task to its agent without a second rmap call. {:error, reason} per t:error/0 (unknown_project, rmap_not_found, roadmap_not_found, rmap_failed, rmap_bad_output, roadmap_checkout_behind, roadmap_currency_unproven). When called with a project, this is a dispatch-intent read: it syncs the checkout and refuses if the sync skips while HEAD is still behind origin. Pass sync_checkout: false for a display read."
     }
   )
 
@@ -260,6 +266,7 @@ defmodule Harness.Roadmap do
   @spec ready(keyword()) :: {:ok, [map()]} | {:error, error()}
   def ready(opts \\ []) do
     fields = Keyword.get(opts, :fields, @default_ready_fields)
+    opts = Keyword.put_new(opts, :require_currency, Keyword.get(opts, :sync_checkout, true))
 
     with {:ok, ctx} <- build_ctx(opts),
          :ok <- ensure_rmap(ctx.rmap_bin),
@@ -306,18 +313,29 @@ defmodule Harness.Roadmap do
         kind: :value,
         description:
           "Registered project name; resolved via Harness.ProjectRegistry.lookup/1 to its roadmap_path. SOURCE valid names from project_registry-list."
+      ],
+      opts: [
+        kind: :value,
+        default: [],
+        description:
+          "Keyword list. :sync_checkout (default true) fetches and fast-forwards the roadmap checkout before rmap runs; false is the display-read opt-out used by the dashboard tick. Dispatch-intent callers omit it so a skip that leaves HEAD behind origin refuses with {:roadmap_checkout_behind, ...}."
       ]
     ],
     returns: %{
       type: :tuple,
       description:
-        "{:ok, %{bundle: bundle_meta | nil, tasks: [task_map]}} — bundle_meta carries name/phase/description; tasks are the bundle's pending tasks (id, title, eff, ...). {:error, reason} per the same set as list/2."
+        "{:ok, %{bundle: bundle_meta | nil, tasks: [task_map]}} — bundle_meta carries name/phase/description; tasks are the bundle's pending tasks (id, title, eff, ...). {:error, reason} per the same set as list/2, plus roadmap_checkout_behind / roadmap_currency_unproven when this dispatch-intent read syncs and the checkout stays behind origin."
     }
   )
 
-  @spec next_bundle(String.t()) :: {:ok, %{bundle: map() | nil, tasks: [map()]}} | {:error, error()}
-  def next_bundle(project_name) when is_binary(project_name) do
-    with {:ok, ctx} <- build_ctx(project_name: project_name),
+  @spec next_bundle(String.t(), keyword()) :: {:ok, %{bundle: map() | nil, tasks: [map()]}} | {:error, error()}
+  def next_bundle(project_name, opts \\ []) when is_binary(project_name) do
+    opts =
+      opts
+      |> Keyword.put(:project_name, project_name)
+      |> Keyword.put_new(:require_currency, Keyword.get(opts, :sync_checkout, true))
+
+    with {:ok, ctx} <- build_ctx(opts),
          :ok <- ensure_rmap(ctx.rmap_bin),
          {:ok, output} <- run_bundle(ctx) do
       decode_bundle(output)
@@ -745,9 +763,8 @@ defmodule Harness.Roadmap do
 
   @spec build_ctx(keyword()) :: {:ok, Ctx.t()} | {:error, error()}
   defp build_ctx(opts) do
-    with {:ok, root} <- resolve_root(opts) do
-      _ = sync_roadmap_checkout(opts)
-
+    with {:ok, root} <- resolve_root(opts),
+         :ok <- apply_checkout_sync(opts) do
       {:ok,
        %Ctx{
          root: root,
@@ -759,13 +776,75 @@ defmodule Harness.Roadmap do
 
   # Fetch + ff-only the roadmap checkout before rmap reads or local writes, so
   # dispatch sees origin's tasks.toml and the writeback push is a fast-forward.
-  # A skip is logged and returned; the caller still proceeds on the on-disk file.
   #
-  # `sync_checkout: false` opts a caller out. `list/2` uses it: it is the display
-  # read both dashboards re-run for every registered project on a 30s tick, where
-  # a per-project network fetch would blow the panels' 5s task timeout and would
-  # fast-forward the operator's working tree from a monitoring page. The dispatch
-  # readers (ingest / ready / next_bundle) and the writeback keep the sync.
+  # `sync_checkout: false` opts a caller out. `list/2` and the dashboard
+  # drilldown use it: they re-run for every registered project on a 30s tick,
+  # where a per-project network fetch would blow the panels' 5s task timeout
+  # and would fast-forward the operator's working tree from a monitoring page.
+  #
+  # Dispatch-intent readers (`ready/1`, `next_bundle/1`) pass `require_currency:
+  # true`: a skip that leaves HEAD behind origin is a named error, not a silent
+  # read of a stale file. Ingest and writeback keep the 424 skip-and-proceed
+  # contract — the sync is never a gate there.
+  @spec apply_checkout_sync(keyword()) :: :ok | {:error, error()}
+  defp apply_checkout_sync(opts) do
+    cond do
+      not Keyword.get(opts, :sync_checkout, true) ->
+        :ok
+
+      Keyword.get(opts, :require_currency, false) ->
+        require_dispatch_currency(opts)
+
+      true ->
+        _ = do_sync_roadmap_checkout(opts)
+        :ok
+    end
+  end
+
+  @spec require_dispatch_currency(keyword()) :: :ok | {:error, error()}
+  defp require_dispatch_currency(opts) do
+    case do_sync_roadmap_checkout(opts) do
+      :none -> :ok
+      :synced -> :ok
+      {:skipped, _reason} -> refuse_stale_checkout(opts)
+    end
+  end
+
+  @spec refuse_stale_checkout(keyword()) :: :ok | {:error, error()}
+  defp refuse_stale_checkout(opts) do
+    case sync_target(opts) do
+      :none ->
+        :ok
+
+      {:ok, repo, target} ->
+        case TargetSync.ensure_current(repo, target) do
+          :current ->
+            :ok
+
+          {:error, {:checkout_behind, ^target, count}} ->
+            {:error, {:roadmap_checkout_behind, project_label(opts), target, count}}
+
+          {:error, reason} ->
+            {:error, {:roadmap_currency_unproven, project_label(opts), target, reason}}
+        end
+    end
+  end
+
+  @spec project_label(keyword()) :: String.t()
+  defp project_label(opts) do
+    case project_from_opts(opts) do
+      %Project{name: name} ->
+        name
+
+      nil ->
+        case Keyword.get(opts, :project_name) do
+          name when is_binary(name) -> name
+          _missing -> "unknown"
+        end
+    end
+  end
+
+  # Used by writeback (`mutate/4`), which still proceeds on a witnessed skip.
   @spec sync_roadmap_checkout(keyword()) :: TargetSync.result() | :none
   defp sync_roadmap_checkout(opts) do
     if Keyword.get(opts, :sync_checkout, true), do: do_sync_roadmap_checkout(opts), else: :none
