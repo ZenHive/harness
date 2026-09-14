@@ -48,8 +48,10 @@
       "Harness.Run",
       "Harness.Run.*",
       "Harness.StatusView",
-      # Dev/CI tooling: mix harness.deps.check reads mix.exs constraint pins.
+      # Dev/CI tooling: mix harness.deps.check reads mix.exs constraint pins;
+      # mix harness.worktree.reclaim drives the worktree/branch reclaimer.
       "Harness.DependencyConstraintGuard",
+      "Harness.Worktree.Reclaim",
       # The dashboard's template-facing render surface: heex layouts/templates
       # (lowered by Reach's HEEx plugin to Reach.Templates.* pseudo-modules)
       # legitimately render through these. Not external driver API — internal
