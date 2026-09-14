@@ -585,6 +585,14 @@ defmodule Harness.Run do
   defdelegate reviewer_idle_timeout(idle), to: RunTimeouts
 
   @doc false
+  @spec reviewer_progress_timeout(timeout() | nil) :: timeout()
+  defdelegate reviewer_progress_timeout(progress), to: RunTimeouts
+
+  @doc false
+  @spec implementer_progress_timeout(timeout() | nil) :: timeout()
+  defdelegate implementer_progress_timeout(progress), to: RunTimeouts
+
+  @doc false
   @spec discernment_weight_passes?(data(), keyword(), integer()) :: boolean()
   defdelegate discernment_weight_passes?(data, opts, now), to: RunDiscernment
 

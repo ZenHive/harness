@@ -6,6 +6,27 @@ defmodule Harness.Run.Actions.Timeouts do
   @reviewer_idle_floor 600_000
   @implementer_idle_floor 600_000
 
+  # The progress watchdog is the idle watchdog's stricter sibling: it reaps an
+  # agent whose transcript shows no NEW tool call and whose worktree edit
+  # fingerprint is unchanged (harness_agent_adapter Watchdog.expire_progress/1).
+  # A single long check command — `mix ci`, `mix precommit`, `mix dialyzer` —
+  # streams progress heartbeats but issues no new tool call and edits no source
+  # file, so it looks exactly like a stalled agent. That is the same failure
+  # Task 181 floored the idle window against, and it was reachable again here
+  # because the driver's unfloored 300_000 default came through untouched:
+  # observed 2026-09-14 on aave_sim run-1789369684790-eb07f7ac, where the
+  # reviewer had already recorded precommit and dialyzer green in both MIX_ENVs,
+  # started `mix ci` under its own 900_000 budget, and was reflex-halted with
+  # {:reflex_halted, :progress_stalled} before it could write the verdict — the
+  # run settled :review_stuck and a full green review was thrown away.
+  #
+  # The floor must therefore exceed the longest single silent check a project
+  # runs, not the time an agent is allowed to think. Widen it on evidence of a
+  # legitimate command outliving it, never to paper over a genuinely hung agent
+  # — :total_timeout (30 min) and the run's lifetime budget remain the backstops.
+  @reviewer_progress_floor 900_000
+  @implementer_progress_floor 900_000
+
   @type state :: Harness.Run.state()
   @type data :: map()
   @type handler_result :: term()
@@ -84,4 +105,26 @@ defmodule Harness.Run.Actions.Timeouts do
   def reviewer_idle_timeout(nil), do: @reviewer_idle_floor
   def reviewer_idle_timeout(:infinity), do: :infinity
   def reviewer_idle_timeout(idle) when is_integer(idle), do: max(idle, @reviewer_idle_floor)
+
+  # Floors the reviewing-phase progress window at @reviewer_progress_floor, for
+  # the reason given at the attribute. Same contract as the idle floors: `nil`
+  # (no caller override, so the Driver would apply its own 300_000 default)
+  # becomes the floor, an explicit lower value is raised to it, an explicit
+  # higher value wins.
+  @doc false
+  @spec reviewer_progress_timeout(timeout() | nil) :: timeout()
+  def reviewer_progress_timeout(nil), do: @reviewer_progress_floor
+  def reviewer_progress_timeout(:infinity), do: :infinity
+  def reviewer_progress_timeout(progress) when is_integer(progress), do: max(progress, @reviewer_progress_floor)
+
+  # Floors the implementer-phase progress window. An implementer runs the same
+  # silent check commands a reviewer does, so it is reachable by the identical
+  # failure; the idle floors are symmetric across both phases for that reason
+  # and these follow them.
+  @doc false
+  @spec implementer_progress_timeout(timeout() | nil) :: timeout()
+  def implementer_progress_timeout(nil), do: @implementer_progress_floor
+  def implementer_progress_timeout(:infinity), do: :infinity
+
+  def implementer_progress_timeout(progress) when is_integer(progress), do: max(progress, @implementer_progress_floor)
 end

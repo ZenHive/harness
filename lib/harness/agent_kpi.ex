@@ -134,6 +134,10 @@ defmodule Harness.AgentKPI do
           | :no_cross_family_reviewer
           | :same_family_reviewer
           | :reviewer_crashed
+          | :no_verdict_artifact
+          | :malformed_verdict
+          | :reviewer_idle_timeout
+          | :reviewer_spawn_timeout
           | :driver_crashed
           | :timed_out
           | :cancelled
@@ -462,11 +466,23 @@ defmodule Harness.AgentKPI do
 
   defp stuck_cause("Reviewer crashed: :killed"), do: :reviewer_crashed
 
+  # The report strings are authored in `Harness.Run.Actions.Reviewing` and
+  # `Harness.Run.Actions.Timeouts`; each branch below pairs with one of them.
+  # Without the verdict-artifact branches every reviewer that ran but produced
+  # nothing readable collapsed into `:other`, which is how the dominant
+  # review_stuck cause stayed invisible in the aggregate (24/24 `:other`,
+  # observed 2026-09-14 on aave_sim runs …684790 and …684800 — a reflex-halted
+  # reviewer and a reviewer that ended its turn while a check ran in the
+  # background, two different faults reported as one unnamed bucket).
   defp stuck_cause(report) when is_binary(report) do
     cond do
       String.contains?(report, "{:reviewer_unavailable,") -> :reviewer_unavailable
       String.contains?(report, "{:no_cross_family_reviewer,") -> :no_cross_family_reviewer
       String.contains?(report, "{:same_family_reviewer,") -> :same_family_reviewer
+      String.contains?(report, "wrote no ") -> :no_verdict_artifact
+      String.contains?(report, "verdict artifact is malformed") -> :malformed_verdict
+      String.contains?(report, "Reviewer made no progress") -> :reviewer_idle_timeout
+      String.contains?(report, "Reviewer agent never spawned") -> :reviewer_spawn_timeout
       true -> :other
     end
   end

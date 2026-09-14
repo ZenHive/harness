@@ -491,6 +491,41 @@ defmodule Harness.AgentKPITest do
       assert reviewer_ledger[ClaudeReviewer].no_verdict_count == 4
     end
 
+    test "a reviewer that ran but left no readable verdict is named, not bucketed as :other" do
+      # The exact report strings Harness.Run.Actions.Reviewing and .Timeouts
+      # author. Before these branches existed all four collapsed into :other,
+      # hiding the most common review_stuck cause from the aggregate.
+      records = [
+        record(
+          reviewer_adapter: ClaudeReviewer,
+          verdict: nil,
+          reason: {:review_stuck, "Reviewer wrote no .harness/review.json verdict artifact."}
+        ),
+        record(
+          reviewer_adapter: ClaudeReviewer,
+          verdict: nil,
+          reason: {:review_stuck, "Reviewer verdict artifact is malformed: {:invalid_json, \"{\"}"}
+        ),
+        record(
+          reviewer_adapter: ClaudeReviewer,
+          verdict: nil,
+          reason: {:review_stuck, "Reviewer made no progress within 600000ms."}
+        ),
+        record(
+          reviewer_adapter: ClaudeReviewer,
+          verdict: nil,
+          reason: {:review_stuck, "Reviewer agent never spawned within 120000ms."}
+        )
+      ]
+
+      assert AgentKPI.aggregate_review_stuck_causes(records) == %{
+               no_verdict_artifact: 1,
+               malformed_verdict: 1,
+               reviewer_idle_timeout: 1,
+               reviewer_spawn_timeout: 1
+             }
+    end
+
     test "ignores approved runs and non-stuck failures" do
       records = [
         record(verdict: :approve, reason: :approved),

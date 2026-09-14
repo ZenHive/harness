@@ -3,7 +3,7 @@ defmodule Harness.Run.Actions.Recovery do
 
   import Harness.Run.Actions.Control, only: [cancel_task: 1, terminate_recovery: 1]
   import Harness.Run.Actions.Reviewing, only: [transcript_tail: 1]
-  import Harness.Run.Actions.Timeouts, only: [reviewer_idle_timeout: 1]
+  import Harness.Run.Actions.Timeouts, only: [reviewer_idle_timeout: 1, reviewer_progress_timeout: 1]
   import Harness.Run.Actions.Worktree, only: [agent_rule_content: 1, in_run_env: 1, put_opt: 3, run_driver: 4]
 
   alias Harness.AgentAdapter.Invocation
@@ -134,6 +134,6 @@ defmodule Harness.Run.Actions.Recovery do
     ]
     |> put_opt(:total_timeout, data.total_timeout)
     |> put_opt(:idle_timeout, reviewer_idle_timeout(data.idle_timeout))
-    |> put_opt(:progress_timeout, data.progress_timeout)
+    |> put_opt(:progress_timeout, reviewer_progress_timeout(data.progress_timeout))
   end
 end

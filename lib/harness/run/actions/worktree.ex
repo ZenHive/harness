@@ -1,7 +1,7 @@
 defmodule Harness.Run.Actions.Worktree do
   @moduledoc false
 
-  import Harness.Run.Actions.Timeouts, only: [implementer_idle_timeout: 1]
+  import Harness.Run.Actions.Timeouts, only: [implementer_idle_timeout: 1, implementer_progress_timeout: 1]
 
   alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Invocation
@@ -225,7 +225,7 @@ defmodule Harness.Run.Actions.Worktree do
     ]
     |> put_opt(:total_timeout, data.total_timeout)
     |> put_opt(:idle_timeout, implementer_idle_timeout(data.idle_timeout))
-    |> put_opt(:progress_timeout, data.progress_timeout)
+    |> put_opt(:progress_timeout, implementer_progress_timeout(data.progress_timeout))
   end
 
   @doc false
