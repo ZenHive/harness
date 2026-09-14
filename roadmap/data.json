@@ -19401,7 +19401,7 @@
       "id": "420",
       "phase": 25,
       "bundle": "core-loop",
-      "status": "in_progress",
+      "status": "done",
       "title": "Every ready-set consumer syncs the roadmap checkout before selecting work, the cron poller included, and refuses only when the sync skips; display reads never sync",
       "scores": {
         "d": 4,
@@ -19445,10 +19445,17 @@
         "test/harness/roadmap_sync_test.exs",
         "test/harness/dashboard/"
       ],
+      "shipped_in": "2aaaf1165103e835066e681d7b8cbc32e9d020db",
       "body": "UPDATE 2026-09-13, after task 424 shipped 29405459e36c: 424 inverted the premise below. Dispatch readers (ingest / ready / next_bundle via dispatch-task and dispatch-bundle) and the mark_* writeback now fetch and ff-only the roadmap checkout themselves (TargetSync.sync_checkout/2) and only fall back to the on-disk state, witnessed, when the sync skips. Two gaps remain, both read from the 424 reviewer verdict (run run-1789262161110-44edc3da) and confirmed in the code: (1) Harness.Cron.RoadmapPoller.ready_tasks/1 (roadmap_poller.ex:457-460) gates on ensure_roadmap_current/1, which only reports checkout-behind and refuses the whole poll, then calls Roadmap.ready(project_root: ...) without :project, so sync_target/1 returns :none and the sync never fires — the unattended path is the one path that still cannot self-heal a stale checkout, exactly the mpp 2026-09-11 scenario. (2) RoadmapLive recomputes drilldowns for every registered project on each 30s :roadmap_tick (roadmap_live.ex:59, 168, 213, 229) inside Task.async_stream with a 5s kill timeout; since 424, next_bundle/1 and ready/1 there fetch origin and ff the working tree per project per tick. The reviewer already moved Roadmap.list/2 off the sync path (sync_checkout: false) but left ready/next_bundle on it because the ACs named them. The invariant this task now encodes: the sync fires on dispatch-intent reads (dispatch-task, dispatch-bundle, cron poller) and on writeback, never on display reads; a ready-set consumer refuses only when the sync skipped and the checkout is behind.\n\nOriginal body (pre-424): Task 419 (shipped 9c5f279) proved the local roadmap checkout current before Harness.Cron.RoadmapPoller computes the ready set, so a dirty TargetSync skip can no longer silently re-dispatch an already-landed task via cron. But other ready-set consumers still shell rmap against project.roadmap_path with no behind-check: Harness.Dispatch bundle/next_bundle, the dashboard roadmap ready view, and direct Roadmap.ready/next_bundle callers — an operator or MCP caller can still select a stale pending task from a checkout that origin already reads as done. Evidence: reviewer verification in run run-1787967223882-60cd1ce9 (verdict concerns) — RoadmapPoller.ready_tasks/1 now calls TargetSync.ensure_current/2, while Dispatch.next_bundle and the dashboard ready path carry no currency gate. Extend the 419 invariant to every path that selects work from a local roadmap checkout, reusing the same named-error contract.",
       "created_at": "2026-08-29",
       "started_at": "2026-09-14",
+      "done_at": "2026-09-14",
       "scored_at": "2026-08-29",
+      "implemented": "Landed by cursor via merge-train; reviewer-approved (run run-1789348508831-9e26209c, 2aaaf1165103e835066e681d7b8cbc32e9d020db).",
+      "delivered_by": "cursor",
+      "verified": true,
+      "verified_by": "claude",
+      "verification_ref": "harness-run:run-1789348508831-9e26209c",
       "cross_repo": []
     },
     {
