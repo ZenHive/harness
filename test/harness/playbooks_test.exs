@@ -30,8 +30,8 @@ defmodule Harness.PlaybooksTest do
       assert is_binary(playbook.summary) and playbook.summary != ""
       # The body is the full recipe and cites the concrete tools it drives.
       assert playbook.body =~ "# Dispatch a single roadmap task"
-      assert playbook.body =~ "roadmap__ingest"
-      assert playbook.body =~ "supervisor__start_run"
+      assert playbook.body =~ "dispatch-task"
+      assert playbook.body =~ "dispatch-verdict_detail"
     end
 
     test "every catalogued playbook resolves to a non-empty body" do
@@ -60,7 +60,7 @@ defmodule Harness.PlaybooksTest do
                Tools.dispatch(registry, "playbooks-get", %{"name" => "dispatch-bundle"})
 
       assert playbook.name == "dispatch-bundle"
-      assert playbook.body =~ "batch__dispatch"
+      assert playbook.body =~ "dispatch-bundle"
     end
 
     test "playbooks-list dispatches through the chat tool registry" do

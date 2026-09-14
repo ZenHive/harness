@@ -244,7 +244,7 @@ defmodule Harness.Dispatch do
         kind: :value,
         default: nil,
         description:
-          "Optional model id to pin on the generated bump task(s), e.g. gpt-5.5 for codex. nil leaves normal per-agent model configuration in control."
+          "Optional model id to pin on the generated bump task(s), e.g. gpt-6-astra for codex; must be in the agent's live catalog (model_availability-list_available_models). nil leaves the per-agent configured model in control."
       ],
       scrub_anthropic_key: [
         kind: :value,
@@ -287,7 +287,7 @@ defmodule Harness.Dispatch do
         kind: :value,
         default: nil,
         description:
-          "Optional model id to pin on the generated tooling-baseline task, e.g. gpt-5.5 for codex. nil leaves normal per-agent model configuration in control."
+          "Optional model id to pin on the generated tooling-baseline task, e.g. gpt-6-astra for codex; must be in the agent's live catalog (model_availability-list_available_models). nil leaves the per-agent configured model in control."
       ],
       scrub_anthropic_key: [
         kind: :value,

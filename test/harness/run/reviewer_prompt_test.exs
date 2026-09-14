@@ -20,11 +20,11 @@ defmodule Harness.Run.ReviewerPromptTest do
       prompt = GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_prompt.txt"])
       assert prompt =~ "You are the cross-family reviewer for a harness run"
       assert prompt =~ "committed work in this SAME worktree"
-      assert prompt =~ "Fixing is always cheaper than rejecting"
-      assert prompt =~ "Reject ONLY if there is literally nothing to salvage"
+      assert prompt =~ "Fixing is cheaper than rejecting"
+      assert prompt =~ "reject only when nothing is"
       assert prompt =~ "Project check hint"
       assert prompt =~ "mix precommit"
-      assert prompt =~ "You MUST run the project's checks"
+      assert prompt =~ "run the project's checks"
       assert prompt =~ "If checks are still red"
       assert prompt =~ "record"
       assert prompt =~ "reproduced cause"
@@ -70,7 +70,7 @@ defmodule Harness.Run.ReviewerPromptTest do
       assert %Result{state: :done, reason: :approved, reviewer_reprompt_count: 1} = result
 
       prompt = GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_prompt.txt"])
-      assert prompt =~ "You MUST run the project's checks"
+      assert prompt =~ "run the project's checks"
       assert prompt =~ "reproduced cause"
       assert prompt =~ "`checks`"
       assert prompt =~ "`concerns`"
@@ -103,7 +103,7 @@ defmodule Harness.Run.ReviewerPromptTest do
       assert String.trim(captured) == Path.join(rmap_dir, "rmap")
     end
 
-    test "makes writing the verdict artifact the mandatory, unconditional FINAL action (Task 181)" do
+    test "frames writing the verdict artifact as the reviewer's last action" do
       repo = GitFixture.init_repo()
       base = GitFixture.tmp_base()
 
@@ -116,11 +116,10 @@ defmodule Harness.Run.ReviewerPromptTest do
       assert %Result{state: :done, reason: :approved} = await_result(run_id, pid)
 
       prompt = GitFixture.git!(repo, ["show", "harness/#{run_id}:reviewer_prompt.txt"])
-      # The root-cause fix for the reviewer-skips-verdict stall: the prompt must
-      # frame the artifact write as the unconditional last step before exit.
-      assert prompt =~ "FINAL action"
-      assert prompt =~ "mandatory and unconditional"
-      assert prompt =~ "go idle until the file is written"
+      # The reviewer-skips-verdict stall still reproduces in the ledger: the prompt
+      # must frame the artifact write as the last step before exit, with its reason.
+      assert prompt =~ "Your last action is writing the verdict"
+      assert prompt =~ "ends without it is discarded together with every fix you made"
     end
 
     test "an empty implementer diff is framed as the reviewer's judgment call" do

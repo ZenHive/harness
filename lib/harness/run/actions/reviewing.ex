@@ -557,26 +557,23 @@ defmodule Harness.Run.Actions.Reviewing do
   # Task 203 re-prompt (generalized): a fresh invocation of the same reviewer
   # whose prior pass left no READABLE verdict — it either exited without writing
   # the artifact or wrote invalid JSON. All review work is already committed in
-  # this worktree; the ONE remaining job is producing a valid artifact. Terse by
+  # this worktree; the one remaining job is producing a valid artifact. Terse by
   # design — the verdict schema + the task framing the agent needs to ground an
   # honest approve/reject, nothing more.
   @doc false
   @spec reviewer_reprompt(data()) :: String.t()
   def reviewer_reprompt(data) do
     """
-    You are the cross-family reviewer for a harness run. You already reviewed this work in a prior
-    pass, but harness could not read a valid verdict from `#{Review.artifact_path()}` — it was missing
-    or contained invalid JSON, so harness is about to discard the entire run.
+    You are the cross-family reviewer for a harness run. You reviewed this work in a prior pass, but
+    harness could not read a valid verdict from `#{Review.artifact_path()}` (missing or invalid
+    JSON), and a run without one is discarded.
 
-    This is your ONLY remaining job, nothing else: all prior fixes are already committed in this
-    worktree — assess its current state, run the project's checks below, then write a VALID verdict
-    file NOW and stop. Do not re-do a full review or make new changes unless a check is actually
-    failing.
-
-    You MUST run the project's checks. If checks are still red after your fixes and you choose to
-    dismiss that red as environmental or out-of-scope, first reproduce the benign cause and record
-    that reproduced cause in `checks` and `concerns` (command, failing output, and mechanism). If you
-    cannot reproduce a benign cause, treat the red as a real defect.
+    Your prior fixes are already committed in this worktree. Assess its current state,
+    run the project's checks below, write a valid verdict file, and stop — no fresh full review,
+    no new changes unless a check is actually failing. If checks are still red and you dismiss that red as
+    environmental or out of scope, first reproduce the benign cause and record that reproduced cause
+    in `checks` and `concerns` (command, failing output, mechanism); a red you cannot reproduce a
+    benign cause for is a real defect.
 
     #{reviewer_identity_instruction(data)}
     Verdict artifact — write this, then stop:
@@ -594,17 +591,16 @@ defmodule Harness.Run.Actions.Reviewing do
       "skills": {"<domain or quality the diff exercised>": {"score": <0-10>, "note": "<one line>"}}
     }
 
-    `checks` records the actual command(s) you ran and your own boolean pass/fail call for each.
-    `concerns` is a list of caveats you are explicitly approving with; leave it [] only when there
-    are none. A dismissed red is never a bare prose aside.
+    Field notes:
+    - `checks`: the commands you ran and your pass/fail call for each.
+    - `concerns`: caveats you are approving with (`[]` when none). A dismissed red belongs here with
+      its reproduced mechanism, not only in the report.
+    - `facets`: what this task actually was, read from the spec and the real diff. Open vocabulary.
+    - `skills`: score only the domains and qualities the diff exercised (otp, ecto, concurrency,
+      error_handling, idiom, test_rigor, security, docs, truthfulness, ...), each
+      {"score": 0-10, "note": "<one line>"}. Open vocabulary; no zero-padding.
 
-    `facets` characterizes what this task ACTUALLY was, read from the spec + the real diff (open
-    vocabulary). `skills` scores ONLY the domains and qualities the diff genuinely exercised (otp,
-    ecto, concurrency, error_handling, idiom, test_rigor, security, docs, truthfulness, ...) — each a
-    {"score": 0-10, "note": "..."} map, open vocabulary, no padding with zeros.
-
-    Fixing is cheaper than rejecting — approve anything salvageable; reject only if nothing is.
-    A missing or malformed #{Review.artifact_path()} fails this run for good.
+    Fixing is cheaper than rejecting — approve anything salvageable; reject only when nothing is.
 
     Project check hint (run these yourself; judge the output):
     #{Text.placeholder(data.project.check_command)}
@@ -621,7 +617,7 @@ defmodule Harness.Run.Actions.Reviewing do
     """
   end
 
-  # The reviewer's instructions — THE gate's prompt. The judgment (is the work
+  # The reviewer's instructions — the gate's prompt. The judgment (is the work
   # good, do the checks pass in a way that matters, what does an empty diff
   # mean) lives entirely in the reviewer agent; harness only frames it and
   # reads the artifact it writes.
@@ -629,49 +625,38 @@ defmodule Harness.Run.Actions.Reviewing do
   @spec reviewer_prompt(data()) :: String.t()
   def reviewer_prompt(data) do
     """
-    You are the cross-family reviewer for a harness run — THE gate that decides whether this work is accepted.
+    You are the cross-family reviewer for a harness run: the gate that decides whether this work is accepted.
 
     #{reviewer_situation(data)}
 
-    Your job, in order:
-    1. Review the work against the task spec and acceptance criteria below.
-    2. You MUST run the project's checks yourself (hint below) and judge the results.
-    3. Fix everything that needs fixing — your own edits, your own commits. Wrong approach, bugs,
-       missing tests, failing checks, style: fix it all, then approve.
-    4. LAST, after every fix and check is done: write your verdict to `#{Review.artifact_path()}`
-       (format below). This is your FINAL action — write the file, then stop.
+    Review the work against the task spec and acceptance criteria below, run the project's checks
+    yourself (hint below) and judge the results, then fix whatever needs fixing with your own edits
+    and commits — wrong approach, bugs, missing tests, failing checks, style.
+    Fixing is cheaper than rejecting (a rejection costs two more full agent runs), so approve
+    anything salvageable and reject only when nothing is: an empty or unusable worktree, or work so
+    destructive or off-task that redoing it is faster than fixing it.
 
-    If checks are still red after your fixes and you choose to dismiss that red as environmental or
-    out-of-scope, first reproduce the benign cause and record that reproduced cause in `checks` and
-    `concerns` (command, failing output, and mechanism). If you cannot reproduce a benign cause,
-    treat the red as a real defect. A dismissed red is never a bare prose aside.
+    If checks are still red after your fixes and you dismiss that red as environmental or out of
+    scope, first reproduce the benign cause and record that reproduced cause in `checks` and
+    `concerns` (command, failing output, mechanism). A red you cannot reproduce a benign cause for
+    is a real defect.
 
-    ⚠️ Writing `#{Review.artifact_path()}` is mandatory and unconditional — it is the ONE thing
-    harness reads. If you finish fixing and reviewing but exit WITHOUT writing it, your entire run is
-    discarded as a failure and the work is thrown away, no matter how much you fixed. Do not end your
-    turn, declare yourself done, or go idle until the file is written. Even when you reject, even when
-    you ran out of other things to do — the verdict file is always the last thing you write before you
-    stop. Prose in your transcript has no effect; only this file does.
-
-    Fixing is always cheaper than rejecting — a rejection costs two more full agent runs.
-    Anything you can fix: fix it and approve. Reject ONLY if there is literally nothing to salvage
-    (an empty or unusable worktree, or work so destructive or off-task that redoing it from scratch
-    is faster than fixing it).
+    Your last action is writing the verdict to `#{Review.artifact_path()}` (format below), then
+    stopping. Harness reads only this file — prose in your transcript has no effect — and a run that
+    ends without it is discarded together with every fix you made. Write it even when you reject.
 
     Never edit `roadmap/tasks.toml`, `roadmap/data.json`, `ROADMAP.md`, or `CHANGELOG.md` in this
-    worktree. Do not mark the current task done, verified, shipped, pending, or blocked — harness
-    writes the outcome back (`done` + `verified` + `shipped_in`) after you approve and the work lands.
-    If the implementer left one of those files edited, revert it as part of your fixes — it is not
-    deliverable.
+    worktree, and do not change the task's status: harness resets those files before committing and
+    writes the outcome back after you approve and the work lands. If the implementer edited one,
+    revert it as part of your fixes.
 
-    Discovery proposals: if you surface genuine follow-up work while gating and choose NOT to fix it
-    inline, put a structured proposal in `proposed_tasks` in the verdict artifact. You decide what
-    counts as a discovery; harness preserves the proposals but does not classify, rank, dedupe, merge,
-    or file them. After the run lands, the orchestrator evaluates the proposals against the live
-    pending set and files any warranted task through its own task-writing gate.
+    Discovery proposals: follow-up work you notice but choose not to fix inline goes into
+    `proposed_tasks` in the verdict. Harness preserves the proposals without filing them; after the
+    run lands, the orchestrator evaluates the proposals against the live pending set and files any
+    warranted task through its own task-writing gate.
 
     #{reviewer_identity_instruction(data)}
-    Verdict artifact — REQUIRED final action, write it even when you reject:
+    Verdict artifact:
 
     #{Review.artifact_path()}
     {
@@ -708,27 +693,18 @@ defmodule Harness.Run.Actions.Reviewing do
       }
     }
 
-    `facets` is GROUND TRUTH — characterize what this task ACTUALLY was from the task spec and the
-    REAL diff in front of you, not from any label it was filed under. Open vocabulary: add/rename keys
-    as the work warrants; the five above are a starting set, not a fixed schema.
-
-    `skills` is a two-axis rubric. Score ONLY the skills this diff genuinely exercised — leave the rest
-    out, never pad with zeros:
-    - programming domains touched — e.g. otp, ecto, phoenix, liveview, js, rust
-    - cross-cutting qualities shown — e.g. concurrency, error_handling, idiom, test_rigor, security,
-      docs, truthfulness (the implementer's self-report vs what you actually found)
-    Each is a {"score": 0-10, "note": "..."} map; the note is your one-line evidence for the score.
-    Open vocabulary — these are examples, not an enum.
-
-    `checks` records the actual command(s) you ran and your own boolean pass/fail call for each.
-    `concerns` is a list of caveats you are explicitly approving with; leave it [] only when there
-    are none. If you approve with a dismissed red, the reproduced mechanism belongs here, not only in
-    the report.
-    `proposed_tasks` is a list of zero or more discovery proposals. Each entry needs `title`, `body`,
-    `suggested_scores`, `suggested_markers`, and `evidence`; use [] when you found no follow-up work.
-    Propose them here only — never file or edit roadmap/history files in this worktree.
-
-    A missing or malformed #{Review.artifact_path()} fails this run.
+    Field notes:
+    - `checks`: the commands you ran and your pass/fail call for each.
+    - `concerns`: caveats you are approving with (`[]` when none). A dismissed red belongs here with
+      its reproduced mechanism, not only in the report.
+    - `proposed_tasks`: zero or more discovery proposals, each with `title`, `body`,
+      `suggested_scores`, `suggested_markers`, `evidence`; `[]` when there is no follow-up work.
+    - `facets`: what this task actually was, read from the spec and the real diff rather than its
+      filed label. Open vocabulary; the five keys are a starting set.
+    - `skills`: score only the domains (otp, ecto, phoenix, liveview, js, rust, ...) and qualities
+      (concurrency, error_handling, idiom, test_rigor, security, docs, truthfulness — the
+      implementer's self-report against what you found) the diff exercised, each
+      {"score": 0-10, "note": "<one-line evidence>"}. Open vocabulary; no zero-padding.
 
     Project check hint (run these yourself; judge the output):
     #{Text.placeholder(data.project.check_command)}

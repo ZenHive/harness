@@ -450,9 +450,9 @@ defmodule Harness.Audit do
   @spec audit_prompt(String.t(), Project.t(), map(), String.t(), String.t(), String.t()) :: String.t()
   defp audit_prompt(target, project, range, rejections, worktree_path, repo) do
     """
-    You are the post-merge audit agent for project #{project.name} — a best-effort hygiene pass over
-    commits that already landed on `#{target}`. The merge is settled: you never revert, unmerge, or
-    block anything. You fix forward.
+    You are the post-merge audit agent for project #{project.name}: a best-effort hygiene pass over
+    commits that already landed on `#{target}`. The merge is settled — you fix forward and never
+    revert, unmerge, or block, whatever you find (that includes a red cold check).
 
     Landed range to audit (already merged):
     #{range.log}
@@ -481,8 +481,7 @@ defmodule Harness.Audit do
     Reviewer-quality feedback loop — recent reviewer rejections for this project (a cross-family
     reviewer is THE gate, and rejection is rare by design). If a task in the landed range above also
     appears here and the work that actually landed looks sound, that rejection may have been a FALSE
-    rejection — note it in your `.audit/#{range.short_sha}.md` report. This only feeds the report; you
-    still never revert or block.
+    rejection — note it in your `.audit/#{range.short_sha}.md` report.
     #{rejections}
 
     Project check hint (run yourself if needed; judge the output):
@@ -493,8 +492,7 @@ defmodule Harness.Audit do
     clean-build/check command yourself in this cold tree using the project check hint above. Report the
     result in `#{@audit_report_path}` as `cold_check`: {"passed": true|false, "command": "<command you ran>",
     "tail": "<failing output tail, empty on pass>"}. Harness never runs this build itself and never reads
-    an exit code; it only persists the fact you write. A red cold_check must not make you revert, unmerge,
-    or block this already-landed merge.
+    an exit code; it only persists the fact you write.
     """
   end
 

@@ -8,15 +8,15 @@
 1. **Identify the implementer and the diff.** Know which agent produced the change (`:claude` or
    `:codex`) and the commit `sha` (or have the diff ready in a worktree).
 
-2. **Grade with the opposite agent.** `audit_review__grade_fix` with:
+2. **Grade with the opposite agent.** `audit_review-grade_fix` with:
    - `implementer:` — the agent that wrote the code. The grader defaults to the opposite of the
      `:claude`/`:codex` pair; for any other implementer, pass `grader:` explicitly.
    - `sha:` — the commit to review.
    - `cwd:` — **the path of the repo being reviewed.** This matters: the default is harness's own
      cwd, which is almost never the repo under review when you are driving from another project.
    - `prompt:` — instruct the grader to end with `<<<VERDICT:APPROVE>>>` or `<<<VERDICT:REJECT>>>`
-     on its own line. `audit_review__extract_verdict` parses last-match-wins.
-   - Optionally `model:` to pin a higher-stakes grader model.
+     on its own line. `audit_review-extract_verdict` parses last-match-wins.
+   - Optionally `model:` to pin the grader model (see `model_availability-list_available_models`).
 
 3. **Read the verdict.** The call returns `{:ok, %{verdict:, outcome:, grader:}}` for any dispatch
    that spawned. `verdict` is `:approve` / `:reject` from the sentinel; `outcome` carries the raw
@@ -34,5 +34,5 @@
   non-task runs.
 - The verdict is a *review opinion*, not a build result. Treat a cross-agent REJECT as a signal to
   investigate (per the "verify external reviews" rule), not as an automatic block.
-- `audit_review__default_grader` tells you which grader will be auto-paired for a given implementer
+- `audit_review-default_grader` tells you which grader will be auto-paired for a given implementer
   before you dispatch.

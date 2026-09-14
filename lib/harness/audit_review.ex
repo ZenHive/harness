@@ -82,7 +82,7 @@ defmodule Harness.AuditReview do
       opts: [
         kind: :value,
         description:
-          "Keyword list. Required: :implementer (atom — :claude/:codex/:cursor/:grok/:antigravity/:pi), :sha (commit SHA), :prompt (review prompt that MUST instruct the grader to emit <<<VERDICT:APPROVE>>> or <<<VERDICT:REJECT>>> on its own line). Optional: :grader (atom or module — defaults to opposite of :implementer for claude/codex; other implementers must pass explicitly), :cwd (defaults to File.cwd!/0 — pass explicitly when grading another repo), :model (pin a model id like claude-opus-4-7), :adapter_opts, :total_timeout, :idle_timeout."
+          "Keyword list. Required: :implementer (atom — :claude/:codex/:cursor/:grok/:antigravity/:pi), :sha (commit SHA), :prompt (the review prompt; it has to tell the grader to end with <<<VERDICT:APPROVE>>> or <<<VERDICT:REJECT>>> on its own line, since extract_verdict reads that sentinel last-match-wins). Optional: :grader (atom or module — defaults to opposite of :implementer for claude/codex; other implementers must pass explicitly), :cwd (defaults to File.cwd!/0 — pass explicitly when grading another repo), :model (grader model id from the grader agent's live catalog; defaults to the agent's configured model), :adapter_opts, :total_timeout, :idle_timeout."
       ]
     ],
     returns: %{

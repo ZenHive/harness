@@ -5,36 +5,23 @@ unattended — multiple independent tasks dispatched concurrently, persisted and
 
 ## Steps
 
-1. **Resolve the project.** `project_registry__list`, confirm the target is registered.
-
-2. **Fetch the bundle.** `roadmap__next_bundle` with `project_name`. It returns
-   `%{bundle: meta | nil, tasks: [...]}`. A `nil` bundle means nothing is pending — stop and say so.
-
-3. **Ingest each task.** For every task in the bundle, `roadmap__ingest` with `{:id, "<id>"}` and
-   the `project_name`, collecting the `%Harness.Roadmap.Item{}` list.
-
-4. **Fan out via Oban.** `batch__dispatch` with the project and the item list. This is
-   fire-and-forget: per-project concurrency is governed by the registered `concurrency_cap`, and
-   jobs survive a BEAM restart (queue rows live in Postgres). It returns the enqueued jobs.
-   - When you need an explicit in-process cap instead of the persisted queue, use `batch__run`
-     with `max_concurrency:`.
-
-5. **Monitor.** Point the operator at the dashboard (`http://localhost:4018/harness` for buckets,
-   `http://localhost:4018/harness/oban` for the queue). Per-run drill-down + transcript at
-   `/harness/runs/<run_id>`. For structured polling, `result_store__list_run_records` as each run
-   settles.
-
-6. **Report per task.** Summarize each run's `state`/`reason`/review verdict. Approved tasks are
-   done (the reviewer already fixed what it could inline); rejected tasks went back to the queue
-   with the reviewer's report.
+1. **Resolve the project.** `project_registry-list`.
+2. **Dispatch the first wave.** `dispatch-bundle` with `project_name`. It ingests the next
+   session-sized bundle, serializes tasks whose `touches ∪ files_to_modify` overlap into later
+   waves, and enqueues only the write-disjoint first wave (per-project `concurrency_cap`, Oban-
+   persisted, restart-resilient). It returns the dispatched task ids, job ids and the held
+   `serialized` plan. An empty bundle means nothing is pending — stop and say so.
+3. **Watch origin for the landing commits** (one `task <id> -> done (shipped …)` per task on
+   `origin/<target>`); `dispatch-status` / `dispatch-transcript` only to diagnose a straggler.
+4. **Advance the chain.** After the wave lands, call `dispatch-bundle` again to release the next
+   serialized wave.
+5. **Report per task** from `dispatch-verdict_detail`: approved tasks are done (the reviewer fixed
+   what it could inline); rejected tasks went back to the queue with the reviewer's report.
 
 ## Gotchas
 
-- Bundle tasks may have intra-bundle `depends_on` edges. `next_bundle` returns the whole bundle;
-  if a later task depends on an earlier one, dispatch the independent layer first and the dependent
-  layer after the first lands. When in doubt, dispatch the bundle's first task as a single
-  (see the dispatch-single-task playbook) and re-fetch the bundle.
-- Scrub `ANTHROPIC_API_KEY` (`env: %{"ANTHROPIC_API_KEY" => false}`) on Claude dispatches.
-- `batch__dispatch` does not take a concurrency keyword — it reads `project.concurrency_cap`. Set
-  that at registration time, sized so all project queues sum to the laptop's capacity (open-source
-  Oban has no cross-queue global cap).
+- Intra-bundle `depends_on` edges are respected by `roadmap-ready`; write-set overlap is what
+  `dispatch-bundle` serializes. Keep `touches` / `files_to_modify` accurate on the tasks —
+  harness counts declared paths, it does not infer them from prose.
+- `concurrency_cap` is set at registration (`dispatch-register_project` / `/harness/settings`);
+  size all project queues to the host, since open-source Oban has no cross-queue global cap.

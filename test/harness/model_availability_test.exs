@@ -249,10 +249,10 @@ defmodule Harness.ModelAvailabilityTest do
       Application.put_env(:harness, :model_catalog_probe, fn _agent, _executables -> {:error, :catalog_unavailable} end)
 
       assert {:ok, codex_models} = ModelAvailability.catalog(:codex)
-      assert "gpt-5.5" in Enum.map(codex_models, & &1.id)
+      assert "gpt-6-astra" in Enum.map(codex_models, & &1.id)
 
       assert {:ok, claude_models} = ModelAvailability.catalog(:claude)
-      assert "claude-opus-4-8" in Enum.map(claude_models, & &1.id)
+      assert "claude-opus-5" in Enum.map(claude_models, & &1.id)
     end
 
     test "round-trips selected membership separately from the probed universe" do

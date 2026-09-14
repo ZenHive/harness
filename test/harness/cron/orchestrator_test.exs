@@ -86,8 +86,10 @@ defmodule Harness.Cron.OrchestratorTest do
       # Each candidate task id reaches the orchestrator.
       assert prompt =~ "234"
       assert prompt =~ "227"
-      # Opus-last policy is stated explicitly.
-      assert prompt =~ "Claude"
+      # Routing is bounded by the operator-enabled roster, not a hardcoded agent.
+      refute prompt =~ "Opus"
+      assert prompt =~ "enabled: true"
+      assert prompt =~ ~s("agents")
     end
   end
 

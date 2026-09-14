@@ -55,7 +55,7 @@ defmodule Harness.Cron.Orchestrator do
   `plan/2` is injectable via `config :harness, :cron_orchestrator` (a
   `fun(project, ready) :: {:ok, t()} | {:error, term()}`) for tests; otherwise it
   assembles context, spawns the configured adapter (default `:codex`,
-  non-Opus — honors the Opus-last roster) under `Harness.AgentDriver` in
+  routed within the operator-enabled roster) under `Harness.AgentDriver` in
   a throwaway scratch cwd, and reads the artifact it wrote.
   """
 
@@ -64,6 +64,7 @@ defmodule Harness.Cron.Orchestrator do
   alias Harness.AgentDriver
   alias Harness.AgentRegistry
   alias Harness.AgentRules
+  alias Harness.Agents
   alias Harness.Artifact
   alias Harness.CapabilityScore
   alias Harness.Config
@@ -97,7 +98,8 @@ defmodule Harness.Cron.Orchestrator do
           concurrency_cap: pos_integer() | nil,
           ready: [map()],
           in_flight: [map()],
-          capability: [map()]
+          capability: [map()],
+          agents: [map()]
         }
 
   @typedoc "Why a plan artifact could not be produced."
@@ -164,7 +166,8 @@ defmodule Harness.Cron.Orchestrator do
   @doc """
   Assembles the full orchestrator context: the dispatchable ready set, the
   in-flight tasks (with their touches, so the plan avoids stale-base overlap),
-  the project's concurrency cap, and best-effort capability facts.
+  the project's concurrency cap, best-effort capability facts, and the agent
+  roster with the operator's enabled/available switches.
   """
   @spec context(Project.t(), [map()]) :: context()
   def context(%Project{} = project, ready) when is_list(ready) do
@@ -173,7 +176,8 @@ defmodule Harness.Cron.Orchestrator do
       concurrency_cap: project.concurrency_cap,
       ready: ready,
       in_flight: in_flight_tasks(project),
-      capability: capability_facts()
+      capability: capability_facts(),
+      agents: agent_facts()
     }
   end
 
@@ -199,6 +203,15 @@ defmodule Harness.Cron.Orchestrator do
     end
   end
 
+  # The roster is a fact the operator controls (Agents settings + quota
+  # availability); the poller drops any plan entry naming an agent outside it,
+  # so the orchestrator must see it to route without losing ticks.
+  @spec agent_facts() :: [map()]
+  defp agent_facts do
+    for %{agent: agent, enabled: enabled, available: available, model: model} <- Agents.list(),
+        do: %{agent: agent, enabled: enabled, available: available, model: model}
+  end
+
   @spec capability_fact(CapabilityScore.Entry.t()) :: map()
   defp capability_fact(%CapabilityScore.Entry{} = entry) do
     %{
@@ -209,8 +222,9 @@ defmodule Harness.Cron.Orchestrator do
   end
 
   @doc """
-  Builds the orchestrator prompt: the policy (touch-disjoint waves, honor
-  assignee, Opus-last, respect the cap) plus the context as embedded JSON.
+  Builds the orchestrator prompt: the policy (in-flight overlap, honor
+  assignee, route within the enabled roster, respect the cap) plus the context
+  as embedded JSON.
   """
   @spec prompt(context()) :: String.t()
   def prompt(context) when is_map(context) do
@@ -221,24 +235,23 @@ defmodule Harness.Cron.Orchestrator do
     then write the plan as JSON to `#{@artifact_path}` (relative to your working
     directory) and exit. Writing that file is the whole job; you change no code.
 
-    ## Hard rules (a violation here re-creates a stale-base merge collision)
+    ## Rules
 
-    1. Never put two tasks in the same wave whose `touches` or `files_to_modify`
-       sets overlap each other. Sequence them across ticks instead (dispatch one
-       now, `skip` the other with disposition "defer").
-    2. Never dispatch a task whose `touches`/`files_to_modify` overlap ANY in-flight
-       task (see `in_flight` below) — it would rebase across that run's land.
-    3. Honor each task's `assignee` as the default agent. Prefer codex/cursor/grok;
-       reserve Claude (Opus) for last — do not route work to claude that another
-       capable agent can take.
-    4. The wave must stay within the project concurrency cap
-       (#{inspect(context.concurrency_cap)}); plan a touch-disjoint subset, not the
-       whole list, when in doubt. Prefer deferring to risking a collision.
+    1. The ready set below is already write-disjoint: harness serialized tasks with
+       overlapping `touches`/`files_to_modify` into later ticks. Do not dispatch a task
+       whose `touches`/`files_to_modify` overlap an `in_flight` task — it would rebase
+       across that run's land; `skip` it with disposition "defer".
+    2. Use each task's `assignee` as its agent. Route only to agents listed in
+       `agents` below with `enabled: true` and `available: true`; the operator
+       controls that list, and harness drops any plan entry naming an agent outside it.
+       Re-route a task whose assignee is not on the list, or defer it and say why.
+    3. Stay within the project concurrency cap (#{inspect(context.concurrency_cap)}),
+       counting the in-flight set; when in doubt, defer rather than risk a collision.
 
     ## Output schema (exact)
 
         {
-          "dispatch": [{"task_id": "<id>", "adapter": "<codex|cursor|grok|claude|...>"}],
+          "dispatch": [{"task_id": "<id>", "adapter": "<agent name from the agents list>"}],
           "skip": [{"task_id": "<id>", "disposition": "inline|defer", "reason": "<why>"}]
         }
 
@@ -261,7 +274,8 @@ defmodule Harness.Cron.Orchestrator do
       concurrency_cap: context.concurrency_cap,
       ready: context.ready,
       in_flight: context.in_flight,
-      capability: context.capability
+      capability: context.capability,
+      agents: context.agents
     }
   end
 
