@@ -251,7 +251,7 @@ defmodule Harness.Roadmap do
         kind: :value,
         default: [],
         description:
-          ~s|Keyword list. Working-root precedence as ingest/2: :project (%Harness.Project{} — uses project.roadmap_path; SOURCE from Harness.ProjectRegistry.lookup/1) > :project_name > :project_root (defaults to File.cwd!/0). :rmap_bin (rmap executable path; defaults to "rmap"). :fields (list of rmap field names to project; defaults to ["id", "assignee", "markers"] — pass a richer set, e.g. ["id", "assignee", "touches", "scores", "body"], when a consumer needs full task context).|
+          ~s|Keyword list. Working-root precedence as ingest/2: :project (%Harness.Project{} — uses project.roadmap_path; SOURCE from Harness.ProjectRegistry.lookup/1) > :project_name > :project_root (defaults to File.cwd!/0). :rmap_bin (rmap executable path; defaults to "rmap"). :fields (list of rmap field names to project; defaults to ["id", "assignee", "markers"] — pass a richer set, e.g. ["id", "assignee", "touches", "scores", "body"], when a consumer needs full task context). :sync_checkout (default true) fetches and fast-forwards the roadmap checkout before rmap runs; false is the display-read opt-out used by the dashboard tick, and it also drops the currency refusal — never pass it from a dispatch-intent caller.|
       ]
     ],
     returns: %{

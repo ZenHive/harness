@@ -189,6 +189,15 @@ defmodule Harness.Dashboard.RoadmapLiveTest do
 
       assert tick_us < 5_000_000
       refute_received :origin_fetch_attempted
+
+      # The no-fetch assertion is only meaningful if the drilldown actually ran
+      # the real (unseamed) `next_bundle` / `ready` path — an empty drilldown
+      # would satisfy `refute_received` for the wrong reason.
+      expanded = view |> element("button", "roadmaplive-nosync") |> render_click()
+
+      assert expanded =~ "#2"
+      assert expanded =~ "The next pending fixture task"
+      refute_received :origin_fetch_attempted
     end
   end
 
