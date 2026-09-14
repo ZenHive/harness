@@ -136,7 +136,7 @@ no second projection to drift.
 ### Out of scope for `:settled`
 
 - Landing outcomes (`:landed`, `:blocked`, `:conflict`) — unchanged, still lander-only.
-- In-run `:in_run_discernment`, `:dispatch_parked`, `:model_unavailable` — unchanged.
+- In-run `:in_run_discernment`, `:dispatch_parked`, `:dispatch_unroutable`, `:model_unavailable` — unchanged.
 
 ---
 

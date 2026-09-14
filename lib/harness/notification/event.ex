@@ -29,6 +29,7 @@ defmodule Harness.Notification.Event do
           | :local_sync_skipped
           | :in_run_discernment
           | :dispatch_parked
+          | :dispatch_unroutable
           | :model_unavailable
           | :settled
           | :persist_failed
@@ -45,6 +46,10 @@ defmodule Harness.Notification.Event do
     * `:dispatch_parked` — a parked autonomous-dispatch decision (`%{adapter,
       pending_id}`), fired when a `:manual`-mode project holds an enqueue for
       operator approval instead of dispatching it.
+    * `:dispatch_unroutable` — a ready task carries no autonomous dispatch intent
+      (`%{assignee, title}`, assignee `nil` when the field is absent). Nothing
+      will pick it up until an operator routes it; fired once per
+      `{task, assignee}` transition, not once per cron tick.
     * `:model_unavailable` — dispatch rejected a blocked `{agent, model}` pair
       (`%{agent, model, available}`).
     * `:settled` — the compact settle map from `Harness.Dispatch.summarize_result/1`
@@ -95,6 +100,11 @@ defmodule Harness.Notification.Event do
       "parked dispatch of task 42 for claude (awaiting operator approval)"
 
       iex> Harness.Notification.Event.summary(%Harness.Notification.Event{
+      ...>   type: :dispatch_unroutable, task_id: "42", outcome: %{assignee: "human", title: "Pick a rail"}
+      ...> })
+      "ready task 42 is unroutable (assignee: human) — no agent will pick it up: Pick a rail"
+
+      iex> Harness.Notification.Event.summary(%Harness.Notification.Event{
       ...>   type: :pr_opened, task_id: "42", outcome: "https://github.com/acme/repo/pull/7"
       ...> })
       "opened PR for task 42: https://github.com/acme/repo/pull/7"
@@ -117,6 +127,10 @@ defmodule Harness.Notification.Event do
   def summary(%__MODULE__{type: :dispatch_parked, task_id: id, outcome: %{adapter: adapter}}),
     do: "parked dispatch of task #{id} for #{adapter} (awaiting operator approval)"
 
+  def summary(%__MODULE__{type: :dispatch_unroutable, task_id: id, outcome: %{assignee: assignee} = outcome}),
+    do:
+      "ready task #{id} is unroutable (assignee: #{assignee || "none"}) — no agent will pick it up#{title_suffix(outcome)}"
+
   def summary(%__MODULE__{type: :model_unavailable, task_id: id, outcome: %{agent: agent, model: model}}),
     do: "blocked dispatch of task #{id} for #{agent}/#{model || "default"}"
 
@@ -130,6 +144,10 @@ defmodule Harness.Notification.Event do
   def summary(%__MODULE__{type: :persist_failed, run_id: run_id, task_id: id, outcome: outcome}) do
     "persist failed for run #{run_id || "unknown"} task #{id}: #{persist_failed_detail(outcome)}"
   end
+
+  @spec title_suffix(map()) :: String.t()
+  defp title_suffix(%{title: title}) when is_binary(title) and title != "", do: ": " <> title
+  defp title_suffix(_outcome), do: ""
 
   @spec settle_reason_label(atom() | tuple()) :: String.t()
   defp settle_reason_label({tag, _rest}), do: Atom.to_string(tag)

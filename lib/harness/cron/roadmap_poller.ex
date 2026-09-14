@@ -58,6 +58,7 @@ defmodule Harness.Cron.RoadmapPoller do
   alias Harness.Cron.Orchestrator
   alias Harness.Cron.PendingDispatch
   alias Harness.Cron.Settings
+  alias Harness.Cron.UnroutableNotice
   alias Harness.Dispatch.WriteSetPlan
   alias Harness.Git
   alias Harness.Git.TargetSync
@@ -182,7 +183,7 @@ defmodule Harness.Cron.RoadmapPoller do
   @spec dispatch_decision(Project.t(), [map()]) :: :ok
   defp dispatch_decision(%Project{} = project, tasks) do
     {dispatchable, undispatchable} = Enum.split_with(tasks, &dispatchable?/1)
-    Enum.each(undispatchable, &log_undispatchable(project, &1))
+    announce_unroutable(project, undispatchable)
 
     plan = WriteSetPlan.plan(dispatchable)
     log_serialized_ready_set(project, plan)
@@ -517,12 +518,49 @@ defmodule Harness.Cron.RoadmapPoller do
 
   defp roadmap_target(%Project{}, _repo), do: :not_durable
 
-  # A ready task with no autonomous dispatch intent (human / missing / unknown
-  # assignee). Logged so an unrouted task is observable, never silently dropped.
+  # Ready tasks with no autonomous dispatch intent (human / missing / unknown
+  # assignee). Nothing will ever pick these up, so they are announced to the
+  # operator rather than debug-logged into the void — but only on the tick a task
+  # first goes unroutable, so a standing one does not re-announce every tick
+  # (`UnroutableNotice`, mirroring `PendingDispatch.park/4`).
+  @spec announce_unroutable(Project.t(), [map()]) :: :ok
+  defp announce_unroutable(%Project{} = project, tasks) do
+    by_key = Map.new(tasks, &{unroutable_key(&1), &1})
+
+    project.name
+    |> UnroutableNotice.fresh(Enum.map(tasks, &unroutable_key/1))
+    |> Enum.each(fn key ->
+      task = Map.fetch!(by_key, key)
+      Notification.notify(unroutable_event(project, task))
+      log_undispatchable(project, task)
+    end)
+  end
+
+  @spec unroutable_key(map()) :: UnroutableNotice.entry()
+  defp unroutable_key(task), do: {to_string(task["id"]), assignee_label(task)}
+
+  @spec assignee_label(map()) :: String.t() | nil
+  defp assignee_label(task) do
+    case task["assignee"] do
+      assignee when is_binary(assignee) -> assignee
+      _missing -> nil
+    end
+  end
+
+  @spec unroutable_event(Project.t(), map()) :: Event.t()
+  defp unroutable_event(%Project{} = project, task) do
+    %Event{
+      type: :dispatch_unroutable,
+      task_id: to_string(task["id"]),
+      project: project.name,
+      outcome: %{assignee: assignee_label(task), title: task["title"]}
+    }
+  end
+
   @spec log_undispatchable(Project.t(), map()) :: :ok
   defp log_undispatchable(%Project{} = project, task) do
-    Logger.debug(
-      "harness cron poller: #{project.name} task #{task["id"]} not dispatchable (assignee=#{inspect(task["assignee"])}), skipped"
+    Logger.warning(
+      "harness cron poller: #{project.name} task #{task["id"]} is ready but not dispatchable (assignee=#{inspect(task["assignee"])}); no agent will pick it up"
     )
   end
 

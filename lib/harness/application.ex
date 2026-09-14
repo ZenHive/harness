@@ -49,6 +49,7 @@ defmodule Harness.Application do
         Harness.AgentRegistry,
         Harness.CodeSearch.Server,
         Harness.Cron.PendingDispatch,
+        Harness.Cron.UnroutableNotice,
         {Phoenix.PubSub, name: Harness.PubSub},
         Harness.Chat.Supervisor,
         {Task.Supervisor, name: Harness.Chat.TaskSupervisor},

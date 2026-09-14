@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **A ready task nothing can dispatch now reaches the operator.** `Harness.Cron.RoadmapPoller` drops every ready task whose `assignee` is `human`, missing, or unknown — correct, since a missing assignee must never be defaulted to an agent — but it dropped them behind a `Logger.debug` line, so a task could sit at the head of the queue indefinitely with nobody aware it was waiting. The poller now fires a `:dispatch_unroutable` witness event (task id, raw assignee, title) through `Harness.Notification`, and logs at warning instead of debug. `Harness.Cron.UnroutableNotice` makes it transition-only — the same contract `PendingDispatch.park/4` gives a parked decision — so a standing unroutable task announces once, not once per tick; re-routing it to an agent, or a change of assignee, is a new fact that announces again.
+
 ### Changed
 
 - **Oban 2.24: crontab plugin is `Oban.Cron`.** Every `Oban.Plugins.Cron` entry point is now a `defdelegate` shim; harness aliases and the Oban instance plugin pin the new module. Phoenix 1.8.13 and quackdb 0.5.20 locked alongside.

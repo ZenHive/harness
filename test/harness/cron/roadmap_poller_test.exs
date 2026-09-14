@@ -11,6 +11,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
   alias Harness.Cron.PendingDispatch
   alias Harness.Cron.RoadmapPoller
   alias Harness.Cron.Settings
+  alias Harness.Cron.UnroutableNotice
   alias Harness.Git.TargetSync
   alias Harness.GitFixture
   alias Harness.ModelAvailability
@@ -32,6 +33,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
     AgentRegistry.reset()
     ProjectRegistry.reset()
     PendingDispatch.reset()
+    UnroutableNotice.reset()
 
     on_exit(fn ->
       restore_env(:cron_polling, prior_cron_polling)
@@ -43,6 +45,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
       Application.delete_env(:harness, :test_capture_pid)
       Application.delete_env(:harness, :live_run_statuses)
       PendingDispatch.reset()
+      UnroutableNotice.reset()
     end)
 
     :ok
@@ -894,8 +897,86 @@ defmodule Harness.Cron.RoadmapPollerTest do
     end)
   end
 
+  test "a ready task with no dispatch intent is announced once, not on every tick" do
+    project = ProjectFixture.from_repo("/tmp/harness-cron-unroutable", name: "cron-unroutable")
+    assert :ok = ProjectRegistry.register(project)
+
+    enable_project("cron-unroutable")
+    Application.put_env(:harness, :notification_sinks, [CaptureSink])
+    Application.put_env(:harness, :test_capture_pid, self())
+
+    Application.put_env(:harness, :roadmap_ready, fn _p ->
+      {:ok, [titled_task("106", "human", "Exclude the aToken from the health factor")]}
+    end)
+
+    log = capture_log(fn -> assert :ok = RoadmapPoller.perform(%Oban.Job{}) end)
+    assert log =~ "task 106 is ready but not dispatchable"
+
+    assert_receive {:notify,
+                    %Event{
+                      type: :dispatch_unroutable,
+                      task_id: "106",
+                      project: "cron-unroutable",
+                      outcome: %{assignee: "human", title: "Exclude the aToken from the health factor"}
+                    }}
+
+    # Second tick, same unroutable task: the operator already knows.
+    assert :ok = RoadmapPoller.perform(%Oban.Job{})
+    refute_receive {:notify, %Event{type: :dispatch_unroutable}}, 50
+  end
+
+  test "a ready task with no assignee at all is announced with no routing target" do
+    project = ProjectFixture.from_repo("/tmp/harness-cron-unassigned", name: "cron-unassigned")
+    assert :ok = ProjectRegistry.register(project)
+
+    enable_project("cron-unassigned")
+    Application.put_env(:harness, :notification_sinks, [CaptureSink])
+    Application.put_env(:harness, :test_capture_pid, self())
+
+    Application.put_env(:harness, :roadmap_ready, fn _p ->
+      {:ok, [%{"id" => "127", "title" => "Name the swap venue", "markers" => []}]}
+    end)
+
+    capture_log(fn -> assert :ok = RoadmapPoller.perform(%Oban.Job{}) end)
+
+    assert_receive {:notify,
+                    %Event{
+                      type: :dispatch_unroutable,
+                      task_id: "127",
+                      outcome: %{assignee: nil, title: "Name the swap venue"}
+                    }}
+  end
+
+  test "a task routed to an agent stops being announced, and announces again if it is unrouted" do
+    parent = self()
+    project = ProjectFixture.from_repo("/tmp/harness-cron-rerouted", name: "cron-rerouted")
+    assert :ok = ProjectRegistry.register(project)
+
+    enable_project("cron-rerouted")
+    Application.put_env(:harness, :notification_sinks, [CaptureSink])
+    Application.put_env(:harness, :test_capture_pid, self())
+    capture_inserts(parent)
+
+    Application.put_env(:harness, :roadmap_ready, fn _p -> {:ok, [titled_task("106", "human", "Rail")]} end)
+    capture_log(fn -> assert :ok = RoadmapPoller.perform(%Oban.Job{}) end)
+    assert_receive {:notify, %Event{type: :dispatch_unroutable, task_id: "106"}}
+
+    # Routed to codex: it dispatches, and the notice for it is forgotten.
+    Application.put_env(:harness, :roadmap_ready, fn _p -> {:ok, [titled_task("106", "codex", "Rail")]} end)
+    assert :ok = RoadmapPoller.perform(%Oban.Job{})
+    assert_received {:inserted, %{item_id: "106", adapter_module: "Elixir.Harness.AgentAdapter.Codex"}}
+    refute_receive {:notify, %Event{type: :dispatch_unroutable}}, 50
+
+    # Unrouted again: a fresh fact, announced again.
+    Application.put_env(:harness, :roadmap_ready, fn _p -> {:ok, [titled_task("106", "human", "Rail")]} end)
+    capture_log(fn -> assert :ok = RoadmapPoller.perform(%Oban.Job{}) end)
+    assert_receive {:notify, %Event{type: :dispatch_unroutable, task_id: "106"}}
+  end
+
   # A `rmap ready --dispatchable --fields id,assignee,markers` row.
   defp task(id, assignee), do: %{"id" => id, "assignee" => assignee, "markers" => []}
+
+  defp titled_task(id, assignee, title), do: id |> task(assignee) |> Map.put("title", title)
 
   # Turn on autonomy + manual dispatch mode for `name`, capturing park witness
   # events to the test process via the shared CaptureSink.
