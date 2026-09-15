@@ -103,6 +103,12 @@ defmodule Harness.Dashboard.SettingsComponents do
     ~H"""
     <section class="setting-card">
       <h2 class="setting-section-title">Per-project autonomy</h2>
+      <p class="setting-hint">
+        Under manual approval the poller parks each dispatch decision instead of starting it.
+        Parked decisions are listed and released from the driver surface —
+        <code>dispatch-pending</code>
+        and <code>dispatch-approve</code>.
+      </p>
       <ul class="project-list">
         <li
           :for={project <- @autonomy.projects}

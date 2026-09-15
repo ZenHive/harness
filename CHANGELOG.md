@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Cron dispatch mode is settable from the dashboard.** The per-project autonomy card on `/harness/settings` now carries a dispatch-mode picker (`Automatic starts` | `Manual approval`) alongside the existing on/off toggle, writing through `Harness.Cron.Settings.set_dispatch_mode/3` with `dashboard` as the audit actor. An unknown project or an out-of-vocabulary mode is refused and nothing is persisted. The project pill resolves all three dimensions at once: `paused` when master or project autonomy is off, then `manual approval` or `automatic starts`. Parked decisions are still listed and released through `dispatch-pending` / `dispatch-approve`, which the card now names.
+
 - **A ready task nothing can dispatch now reaches the operator.** `Harness.Cron.RoadmapPoller` drops every ready task whose `assignee` is `human`, missing, or unknown — correct, since a missing assignee must never be defaulted to an agent — but it dropped them behind a `Logger.debug` line, so a task could sit at the head of the queue indefinitely with nobody aware it was waiting. The poller now fires a `:dispatch_unroutable` witness event (task id, raw assignee, title) through `Harness.Notification`, and logs at warning instead of debug. `Harness.Cron.UnroutableNotice` makes it transition-only — the same contract `PendingDispatch.park/4` gives a parked decision — so a standing unroutable task announces once, not once per tick; re-routing it to an agent, or a change of assignee, is a new fact that announces again.
 
 ### Changed

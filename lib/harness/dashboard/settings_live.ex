@@ -99,7 +99,7 @@ defmodule Harness.Dashboard.SettingsLive do
   end
 
   def handle_event("set_dispatch_mode", %{"name" => name, "mode" => raw_mode}, socket) do
-    mode = %{"auto" => :auto, "manual" => :manual}[raw_mode]
+    mode = dispatch_mode_atom(raw_mode)
 
     notice =
       with {:ok, _project} <- ProjectRegistry.lookup(name),
@@ -861,6 +861,13 @@ defmodule Harness.Dashboard.SettingsLive do
   @spec reviewer_atom(String.t()) :: {:ok, atom() | nil} | :error
   defp reviewer_atom(""), do: {:ok, nil}
   defp reviewer_atom(name), do: agent_atom(name)
+
+  # `nil` for anything outside the closed mode vocabulary; `Cron.Settings.set_dispatch_mode/3`
+  # rejects it as `{:error, :invalid_mode}` rather than writing a guessed value.
+  @spec dispatch_mode_atom(term()) :: Settings.dispatch_mode() | nil
+  defp dispatch_mode_atom("auto"), do: :auto
+  defp dispatch_mode_atom("manual"), do: :manual
+  defp dispatch_mode_atom(_other), do: nil
 
   # Maps the dispatch-default select's string value to an agent atom against the
   # closed `Config.dispatch_agents/0` set (never String.to_atom on request input).
