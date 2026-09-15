@@ -98,6 +98,21 @@ defmodule Harness.Dashboard.SettingsLive do
     {:noreply, refresh(socket)}
   end
 
+  def handle_event("set_dispatch_mode", %{"name" => name, "mode" => raw_mode}, socket) do
+    mode = %{"auto" => :auto, "manual" => :manual}[raw_mode]
+
+    notice =
+      with {:ok, _project} <- ProjectRegistry.lookup(name),
+           :ok <- Settings.set_dispatch_mode(name, mode, "dashboard") do
+        {:ok, "Dispatch mode updated for #{name}."}
+      else
+        {:error, {:unknown_project, _name}} -> {:error, "Unknown project."}
+        {:error, :invalid_mode} -> {:error, "Choose automatic starts or manual approval."}
+      end
+
+    {:noreply, socket |> assign(:notice, notice) |> refresh()}
+  end
+
   def handle_event("set_schedule", %{"preset" => preset}, socket) do
     notice =
       case Settings.set_schedule(preset, "dashboard") do
@@ -891,7 +906,13 @@ defmodule Harness.Dashboard.SettingsLive do
     rows =
       Enum.map(projects, fn project ->
         project_on = Settings.project_enabled?(project)
-        %{name: project.name, project_on: project_on, effective: master and project_on}
+
+        %{
+          name: project.name,
+          project_on: project_on,
+          effective: master and project_on,
+          dispatch_mode: Settings.dispatch_mode(project)
+        }
       end)
 
     %{

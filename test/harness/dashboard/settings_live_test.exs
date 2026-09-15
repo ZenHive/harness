@@ -183,8 +183,72 @@ defmodule Harness.Dashboard.SettingsLiveTest do
       |> render_click()
 
     refute html =~ "no project is enabled"
-    assert html =~ "dispatching"
+    assert html =~ "automatic starts"
     assert Settings.effective?(project)
+  end
+
+  for {master, enabled, mode, expected} <- [
+        {false, false, :auto, "paused"},
+        {false, false, :manual, "paused"},
+        {false, true, :auto, "paused"},
+        {false, true, :manual, "paused"},
+        {true, false, :auto, "paused"},
+        {true, false, :manual, "paused"},
+        {true, true, :auto, "automatic starts"},
+        {true, true, :manual, "manual approval"}
+      ] do
+    @master master
+    @enabled enabled
+    @mode mode
+    @expected expected
+    test "autonomy status master=#{master} project=#{enabled} mode=#{mode}", %{conn: conn, project: project} do
+      Settings.set_master(@master, "test")
+      Settings.set_project(project.name, @enabled, "test")
+      Settings.set_dispatch_mode(project.name, @mode, "test")
+      {:ok, view, _html} = live(conn, "/harness/settings")
+
+      assert has_element?(view, "#dispatch-mode-form-#{project.name} .pill", @expected)
+      assert has_element?(view, "#dispatch-mode-form-#{project.name} option[value='#{@mode}'][selected]")
+    end
+  end
+
+  test "dispatch mode saves both ways and survives remount without changing autonomy", %{conn: conn, project: project} do
+    Settings.set_master(true, "test")
+    Settings.set_project(project.name, true, "test")
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    for {mode, label} <- [{"manual", "manual approval"}, {"auto", "automatic starts"}] do
+      html =
+        view
+        |> form("#dispatch-mode-form-#{project.name}", %{"mode" => mode})
+        |> render_submit()
+
+      assert html =~ "Dispatch mode updated"
+      assert to_string(Settings.dispatch_mode(project.name)) == mode
+      assert Settings.effective?(project)
+      assert has_element?(view, "#dispatch-mode-form-#{project.name} .pill", label)
+      {:ok, remounted, _html} = live(conn, "/harness/settings")
+      assert has_element?(remounted, "#dispatch-mode-form-#{project.name} option[value='#{mode}'][selected]")
+      GenServer.stop(remounted.pid)
+    end
+  end
+
+  test "invalid dispatch modes and unknown projects do not change settings", %{conn: conn, project: project} do
+    Settings.set_dispatch_mode(project.name, :manual, "test")
+    {:ok, view, _html} = live(conn, "/harness/settings")
+
+    for mode <- ["invalid", "", nil] do
+      assert render_submit(view, "set_dispatch_mode", %{"name" => project.name, "mode" => mode}) =~
+               "Choose automatic starts or manual approval."
+
+      assert Settings.dispatch_mode(project.name) == :manual
+    end
+
+    assert render_submit(view, "set_dispatch_mode", %{"name" => "missing", "mode" => "manual"}) =~
+             "Unknown project."
+
+    assert Settings.dispatch_mode("missing") == :auto
+    assert Settings.dispatch_mode(project.name) == :manual
   end
 
   test "the navbar exposes a Settings link", %{conn: conn} do

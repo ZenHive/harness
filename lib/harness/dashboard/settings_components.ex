@@ -41,8 +41,8 @@ defmodule Harness.Dashboard.SettingsComponents do
           <h2>Cron autonomy</h2>
           <p class="setting-desc">
             Fleet-wide master switch and incident kill-switch. When on, the cron poller
-            dispatches each enabled project's next pending task on its schedule — one run
-            at a time. Effective autonomy is master <em>and</em> project.
+            finds tasks for each enabled project on its schedule. The project's dispatch
+            mode determines whether tasks start automatically or require approval.
           </p>
           <p class="setting-status">
             <span class="pill" data-state={master_pill(@autonomy)}>{master_pill(@autonomy)}</span>
@@ -96,8 +96,7 @@ defmodule Harness.Dashboard.SettingsComponents do
   attr(:autonomy, :map, required: true)
 
   @doc """
-  Per-project autonomy toggles — each project's own enable flag plus its
-  effective (master AND project) dispatching pill.
+  Per-project autonomy toggles, dispatch modes, and resolved status.
   """
   @spec project_autonomy_card(map()) :: Rendered.t()
   def project_autonomy_card(assigns) do
@@ -110,18 +109,46 @@ defmodule Harness.Dashboard.SettingsComponents do
           class="project-row"
           data-effective={to_string(project.effective)}
         >
-          <div class="project-id">
-            <span class="project-name">{project.name}</span>
-            <span class="pill" data-state={if project.effective, do: "on", else: "off"}>
-              {if project.effective, do: "dispatching", else: "paused"}
-            </span>
-          </div>
-          <.toggle
-            on={project.project_on}
-            event="toggle_project_autonomy"
-            value={project.name}
-            label={"Autonomy for #{project.name}"}
-          />
+          <form
+            id={"dispatch-mode-form-#{project.name}"}
+            class="reviewer-form"
+            phx-submit="set_dispatch_mode"
+          >
+            <input type="hidden" name="name" value={project.name} />
+            <div class="project-id">
+              <span class="project-name">{project.name}</span>
+              <span
+                class="pill"
+                data-state={
+                  cond do
+                    not project.effective -> "off"
+                    project.dispatch_mode == :manual -> "armed"
+                    true -> "on"
+                  end
+                }
+              >
+                {cond do
+                  not project.effective -> "paused"
+                  project.dispatch_mode == :manual -> "manual approval"
+                  true -> "automatic starts"
+                end}
+              </span>
+            </div>
+            <label for={"dispatch-mode-#{project.name}"}>Dispatch mode</label>
+            <select id={"dispatch-mode-#{project.name}"} name="mode">
+              <option value="auto" selected={project.dispatch_mode == :auto}>Automatic starts</option>
+              <option value="manual" selected={project.dispatch_mode == :manual}>
+                Manual approval
+              </option>
+            </select>
+            <button type="submit" class="btn-save">Save</button>
+            <.toggle
+              on={project.project_on}
+              event="toggle_project_autonomy"
+              value={project.name}
+              label={"Autonomy for #{project.name}"}
+            />
+          </form>
         </li>
         <li :if={@autonomy.projects == []} class="project-empty">No projects registered.</li>
       </ul>

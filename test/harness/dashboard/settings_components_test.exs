@@ -49,13 +49,13 @@ defmodule Harness.Dashboard.SettingsComponentsTest do
   end
 
   describe "project_autonomy_card/1" do
-    test "renders a dispatching pill for an effective project" do
-      autonomy = %{projects: [%{name: "demo", project_on: true, effective: true}]}
+    test "renders an automatic starts pill for an effective project" do
+      autonomy = %{projects: [%{name: "demo", project_on: true, effective: true, dispatch_mode: :auto}]}
 
       html = render_component(&SettingsComponents.project_autonomy_card/1, autonomy: autonomy)
 
       assert html =~ "demo"
-      assert html =~ "dispatching"
+      assert html =~ "automatic starts"
       assert html =~ ~s(phx-value-name="demo")
     end
 
