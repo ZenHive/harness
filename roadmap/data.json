@@ -20097,7 +20097,7 @@
       "id": "435",
       "phase": 19,
       "bundle": "contract",
-      "status": "in_progress",
+      "status": "done",
       "title": "Preserve failed-attempt context and let the cron orchestrator choose recover versus restart",
       "scores": {
         "d": 7,
@@ -20144,10 +20144,17 @@
         "priv/includes/harness-workflow.md",
         "skills/harness-driver/SKILL.md"
       ],
+      "shipped_in": "f196d15e93958a78937748d5e9c29cbadb31b528",
       "body": "Implement the operator-approved fix for repeated clean-slate cron retries. Evidence on 2026-09-18: Tapakly task 449 was rejected on run-1789747202895-d1a65031, run-1789754404043-5101efe6, run-1789761602672-6bddd56b and run-1789768803665-b2f1b522. Git ancestry checks show each subsequent branch omitted the preceding delivery commits. RoadmapPoller.dispatch_decision directly dispatches a singleton without consulting an AI; Orchestrator.context lacks attempt history and the plan only expresses dispatch/skip; Worker returns settled failures to pending; normal worktrees start from origin/target. Existing Dispatch.resume_failed/rereview preserve branches but bypass the ordinary Oban enqueue path. This task fixes the coupled workflow, not the rejected application implementations.\n\nPreserve the mantra: code gathers raw attempt/branch/landing facts; the orchestrator AI judges whether work is useful, which agent/model should continue, whether only re-review is warranted, or whether an explicit fresh rebuild is preferable. Do not hard-code error prose classification, retry limits, or model escalation. A first-attempt singleton may retain direct dispatch; any task with history must get an explicit AI decision. History lookup failure is never equivalent to no history. Include project/task-scoped attempts, fingerprints, outcome and reviewer reports, retained branch tip and origin ancestry/landing facts. Task id alone must not silently bind unrelated changed task content.\n\nExtend the existing plan dispatch entries with action fresh/resume/rereview, optional source_run_id, explicit agent/model and reason; skip remains deferral. Old-shaped first-attempt dispatches may remain compatible, but history must forbid an implicit fresh action. Prompt the AI to retain useful commits, consume the reviewer evidence, and explicitly justify discarding prior work when a replacement implementation is warranted. Use one Oban-backed execution path for cron, parked manual approvals and the public recovery APIs, preserving existing public calls. Resume imports the selected commit and prior report; re-review enters the reviewer gate without an implementer. Never silently fall back to a new run on a missing branch or stale decision.\n\nCarry the decision action, source run, selected SHA, task fingerprint, agent/model and reasoning through parking, job serialization and worker start, and persist lineage with the resulting record for status/verdict visibility. Revalidate task identity, branch tip/availability, already-landed work and live/queued duplicates before executing; fail stale selections visibly for re-planning. Keep the current project queue caps, idempotent enqueue and operator agent/model availability restrictions. Coalesced task membership must not be accidentally reduced to a single-task recovery; preserve existing semantics and reject unsupported recovery shapes explicitly. Avoid opportunistic refactors. Follow the existing persistence style; any schema addition must have a migration and operational deployment note in the reviewer report.\n\nUpdate existing driver/workflow documentation to remove the contradictory blind redispatch guidance and describe the new artifacts/API behavior; do not edit AGENTS.md by hand. Runtime activation, installed-skill propagation and Tapakly recovery are owned by the driving orchestrator after this task lands. Do not modify live settings, start/restart services, enable cron, touch other repos or mutate the operator checkout.\n",
       "created_at": "2026-09-18",
       "started_at": "2026-09-18",
+      "done_at": "2026-09-18",
       "scored_at": "2026-09-18",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1789772990361-192fb0f9, f196d15e93958a78937748d5e9c29cbadb31b528).",
+      "delivered_by": "codex",
+      "verified": true,
+      "verified_by": "cursor",
+      "verification_ref": "harness-run:run-1789772990361-192fb0f9",
       "cross_repo": []
     }
   ]
