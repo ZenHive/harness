@@ -26,6 +26,7 @@ defmodule Harness.Run.StatusTest do
       assert status.review_verdict == :reject
       assert status.agent_kind == :exited
       assert status.reason == {:review_rejected, "off-task work, nothing to salvage"}
+      assert status.dispatch_decision == %{}
       # Not retained on the record — always nil on a reconstructed snapshot.
       assert status.worktree_path == nil
       assert status.agent_os_pid == nil
@@ -108,6 +109,21 @@ defmodule Harness.Run.StatusTest do
       assert status.reviewer_adapter == nil
     end
 
+    test "copies dispatch lineage and tolerates a snapshot that predates the field" do
+      decision = %{"action" => "resume", "source_run_id" => "prior", "reason" => "keep it"}
+      record = log_record("run-lineage", state: :failed, reason: {:review_rejected, "x"}, dispatch_decision: decision)
+
+      assert Status.from_log_record(record).dispatch_decision == decision
+
+      legacy =
+        record
+        |> Map.from_struct()
+        |> Map.put(:__struct__, LogRecord)
+        |> Map.delete(:dispatch_decision)
+
+      assert Status.from_log_record(legacy).dispatch_decision == %{}
+    end
+
     test "maps a non-terminal persisted state to :failed" do
       # A record persisted mid-flight (e.g. BEAM death during :reviewing) is
       # not a settled run — it classifies as :failed, never silently :done.
@@ -133,7 +149,8 @@ defmodule Harness.Run.StatusTest do
       agent_output: Keyword.get(opts, :agent_output, ""),
       started_at: Keyword.get(opts, :started_at),
       state_entered_at: Keyword.get(opts, :state_entered_at, %{}),
-      agent_diff_size: Keyword.get(opts, :agent_diff_size)
+      agent_diff_size: Keyword.get(opts, :agent_diff_size),
+      dispatch_decision: Keyword.get(opts, :dispatch_decision, %{})
     }
   end
 end

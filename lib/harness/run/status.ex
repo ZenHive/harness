@@ -166,7 +166,7 @@ defmodule Harness.Run.Status do
       review_verdict: Map.get(record, :verdict),
       review_warning?: Map.get(record, :review_warning?, false),
       reason: record.reason,
-      dispatch_decision: record.dispatch_decision,
+      dispatch_decision: Map.get(record, :dispatch_decision, %{}),
       landed_sha: Map.get(record, :landed_sha)
     }
   end

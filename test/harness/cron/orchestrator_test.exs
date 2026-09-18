@@ -108,6 +108,11 @@ defmodule Harness.Cron.OrchestratorTest do
       refute prompt =~ "Opus"
       assert prompt =~ "enabled: true"
       assert prompt =~ ~s("agents")
+      assert prompt =~ "action"
+      assert prompt =~ "resume"
+      assert prompt =~ "rereview"
+      assert prompt =~ "fresh"
+      assert prompt =~ "Do not apply a fixed retry count"
     end
   end
 

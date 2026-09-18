@@ -115,6 +115,29 @@ defmodule Harness.ResultStore.PostgresCodecTest do
       assert decoded.reviewer_rotation_count == 2
     end
 
+    test "dispatch lineage and coalesced membership round-trip" do
+      decision = %{
+        "action" => "resume",
+        "source_run_id" => "prior",
+        "selected_sha" => "abc123",
+        "reason" => "Retain useful commits"
+      }
+
+      record =
+        ResultStoreContract.log_record(
+          run_id: "jsonb-dispatch-decision",
+          task_ids: ["73", "74"],
+          dispatch_decision: decision,
+          reason: {:stale_dispatch_decision, :task_content_changed}
+        )
+
+      decoded = roundtrip(record)
+
+      assert decoded.task_ids == ["73", "74"]
+      assert decoded.dispatch_decision == decision
+      assert decoded.reason == {:stale_dispatch_decision, :task_content_changed}
+    end
+
     test "tuple reason round-trips via the $tuple marker" do
       reason = {:agent_spawn_failed, :enoent}
 

@@ -1251,8 +1251,8 @@ defmodule Harness.ObanDispatchTest do
 
       # Task 163 crash-only contract: a run that SETTLED on a mechanical-looking
       # reason (worktree_failed) is still a settled failure — the queue cancels
-      # and reverts; the next cron tick re-dispatches it as a FRESH run. Only
-      # setup failures (the {:error, _} path before a run settles) snooze.
+      # and reverts; the next cron tick requests an explicit recover-versus-restart
+      # decision. Only setup failures (the {:error, _} path before a run settles) snooze.
       Application.put_env(:harness, :run_starter, fn %Item{} = it, _p, _a, opts ->
         run_id = "run-131-settled-mechanical"
         subscriber = Keyword.fetch!(opts, :subscriber)

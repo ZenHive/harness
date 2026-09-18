@@ -384,6 +384,42 @@ defmodule Harness.Dispatch.RecoveryExecutionTest do
              })
   end
 
+  test "a first-attempt job is revalidated then started from the current target", ctx do
+    starter(self(), "approve")
+
+    assert {:ok, _id, _job} =
+             Worker.enqueue(ctx.project, ctx.item, Codex,
+               cron_first_attempt: true,
+               task_fingerprint: ctx.item.fingerprint,
+               requested_model: "gpt-6-astra"
+             )
+
+    assert %{success: 1} = drain(ctx.project)
+    assert_received {:started, item, opts}
+    refute opts[:review_only?]
+    assert opts[:base_ref] in [nil, "HEAD"]
+    refute item.prompt =~ "Prior attempt failed"
+    refute item.prompt =~ "Exact reviewer report"
+
+    assert {:cancel, {:stale_dispatch_decision, :first_attempt_changed}} =
+             Worker.perform(%Oban.Job{
+               id: 1001,
+               attempt: 1,
+               args: %{
+                 "project_name" => ctx.project.name,
+                 "item_id" => ctx.item.id,
+                 "adapter_module" => to_string(Codex),
+                 "run_id" => "stale-first",
+                 "cron_first_attempt" => true,
+                 "task_fingerprint" => "changed-content"
+               }
+             })
+
+    assert {:ok, stale} = ResultStore.fetch_run_record("stale-first")
+    assert stale.state == :failed
+    assert {:stale_dispatch_decision, :first_attempt_changed} = stale.reason
+  end
+
   test "a historical singleton never accepts an implicit fresh plan or failed history read", ctx do
     {_old_id, _decision} = retained(ctx)
     owner = self()
