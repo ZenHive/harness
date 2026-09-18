@@ -7,6 +7,15 @@
     "harness": {
       "type": "http",
       "url": "http://localhost:4018/harness/mcp"
+    },
+    "chrome-devtools": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "chrome-devtools-mcp@1.7.0",
+        "--isolated"
+      ],
+      "env": {}
     }
   }
 }
