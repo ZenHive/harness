@@ -41,6 +41,7 @@ defmodule Harness.Cron.PendingDispatch do
           task_id: String.t(),
           adapter: module(),
           env: %{optional(String.t()) => false},
+          opts: keyword(),
           parked_at: DateTime.t()
         }
 
@@ -48,7 +49,7 @@ defmodule Harness.Cron.PendingDispatch do
   @typep state :: %{String.t() => {status(), t()}}
 
   @enforce_keys [:id, :project_name, :task_id, :adapter, :env, :parked_at]
-  defstruct [:id, :project_name, :task_id, :adapter, :env, :parked_at]
+  defstruct [:id, :project_name, :task_id, :adapter, :env, :parked_at, opts: []]
 
   @doc false
   @spec start_link(term()) :: GenServer.on_start()
@@ -69,9 +70,13 @@ defmodule Harness.Cron.PendingDispatch do
   """
   @spec park(String.t(), String.t(), module(), %{optional(String.t()) => false}) ::
           {:parked, t()} | {:exists, t()}
-  def park(project_name, task_id, adapter, env)
+  def park(project_name, task_id, adapter, env), do: park(project_name, task_id, adapter, env, [])
+
+  @doc "Parks the selected action, routing and lineage with the approval."
+  @spec park(String.t(), String.t(), module(), map(), keyword()) :: {:parked, t()} | {:exists, t()}
+  def park(project_name, task_id, adapter, env, opts)
       when is_binary(project_name) and is_binary(task_id) and is_atom(adapter) and is_map(env) do
-    GenServer.call(__MODULE__, {:park, project_name, task_id, adapter, env})
+    GenServer.call(__MODULE__, {:park, project_name, task_id, adapter, env, opts})
   end
 
   @doc "Lists all parked decisions, oldest first."
@@ -101,7 +106,7 @@ defmodule Harness.Cron.PendingDispatch do
   def reset, do: GenServer.call(__MODULE__, :reset)
 
   @impl GenServer
-  def handle_call({:park, project_name, task_id, adapter, env}, _from, state) do
+  def handle_call({:park, project_name, task_id, adapter, env, opts}, _from, state) do
     id = id_for(project_name, task_id)
 
     case Map.fetch(state, id) do
@@ -115,6 +120,7 @@ defmodule Harness.Cron.PendingDispatch do
           task_id: task_id,
           adapter: adapter,
           env: env,
+          opts: opts,
           parked_at: DateTime.utc_now()
         }
 
@@ -170,7 +176,8 @@ defmodule Harness.Cron.PendingDispatch do
     with {:ok, project} <- lookup_project(record.project_name),
          {:ok, agent} <- AgentRegistry.agent_for_module(record.adapter),
          {:ok, item} <- ingest_roadmap({:id, record.task_id}, project: project, agent: agent),
-         {:ok, run_id, _job} <- RunWorker.enqueue(project, item, record.adapter, env: record.env) do
+         {:ok, run_id, _job} <-
+           RunWorker.enqueue(project, item, record.adapter, Keyword.put(record.opts, :env, record.env)) do
       :ok = GenServer.call(__MODULE__, {:complete, record.id})
       {:ok, %{run_id: run_id, task_id: record.task_id, project_name: record.project_name, adapter: record.adapter}}
     else

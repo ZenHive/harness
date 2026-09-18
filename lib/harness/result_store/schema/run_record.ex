@@ -10,6 +10,8 @@ defmodule Harness.ResultStore.Schema.RunRecord do
     field :batch_id, :string
     field :task_id, :string
     field :task_fingerprint, :string
+    field :task_ids, {:array, :string}, default: []
+    field :dispatch_decision, :map, default: %{}
     field :project_name, :string
     field :agent, :string
     field :model, :string
@@ -68,6 +70,8 @@ defmodule Harness.ResultStore.Schema.RunRecord do
       :batch_id,
       :task_id,
       :task_fingerprint,
+      :task_ids,
+      :dispatch_decision,
       :project_name,
       :agent,
       :model,

@@ -2,24 +2,10 @@ defmodule Harness.Cron.Orchestrator do
   @moduledoc """
   The cron dispatch orchestrator — `.harness/cron-plan.json`, read mechanically.
 
-  Cron is just a timer (mechanical); what it *triggers* when more than one task
-  is dispatchable is this orchestrator AI — the smart layer that reads the full
-  ready set and decides the inline/dispatch/defer grouping with real judgment.
-  The earlier code-driven selector in `Harness.Cron.RoadmapPoller`
-  (`@default_agent`/`assignee` `cond`) could only fan the whole batch out at once
-  and defaulted unrouted work to Claude — it could not judge whether several
-  tasks should batch, sequence, or wait, and that blindness produced the
-  2026-06-05 stale-base collision (a 10-wide batch off one `development` snapshot
-  rebased across each other's lands).
-
-  ## The mechanical gate stays in the poller, the judgment lives here
-
-  The poller does the pure COUNT (how many dispatchable tasks this tick) and only
-  spawns the orchestrator when the count shows real upside (≥2). Counting is
-  ~free and mantra-clean; the orchestrator, once woken, is given FULL CONTEXT and
-  is never token-starved — constraining the smart layer would defeat the point.
-  Token economy comes from the gate deciding *whether* to wake it, never from
-  crippling its reasoning.
+  Cron supplies timing; the AI decides grouping and recovery. Any task with
+  persisted attempts reaches the orchestrator, including a singleton. A genuine
+  first-attempt singleton may dispatch directly. History lookup failure never
+  means an empty history.
 
   ## The plan artifact
 
@@ -68,6 +54,7 @@ defmodule Harness.Cron.Orchestrator do
   alias Harness.Artifact
   alias Harness.CapabilityScore
   alias Harness.Config
+  alias Harness.Dispatch.Attempts
   alias Harness.Project
   alias Harness.Roadmap
 
@@ -84,7 +71,14 @@ defmodule Harness.Cron.Orchestrator do
   }
 
   @typedoc "One dispatch decision: a task to run this wave on a named adapter."
-  @type dispatch_entry :: %{task_id: String.t(), adapter: String.t()}
+  @type dispatch_entry :: %{
+          required(:task_id) => String.t(),
+          required(:adapter) => String.t(),
+          optional(:action) => String.t(),
+          optional(:source_run_id) => String.t(),
+          optional(:model) => String.t(),
+          optional(:reason) => String.t()
+        }
 
   @typedoc "One witness for a task the orchestrator deliberately held back."
   @type skip_entry :: %{task_id: String.t(), disposition: String.t(), reason: String.t()}
@@ -116,9 +110,11 @@ defmodule Harness.Cron.Orchestrator do
   """
   @spec plan(Project.t(), [map()]) :: {:ok, t()} | {:error, error()}
   def plan(%Project{} = project, ready) when is_list(ready) do
-    case Application.get_env(:harness, :cron_orchestrator) do
-      fun when is_function(fun, 2) -> fun.(project, ready)
-      _other -> run_orchestrator(project, ready)
+    with {:ok, ready} <- Attempts.attach(project, ready) do
+      case Application.get_env(:harness, :cron_orchestrator) do
+        fun when is_function(fun, 2) -> fun.(project, ready)
+        _other -> run_orchestrator(project, ready)
+      end
     end
   end
 
@@ -230,7 +226,7 @@ defmodule Harness.Cron.Orchestrator do
   def prompt(context) when is_map(context) do
     """
     You are the dispatch orchestrator for the harness project "#{context.project}".
-    Cron has woken you because more than one task is dispatchable this tick. Decide
+    Cron has woken you for a batch or a task with prior attempts. Decide
     which tasks to dispatch in THIS wave, on which agent, and which to hold back —
     then write the plan as JSON to `#{@artifact_path}` (relative to your working
     directory) and exit. Writing that file is the whole job; you change no code.
@@ -248,10 +244,22 @@ defmodule Harness.Cron.Orchestrator do
     3. Stay within the project concurrency cap (#{inspect(context.concurrency_cap)}),
        counting the in-flight set; when in doubt, defer rather than risk a collision.
 
+    4. Read every task's attempts, fingerprints, reviewer reports and Git evidence.
+       Retain useful committed work with "resume", or choose "rereview" when only
+       the reviewer gate needs running. Select the agent and model explicitly.
+       "fresh" discards prior work: justify that choice explicitly in reason.
+       A task id alone is not identity: do not recover unrelated changed content.
+       Missing branch/origin evidence is not proof that no work exists; defer.
+       Recovery of coalesced runs is unsupported; defer the whole membership.
+       Do not apply a fixed retry count, error-prose classifier or escalation rule.
+
     ## Output schema (exact)
 
         {
-          "dispatch": [{"task_id": "<id>", "adapter": "<agent name from the agents list>"}],
+          "dispatch": [{"task_id": "<id>", "adapter": "<agent name from the agents list>",
+                        "model": "<model>", "action": "fresh|resume|rereview",
+                        "source_run_id": "<required for resume/rereview; omit for fresh>",
+                        "reason": "<why retain or discard the prior work>"}],
           "skip": [{"task_id": "<id>", "disposition": "inline|defer", "reason": "<why>"}]
         }
 
@@ -306,10 +314,17 @@ defmodule Harness.Cron.Orchestrator do
 
   @spec dispatch_entries([map()]) :: [dispatch_entry()]
   defp dispatch_entries(entries) do
-    for %{"task_id" => id, "adapter" => adapter} <- entries,
+    for %{"task_id" => id, "adapter" => adapter} = entry <- entries,
         is_binary(id),
         is_binary(adapter),
-        do: %{task_id: id, adapter: adapter}
+        do: Map.merge(%{task_id: id, adapter: adapter}, decision_fields(entry))
+  end
+
+  @spec decision_fields(map()) :: map()
+  defp decision_fields(entry) do
+    for key <- [:action, :source_run_id, :model, :reason], Map.has_key?(entry, to_string(key)), into: %{} do
+      {key, entry[to_string(key)]}
+    end
   end
 
   @spec skip_entries(list()) :: [skip_entry()]

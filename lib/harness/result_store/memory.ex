@@ -46,6 +46,7 @@ defmodule Harness.ResultStore.Memory do
   @impl Harness.ResultStore
   @spec list_run_records(Harness.ResultStore.filters(), keyword()) :: {:ok, [LogRecord.t()]}
   def list_run_records(filters, opts) when is_list(filters) and is_list(opts) do
+    filters = Keyword.delete(filters, :strict_history)
     {limit, filters} = Harness.ResultStore.pop_limit(filters)
     {include_transcripts?, filters} = Keyword.pop(filters, :include_transcripts, false)
     point_lookup? = Keyword.has_key?(filters, :run_id)
@@ -139,7 +140,9 @@ defmodule Harness.ResultStore.Memory do
   defp merge_record({%LogRecord{} = existing, _old_seq}, %LogRecord{} = incoming, seq) do
     {%{
        incoming
-       | landed_sha: present(incoming.landed_sha, existing.landed_sha),
+       | dispatch_decision: non_empty_map(incoming.dispatch_decision, existing.dispatch_decision),
+         task_ids: non_empty_list(incoming.task_ids, existing.task_ids),
+         landed_sha: present(incoming.landed_sha, existing.landed_sha),
          pr_url: present(incoming.pr_url, existing.pr_url),
          pr_writeback: present(incoming.pr_writeback, existing.pr_writeback),
          verdict: present(incoming.verdict, existing.verdict),

@@ -572,3 +572,38 @@ scheduling are out of scope (post-Phase-7).
 
 Per-batch chronological history lives in [`dogfooding-runs.md`](dogfooding-runs.md) —
 append a row there when a dogfood run settles, instead of editing this file.
+
+
+## Recovery-aware cron decisions
+
+A singleton with no persisted attempts may dispatch directly. Any task with
+history, and every multi-task wave, goes to the orchestrator AI with project/task
+identity, fingerprints, reviewer evidence, retained branch tips and origin
+ancestry. A failed history read stops the tick; it never means "no attempts".
+
+`.harness/cron-plan.json` dispatch entries support `action` (`fresh`, `resume`,
+`rereview`), `source_run_id` for recovery, `adapter`, `model` and `reason`.
+History requires an explicit action, model and rationale. The AI decides whether
+commits are useful; `fresh` must explain why prior work is being discarded.
+`skip` defers. No error-prose classifier, retry count or escalation ladder chooses
+this policy.
+
+Cron, parked manual approvals, `dispatch-resume_failed(run_id, escalate)` and
+`dispatch-rereview(run_id)` enqueue through the project Oban queue. Public recovery
+returns the queued run id, not a promise that an agent has already started.
+Resume pins the retained SHA and injects the exact reviewer report; rereview
+enters the reviewer gate without an implementer. Existing live `dispatch-resume`
+and approved-work `dispatch-reland` retain their distinct meanings.
+
+Approval retains action, source SHA, fingerprint, selected agent/model, rationale
+and secret scrubbing. The worker revalidates identity, history, routing, branch
+availability/tip and origin ancestry before spawning. Stale selections cancel
+visibly for re-planning; there is no fallback to a clean run. Coalesced recovery
+is rejected rather than narrowing membership; legacy membership is checked from
+retained Oban job data when absent from the run record. Unknown membership or
+missing fingerprints cannot establish safe recovery identity.
+
+Run records and status/verdict responses expose `dispatch_decision`; durable
+`task_ids` preserves coalesced membership. Deploy migration
+`20260918230000_add_dispatch_decision_to_run_records` before activating this code.
+The driving orchestrator owns runtime activation and installed-skill propagation.

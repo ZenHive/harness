@@ -513,6 +513,7 @@ defmodule Harness.Run do
       substrate_retry: Keyword.get(opts, :substrate_retry, []),
       base_dir: Keyword.get(opts, :base_dir),
       base_ref: Keyword.get(opts, :base_ref),
+      dispatch_decision: Keyword.get(opts, :dispatch_decision, %{}),
       adapter_opts: Keyword.get(opts, :adapter_opts, []),
       env: RunWorktree.run_env(project, run_id, Keyword.get(opts, :env, %{})),
       land_attempt: Keyword.get(opts, :land_attempt, 1),

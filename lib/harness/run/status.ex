@@ -96,6 +96,7 @@ defmodule Harness.Run.Status do
           reason: Result.reason() | nil,
           held?: boolean(),
           hold_reason: :graceful | :interrupt | nil,
+          dispatch_decision: map(),
           landed_sha: String.t() | nil
         }
 
@@ -119,6 +120,7 @@ defmodule Harness.Run.Status do
     :reason,
     :landed_sha,
     :hold_reason,
+    dispatch_decision: %{},
     state_entered_at: %{},
     review_warning?: false,
     held?: false
@@ -164,6 +166,7 @@ defmodule Harness.Run.Status do
       review_verdict: Map.get(record, :verdict),
       review_warning?: Map.get(record, :review_warning?, false),
       reason: record.reason,
+      dispatch_decision: record.dispatch_decision,
       landed_sha: Map.get(record, :landed_sha)
     }
   end

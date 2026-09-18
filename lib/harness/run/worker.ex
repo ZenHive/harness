@@ -26,6 +26,8 @@ defmodule Harness.Run.Worker do
 
   alias Harness.AgentRegistry
   alias Harness.Dashboard.RunFeed
+  alias Harness.Dispatch.Attempts
+  alias Harness.Dispatch.Decision
   alias Harness.Git
   alias Harness.Project
   alias Harness.ProjectRegistry
@@ -85,7 +87,7 @@ defmodule Harness.Run.Worker do
   """
   @spec enqueue(Project.t(), Item.t(), module(), keyword()) :: {:ok, String.t(), Oban.Job.t()} | {:error, term()}
   def enqueue(%Project{} = project, %Item{} = item, adapter, opts \\ []) when is_atom(adapter) and is_list(opts) do
-    case Harness.Oban.coalesced_run_job(project, item.id) do
+    case Harness.Oban.member_run_job(project, item.id) do
       {:ok, job} -> return_existing_run(project, item.id, job)
       :error -> enqueue_unclaimed(project, item, adapter, opts)
     end
@@ -94,6 +96,17 @@ defmodule Harness.Run.Worker do
   @spec enqueue_unclaimed(Project.t(), Item.t(), module(), keyword()) ::
           {:ok, String.t(), Oban.Job.t()} | {:error, term()}
   defp enqueue_unclaimed(%Project{} = project, %Item{} = item, adapter, opts) do
+    if Keyword.has_key?(opts, :dispatch_decision) do
+      with {:ok, _item, _run_opts} <- Decision.prepare(project, item, adapter, opts[:dispatch_decision]) do
+        insert_dispatch_job(project, item, adapter, opts)
+      end
+    else
+      enqueue_legacy(project, item, adapter, opts)
+    end
+  end
+
+  @spec enqueue_legacy(Project.t(), Item.t(), module(), keyword()) :: {:ok, String.t(), Oban.Job.t()} | {:error, term()}
+  defp enqueue_legacy(project, item, adapter, opts) do
     case recoverable_settled_run(project, item.id, adapter, opts) do
       {:ok, run_id, job} ->
         {:ok, run_id, job}
@@ -175,6 +188,7 @@ defmodule Harness.Run.Worker do
       |> Harness.Oban.put_env_arg(opts)
       |> put_requested_model_arg(opts)
       |> put_check_command_arg(opts)
+      |> put_decision_arg(opts)
 
     changeset =
       new(args,
@@ -184,6 +198,11 @@ defmodule Harness.Run.Worker do
       )
 
     {run_id, changeset}
+  end
+
+  @spec put_decision_arg(map(), keyword()) :: map()
+  defp put_decision_arg(args, opts) do
+    Map.merge(args, Map.new(Keyword.take(opts, [:dispatch_decision, :task_fingerprint, :cron_first_attempt])))
   end
 
   @spec put_requested_model_arg(map(), keyword()) :: map()
@@ -220,10 +239,11 @@ defmodule Harness.Run.Worker do
          {:ok, adapter} <- adapter_module(adapter_name),
          {:ok, agent} <- agent_for_adapter(adapter),
          {:ok, %Item{} = item} <- ingest_job_items(args, item_id, project, agent),
-         {:ok, result} <- run_once(job, item, project_with_check_command(project, args), adapter) do
+         {:ok, item, decision_opts} <- prepare_decision(project, item, adapter, args),
+         {:ok, result} <- run_once(job, item, project_with_check_command(project, args), adapter, decision_opts) do
       if settled_failure?(result) and not recoverable_crash?(result, project) do
         # Any settled failure reverts the task to pending so the next cron tick
-        # can re-dispatch it as a FRESH run. Green (even unlanded under :manual)
+        # can request an explicit recovery decision. Green (even unlanded under :manual)
         # stays in_progress. Code-reload crashes during :reviewing (etc.) with a
         # retained branch stay in_progress — recover via dispatch-rereview (Task 299).
         _ = revert_to_pending(item, project)
@@ -234,6 +254,22 @@ defmodule Harness.Run.Worker do
       {:error, reason} -> setup_failure_disposition(reason, job)
     end
   end
+
+  @spec prepare_decision(Project.t(), Item.t(), module(), map()) :: {:ok, Item.t(), keyword()} | {:error, term()}
+  defp prepare_decision(project, item, adapter, %{"dispatch_decision" => decision}) do
+    Decision.prepare(project, item, adapter, decision)
+  end
+
+  defp prepare_decision(project, item, _adapter, %{"cron_first_attempt" => true} = args) do
+    with true <- item.fingerprint == args["task_fingerprint"],
+         {:ok, [%{"attempts" => []}]} <- Attempts.attach(project, [%{"id" => item.id}]) do
+      {:ok, item, []}
+    else
+      _other -> {:error, {:stale_dispatch_decision, :first_attempt_changed}}
+    end
+  end
+
+  defp prepare_decision(_project, item, _adapter, _args), do: {:ok, item, []}
 
   @spec ingest_job_items(map(), String.t(), Project.t(), atom()) :: {:ok, Item.t()} | {:error, term()}
   defp ingest_job_items(%{"item_ids" => ids}, _item_id, project, agent) when is_list(ids) do
@@ -329,6 +365,11 @@ defmodule Harness.Run.Worker do
   # permanently broken environment from snoozing forever.
   @spec setup_failure_disposition(term(), Oban.Job.t()) ::
           {:snooze, pos_integer()} | {:cancel, term()}
+  defp setup_failure_disposition({:stale_dispatch_decision, _detail} = reason, %Oban.Job{} = job) do
+    persist_stale_decision(job, reason)
+    {:cancel, reason}
+  end
+
   defp setup_failure_disposition(reason, %Oban.Job{} = job) do
     attempt = max(job.attempt, 1)
 
@@ -337,6 +378,36 @@ defmodule Harness.Run.Worker do
       malformed_job_reason?(reason) -> {:cancel, reason}
       attempt >= @max_mechanical_attempts -> {:cancel, {:mechanical_retry_exhausted, reason}}
       true -> retry_mechanical_failure(reason, job, attempt)
+    end
+  end
+
+  @spec persist_stale_decision(Oban.Job.t(), term()) :: :ok
+  defp persist_stale_decision(%Oban.Job{args: args} = job, reason) do
+    with {:ok, run_id} <- fetch_arg(args, "run_id"),
+         {:ok, adapter_name} <- fetch_arg(args, "adapter_module"),
+         {:ok, adapter} <- adapter_module(adapter_name) do
+      decision = args["dispatch_decision"] || %{}
+
+      record = %LogRecord{
+        batch_id: batch_id(job),
+        run_id: run_id,
+        task_id: args["item_id"],
+        task_ids: Map.get(args, "item_ids", [args["item_id"]]),
+        project_name: args["project_name"],
+        task_fingerprint: decision["task_fingerprint"] || args["task_fingerprint"],
+        adapter: adapter,
+        state: :failed,
+        reason: reason,
+        duration_ms: 0,
+        model: args["requested_model"],
+        dispatch_decision: decision
+      }
+
+      record |> ResultStore.record_run() |> log_store_error(run_id)
+    else
+      {:error, detail} ->
+        Logger.warning("harness run worker: stale decision could not be recorded: #{inspect(detail)}")
+        :ok
     end
   end
 
@@ -407,8 +478,8 @@ defmodule Harness.Run.Worker do
 
   defp result_to_oban(%Result{state: :failed} = result, _attempt), do: {:cancel, result.reason}
 
-  @spec run_once(Oban.Job.t(), Item.t(), Project.t(), module()) :: {:ok, Result.t()} | {:error, term()}
-  defp run_once(%Oban.Job{} = job, %Item{} = item, %Project{} = project, adapter) do
+  @spec run_once(Oban.Job.t(), Item.t(), Project.t(), module(), keyword()) :: {:ok, Result.t()} | {:error, term()}
+  defp run_once(%Oban.Job{} = job, %Item{} = item, %Project{} = project, adapter, decision_opts) do
     checkpoint(job, "run_started")
     started_at_ms = System.monotonic_time(:millisecond)
 
@@ -418,7 +489,7 @@ defmodule Harness.Run.Worker do
     # (or green-unlanded under manual landing_policy).
     _ = claim_in_progress(item, project, job.args["run_id"] || "unknown")
 
-    case start_run(item, project, adapter, run_opts(job, item)) do
+    case start_run(item, project, adapter, Keyword.merge(run_opts(job, item), decision_opts)) do
       {:ok, run_id, pid} ->
         {:ok, await_run(run_id, Process.monitor(pid), item, project, adapter, job, started_at_ms)}
 
@@ -472,7 +543,10 @@ defmodule Harness.Run.Worker do
         adapter: adapter,
         project_name: project.name,
         duration_ms: duration_ms(started_at_ms),
-        domains: item.domains
+        domains: item.domains,
+        task_fingerprint: item.fingerprint,
+        task_ids: item.task_ids,
+        dispatch_decision: job.args["dispatch_decision"] || %{}
       )
 
     record
@@ -725,7 +799,7 @@ defmodule Harness.Run.Worker do
   @spec return_existing_run(Project.t(), String.t(), Oban.Job.t()) :: {:ok, String.t(), Oban.Job.t()} | {:error, term()}
   defp return_existing_run(%Project{} = project, item_id, %Oban.Job{} = job) do
     case existing_run_id(job, project.name, item_id) do
-      {:ok, run_id} -> {:ok, run_id, job}
+      {:ok, run_id} -> {:ok, run_id, %{job | conflict?: true}}
       {:error, _reason} = error -> error
     end
   end

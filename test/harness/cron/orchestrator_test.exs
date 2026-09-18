@@ -36,6 +36,24 @@ defmodule Harness.Cron.OrchestratorTest do
       assert plan.skip == [%{task_id: "236", disposition: "defer", reason: "overlaps 234 on lander.ex"}]
     end
 
+    test "preserves the recovery selection and its rationale", %{tmp_dir: dir} do
+      write_plan(
+        dir,
+        ~s({"dispatch":[{"task_id":"435","adapter":"codex","model":"gpt-6-astra","action":"resume","source_run_id":"prior","reason":"Retain useful commits"}]})
+      )
+
+      assert {:ok, %Orchestrator{dispatch: [entry]}} = Orchestrator.read(dir)
+
+      assert entry == %{
+               task_id: "435",
+               adapter: "codex",
+               model: "gpt-6-astra",
+               action: "resume",
+               source_run_id: "prior",
+               reason: "Retain useful commits"
+             }
+    end
+
     test "tolerates a missing skip list", %{tmp_dir: dir} do
       write_plan(dir, ~s({"dispatch": [{"task_id": "1", "adapter": "codex"}]}))
 
@@ -108,6 +126,45 @@ defmodule Harness.Cron.OrchestratorTest do
 
       assert_received {:planned, "orch-inject", 2}
     end
+  end
+
+  @tag :tmp_dir
+  test "real invocation reads its artifact and cleans scratch on success and failure", %{tmp_dir: dir} do
+    old_path = System.get_env("PATH")
+    old_config = Application.get_env(:harness, :cron_polling)
+    old_model = Application.get_env(:harness, :agent_model)
+    System.put_env("PATH", dir <> ":" <> old_path)
+    Application.put_env(:harness, :agent_model, codex: "gpt-6-astra")
+    Application.put_env(:harness, :cron_polling, orchestrator_adapter: :codex)
+
+    on_exit(fn ->
+      System.put_env("PATH", old_path)
+
+      if old_config,
+        do: Application.put_env(:harness, :cron_polling, old_config),
+        else: Application.delete_env(:harness, :cron_polling)
+
+      if old_model,
+        do: Application.put_env(:harness, :agent_model, old_model),
+        else: Application.delete_env(:harness, :agent_model)
+    end)
+
+    executable = Path.join(dir, "codex")
+
+    File.write!(executable, """
+    #!/bin/sh
+    mkdir -p .harness
+    echo '{"dispatch": [{"task_id":"1","adapter":"codex"}]}' > .harness/cron-plan.json
+    """)
+
+    File.chmod!(executable, 0o755)
+    project = ProjectFixture.from_repo(dir, name: "orch-invoke")
+    assert {:ok, %Orchestrator{dispatch: [%{task_id: "1"}]}} = Orchestrator.plan(project, [%{"id" => "1"}])
+    assert Path.wildcard(Path.join(System.tmp_dir!(), "harness-cron-orch-invoke-*")) == []
+    File.write!(executable, "#!/bin/sh\nexit 0\n")
+    assert {:error, :missing} = Orchestrator.plan(project, [])
+    Application.put_env(:harness, :cron_polling, orchestrator_adapter: :unknown)
+    assert {:error, {:no_adapter, _}} = Orchestrator.plan(project, [])
   end
 
   @spec write_plan(String.t(), String.t()) :: :ok

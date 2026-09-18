@@ -776,7 +776,7 @@ defmodule Harness.DispatchTest do
     end
   end
 
-  describe "rereview/1 — review-only failed-run salvage" do
+  describe "rereview_opts/3 — review-only failed-run salvage" do
     test "starts from the retained branch and skips the implementer phase entirely" do
       old_run_id = "run-rereview-old-#{System.unique_integer([:positive])}"
       repo = GitFixture.init_repo()
@@ -815,8 +815,16 @@ defmodule Harness.DispatchTest do
           token_usage: %TokenUsage{input: 100, output: 50, total: 150}
         })
 
-      assert {:ok, %{run_id: new_run_id, rereviewed_from: ^old_run_id}} =
-               Dispatch.rereview(old_run_id)
+      assert {:ok, item} = Harness.Roadmap.ingest({:id, "1"}, project: project, agent: :claude)
+      assert {:ok, prior} = ResultStore.fetch_run_record(old_run_id)
+
+      assert {:ok, new_run_id, _pid} =
+               Run.Supervisor.start_run(
+                 item,
+                 project,
+                 RereviewCountingAdapter,
+                 Dispatch.rereview_opts(item, prior, old_run_id)
+               )
 
       assert_receive {:rereview_adapter_invoked, "1-review"}, 10_000
       refute_receive {:rereview_adapter_invoked, "1"}, 200

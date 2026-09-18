@@ -107,6 +107,8 @@ defmodule Harness.Run.LogRecord do
           run_id: String.t(),
           task_id: String.t(),
           task_fingerprint: String.t() | nil,
+          task_ids: [String.t()],
+          dispatch_decision: map(),
           project_name: String.t() | nil,
           agent: atom() | nil,
           model: String.t() | nil,
@@ -184,6 +186,8 @@ defmodule Harness.Run.LogRecord do
     :reviewer_diff_size,
     :agent_outcome_kind,
     :agent_exit_status,
+    task_ids: [],
+    dispatch_decision: %{},
     token_usage: %TokenUsage{},
     state_entered_at: %{},
     composed_inputs: [],
@@ -224,6 +228,12 @@ defmodule Harness.Run.LogRecord do
       run_id: result.run_id,
       task_id: result.task_id,
       task_fingerprint: Keyword.get(meta, :task_fingerprint),
+      task_ids:
+        case Keyword.get(meta, :task_ids, []) do
+          [] -> [result.task_id]
+          ids -> ids
+        end,
+      dispatch_decision: Keyword.get(meta, :dispatch_decision, %{}),
       project_name: Keyword.get(meta, :project_name),
       agent: Keyword.get(meta, :agent),
       model: record_model(result, meta),

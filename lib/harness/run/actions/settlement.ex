@@ -315,6 +315,8 @@ defmodule Harness.Run.Actions.Settlement do
       state_entered_at: data.state_entered_at,
       domains: data.item.domains,
       task_fingerprint: data.item.fingerprint,
+      task_ids: data.item.task_ids,
+      dispatch_decision: Map.get(data, :dispatch_decision, %{}),
       reviewer_model: reviewer_model(data)
     )
     |> ResultStore.record_run(data.result_store)

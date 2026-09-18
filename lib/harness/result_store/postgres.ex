@@ -99,6 +99,9 @@ defmodule Harness.ResultStore.Postgres do
           batch_id: fragment("EXCLUDED.batch_id"),
           task_id: fragment("EXCLUDED.task_id"),
           task_fingerprint: fragment("EXCLUDED.task_fingerprint"),
+          task_ids: fragment("EXCLUDED.task_ids"),
+          dispatch_decision:
+            fragment("COALESCE(NULLIF(EXCLUDED.dispatch_decision, '{}'::jsonb), ?)", r.dispatch_decision),
           project_name: fragment("EXCLUDED.project_name"),
           agent: fragment("EXCLUDED.agent"),
           model: fragment("EXCLUDED.model"),
@@ -231,6 +234,7 @@ defmodule Harness.ResultStore.Postgres do
 
     try do
       {limit, filters} = Harness.ResultStore.pop_limit(filters)
+      {strict?, filters} = Keyword.pop(filters, :strict_history, false)
       {include_transcripts?, filters} = Keyword.pop(filters, :include_transcripts, false)
       point_lookup? = Keyword.has_key?(filters, :run_id)
       retain_outputs? = point_lookup? or include_transcripts?
@@ -244,7 +248,11 @@ defmodule Harness.ResultStore.Postgres do
       query = if limit, do: limit(query, ^limit), else: query
 
       rows = repo.all(query)
-      {:ok, rows_to_log_records(rows)}
+      records = rows_to_log_records(rows)
+
+      if strict? and length(records) != length(rows),
+        do: {:error, :undecodable_attempt_history},
+        else: {:ok, records}
     rescue
       e in @persistence_errors -> {:error, e}
     end
@@ -714,6 +722,8 @@ defmodule Harness.ResultStore.Postgres do
         batch_id: r.batch_id,
         task_id: r.task_id,
         task_fingerprint: r.task_fingerprint,
+        task_ids: r.task_ids,
+        dispatch_decision: r.dispatch_decision,
         project_name: r.project_name,
         agent: r.agent,
         model: r.model,
@@ -808,6 +818,8 @@ defmodule Harness.ResultStore.Postgres do
       batch_id: r.batch_id,
       task_id: r.task_id,
       task_fingerprint: r.task_fingerprint,
+      task_ids: r.task_ids,
+      dispatch_decision: r.dispatch_decision,
       project_name: r.project_name,
       agent: atom_or_string(r.agent),
       model: r.model,
@@ -859,6 +871,8 @@ defmodule Harness.ResultStore.Postgres do
       run_id: row.run_id,
       task_id: row.task_id,
       task_fingerprint: row.task_fingerprint,
+      task_ids: row.task_ids || [],
+      dispatch_decision: row.dispatch_decision || %{},
       project_name: row.project_name,
       agent: string_to_atom(row.agent),
       model: row.model,

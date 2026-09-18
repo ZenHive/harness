@@ -51,6 +51,7 @@ defmodule Harness.Dispatch do
   alias Harness.AgentAdapter
   alias Harness.AgentAdapter.Registry
   alias Harness.AgentKPI
+  alias Harness.AgentRegistry
   alias Harness.Batch
   alias Harness.Batch.AgentEvaluation
   alias Harness.Batch.AgentEvaluation.Comparison
@@ -60,6 +61,7 @@ defmodule Harness.Dispatch do
   alias Harness.Cron.PendingDispatch
   alias Harness.DependencyBump
   alias Harness.Dispatch.AwaitRunsSummary
+  alias Harness.Dispatch.Decision
   alias Harness.Dispatch.RunSummary
   alias Harness.Dispatch.WriteSetPlan
   alias Harness.Lander
@@ -382,6 +384,7 @@ defmodule Harness.Dispatch do
     %{
       verdict: record.verdict,
       report: record.review_report,
+      dispatch_decision: record.dispatch_decision,
       ratings: AgentKPI.record_ratings(record),
       checks: record.review_checks,
       concerns: record.review_concerns,
@@ -651,7 +654,7 @@ defmodule Harness.Dispatch do
     returns: %{
       type: :tuple,
       description:
-        "{:ok, %{run_id: new_run_id, resumed_from: old_run_id, agent: atom}} on a started run. {:error, reason}: :not_found, :not_failed, the ingest reasons, or a start_run failure."
+        "{:ok, %{run_id: new_run_id, resumed_from: old_run_id, agent: atom}} on an enqueued run. {:error, reason}: :not_found, :not_failed, the ingest reasons, or a start_run failure."
     }
   )
 
@@ -662,10 +665,11 @@ defmodule Harness.Dispatch do
     with {:ok, record} <- load_failed_record(run_id),
          {:ok, {project, item, adapter_module}} <-
            resolve_and_ingest(record.project_name, record.task_id, resume_adapter(record, escalate)),
-         resumed = resume_item(item, record),
-         {:ok, new_run_id, _pid} <-
-           Run.Supervisor.start_run(resumed, project, adapter_module, resume_opts(resumed, run_id)) do
-      {:ok, %{run_id: new_run_id, resumed_from: run_id, agent: resumed.agent}}
+         {:ok, decision} <-
+           Decision.recovery(project, %{item | model: effective_model(item, item.agent)}, "resume", run_id),
+         {:ok, new_run_id, _job} <-
+           RunWorker.enqueue(project, item, adapter_module, recovery_enqueue_opts(decision)) do
+      {:ok, %{run_id: new_run_id, resumed_from: run_id, agent: item.agent}}
     end
   end
 
@@ -682,7 +686,7 @@ defmodule Harness.Dispatch do
     returns: %{
       type: :tuple,
       description:
-        "{:ok, %{run_id: new_run_id, rereviewed_from: old_run_id, agent: atom}} on a started review-only run. {:error, reason}: :not_found, :unknown_project, the ingest reasons, or a start_run failure."
+        "{:ok, %{run_id: new_run_id, rereviewed_from: old_run_id, agent: atom}} on an enqueued review-only run. {:error, reason}: :not_found, :unknown_project, the ingest reasons, or a start_run failure."
     }
   )
 
@@ -693,10 +697,22 @@ defmodule Harness.Dispatch do
     with {:ok, record} <- ResultStore.fetch_run_record(run_id),
          {:ok, project} <- lookup_record_project(record),
          {:ok, item} <- Roadmap.ingest(selector(record.task_id), project: project, agent: record_agent(record)),
-         {:ok, new_run_id, _pid} <-
-           Run.Supervisor.start_run(item, project, record.adapter, rereview_opts(item, record, run_id)) do
+         {:ok, adapter} <- AgentRegistry.delegatable_module_for_agent(item.agent),
+         {:ok, decision} <-
+           Decision.recovery(project, %{item | model: effective_model(item, item.agent)}, "rereview", run_id),
+         {:ok, new_run_id, _job} <-
+           RunWorker.enqueue(project, item, adapter, recovery_enqueue_opts(decision)) do
       {:ok, %{run_id: new_run_id, rereviewed_from: run_id, agent: item.agent}}
     end
+  end
+
+  @spec recovery_enqueue_opts(map()) :: keyword()
+  defp recovery_enqueue_opts(decision) do
+    [
+      dispatch_decision: decision,
+      requested_model: decision["model"],
+      env: %{"ANTHROPIC_API_KEY" => false, "OPENAI_API_KEY" => false}
+    ]
   end
 
   @spec load_failed_record(String.t()) ::
@@ -1454,6 +1470,7 @@ defmodule Harness.Dispatch do
       run_id: status.run_id,
       task_id: status.task_id,
       project_name: status.project_name,
+      dispatch_decision: status.dispatch_decision,
       state: status.state,
       worktree_path: status.worktree_path,
       agent_os_pid: status.agent_os_pid,
@@ -1554,6 +1571,7 @@ defmodule Harness.Dispatch do
       run_id: fetch_arg(args, :run_id),
       task_id: fetch_arg(args, :item_id),
       project_name: fetch_arg(args, :project_name),
+      dispatch_decision: fetch_arg(args, :dispatch_decision),
       state: :dispatched,
       worktree_path: nil,
       agent_os_pid: nil,
@@ -1860,6 +1878,7 @@ defmodule Harness.Dispatch do
       task_id: record.task_id,
       verdict: record.verdict,
       report: record.review_report,
+      dispatch_decision: record.dispatch_decision,
       ratings: AgentKPI.record_ratings(record),
       checks: record.review_checks,
       concerns: record.review_concerns,
@@ -1905,6 +1924,8 @@ defmodule Harness.Dispatch do
       project_name: record.project_name,
       task_id: record.task_id,
       adapter: inspect(record.adapter),
+      dispatch_decision: Keyword.get(record.opts, :dispatch_decision),
+      requested_model: Keyword.get(record.opts, :requested_model),
       parked_at: DateTime.to_iso8601(record.parked_at)
     }
   end

@@ -29,7 +29,7 @@ rmap task → implementer AI (worktree) → commit harness/<run-id> → reviewer
 
 One run = one supervised `Harness.Run` gen_statem: fork worktree off target `HEAD`, dispatch implementer, commit diff to `harness/<run-id>`, dispatch cross-family reviewer into the same worktree. The reviewer runs the project's `check_command` hint, fixes what it can, writes `.harness/review.json`. **Success = reviewer `approve`** — never implementer exit code or self-report. There is **no mechanical verification gate** in harness; judgment lives in agents.
 
-Rejections put the task back in the queue for re-dispatch. Fix-and-approve is the near-absolute default for the reviewer.
+Rejections return tasks to pending for an explicit recovery-aware orchestrator decision. Fix-and-approve is the near-absolute default for the reviewer.
 
 **🚨 "Cross-family" is routing doctrine, not a mechanical guarantee.** Harness excludes only the *identical* agent from the reviewer slate (`Harness.Agents.reviewers/1` → `reject_implementer/2`); there is **no family concept in harness code**, so a `cursor` implementer can draw a `grok` reviewer even though both run SpaceXAI weights. The orchestrator owns the separation when it matters. This is deliberate, not an oversight: measured 2026-08-23 over 1,627 harness reviews, controlling for reviewer identity leaves no per-pair signal — review intervention is a **per-reviewer** trait (median `reviewer_diff_size`: Codex 96, Cursor 4, Claude 1, Grok 0), and the most capable reviewer in the ledger finds median 0 in the same work a heavier reviewer rewrites. Don't add a family scheduler to make the code match the older wording.
 
@@ -102,10 +102,10 @@ Hand-build when harness cannot perform or judge the work:
 | `state` / `reason` | Meaning | Action |
 |---|---|---|
 | `:done` / `:approved` | Reviewer AI approved (possibly after inline fixes — check `reviewer_diff_size`). | Deliverable on `harness/<run-id>`. Review diff, integrate (or let auto-lander handle it), `rmap status <id> done`. |
-| `:failed` / `{:review_rejected, report}` | Reviewer rejected (degenerate — near-never by design). | Read `report`. Task back in queue; re-dispatch. |
-| `:failed` / `{:review_stuck, report}` | No verdict: reviewer unavailable, crashed, or missing/malformed `.harness/review.json`. | Read `report`. Fix environment or re-dispatch. |
+| `:failed` / `{:review_rejected, report}` | Reviewer rejected (degenerate — near-never by design). | Read `report` and retained-branch evidence; explicitly choose resume, rereview, fresh or defer. |
+| `:failed` / `{:review_stuck, report}` | No verdict: reviewer unavailable, crashed, or missing/malformed `.harness/review.json`. | Read `report`; choose recovery or defer while the environment is repaired. |
 | `:failed` / `{:worktree_failed,_}` `{:agent_spawn_failed,_}` `{:driver_crashed,_}` `{:commit_failed,_}` | Harness-side mechanical failure. | **Harness bug.** File via `rmap new`. |
-| `:failed` / `{:checkout_polluted, status}` | Agent wrote outside the run worktree into the main checkout — surfaces as `:failed` **only after bounded AI recovery was exhausted** (see "Self-healing recovery" below). | Recovery declared the run dead. Likely an agent/adapter isolation issue; re-dispatch with a worktree-honoring adapter. |
+| `:failed` / `{:checkout_polluted, status}` | Agent wrote outside the run worktree into the main checkout — surfaces as `:failed` **only after bounded AI recovery was exhausted** (see "Self-healing recovery" below). | Read the isolation evidence and retained branch; explicitly select recovery or a justified fresh build on an appropriate adapter. |
 | `:failed` / `{:checkout_pollution_check_failed, _}` | Post-run pollution `git status` errored. | Rare; transient git/IO. Re-run; inspect checkout if persistent. |
 | `:failed` / `:timed_out` | Lifetime budget elapsed. | Raise `:lifetime_timeout` or investigate hang. |
 | run process **crashed** (no settle) | gen_statem died. | **Harness bug.** File via `rmap new`. |
@@ -132,13 +132,13 @@ Failed runs retain the worktree at `result.worktree_path` for inspection. Approv
 
 **Live-run intervention (not recovery of a dead run):** `dispatch-hold` (optionally `interrupt: true`) parks a live run mid-turn, `dispatch-steer` stashes guidance applied on resume, `dispatch-resume` un-pauses in place, `dispatch-cancel` kills it (idempotent). Use hold → steer → resume to force-hand a grinding implementer to the reviewer gate instead of burning the lifetime budget.
 
-**The gate before any reset-to-pending + re-dispatch:** `git branch -a | grep harness/<run-id>` and `git log --oneline origin/<target>..harness/<run-id>`. Commits present ⇒ recover, never redo.
+**The gate before any reset-to-pending + re-dispatch:** `git branch -a | grep harness/<run-id>` and `git log --oneline origin/<target>..harness/<run-id>`. Commits present ⇒ explicitly judge whether to resume, re-review or replace; justify discarding them.
 
 **🚨 First, confirm the run actually *didn't* land — check `origin`, not your local checkout.** Under `landing_policy: :auto` the lander pushes to `origin/<target>` from a detached worktree, then `Harness.Git.TargetSync` may fast-forward the operator's local target when that is safe (off-target → ff the branch ref; on-target + clean tree → `merge --ff-only`). It skips — witnessed, never `--force` — when the tree is dirty, the update is not a fast-forward, or the target is this running node's own source tree (self-host: path identity, not the project name). Under dogfooding that self-host skip is the common case, so after an autonomous land your local `tasks.toml` is **stale**: it still reads `in_progress` for a task the lander already marked `done --shipped-in` on origin. **Reading that stale local status as "the run didn't land" is the trap** — it triggers a wasteful reset-to-`pending` + re-dispatch that *duplicate-lands already-shipped work*. Before concluding anything from task status, `git fetch origin <target> && git rebase origin/<target>` (the existing "Sync main before committing" rule) or read ground truth directly:
 - `git log --oneline origin/<target>` — does it already show `task <id> -> done (shipped …)` and the agent-delivery commit? Then it **landed**; your local view was just behind. Do nothing but rebase.
 - `dispatch-status <run-id>` / `result_store-list_run_records run_id:<id>` — a record with `state: done, verdict: approve` means the run succeeded; cross-check landing against origin before touching the roadmap.
 
-The recovery primitives (`reland`/`rereview`/`resume_failed`) read the persisted `ResultStore` record, which **survives** worktree teardown and node restarts — so a genuinely approved-but-unlanded run (lander hit its land-cap, or a real rebase conflict retained the branch) is recoverable token-free via `dispatch-reland`. Reserve reset-to-`pending` for runs with **no committed branch and no settled record** — and only after confirming against `origin` that the work isn't already shipped.
+The recovery primitives (`reland`/`rereview`/`resume_failed`) read the persisted `ResultStore` record, which **survives** worktree teardown and node restarts — so a genuinely approved-but-unlanded run (lander hit its land-cap, or a real rebase conflict retained the branch) is recoverable token-free via `dispatch-reland`. Returning to `pending` requests a new AI decision, not a clean-slate retry — and only after confirming against `origin` that the work isn't already shipped.
 
 ### Parallel Dispatch
 
@@ -323,3 +323,38 @@ The two blind classes, both real-correctness, both passing every per-task check:
 | Cross-checkout consumer setup | `skills/harness-driver/SKILL.md` § "Context A" |
 | D/B/U scoring, task writing | `task-prioritization.md`, `task-writing.md` |
 | Manual session/PR/audit chain | `dev-lifecycle.md`, `worktree-workflow.md` |
+
+
+## Recovery-aware cron decisions
+
+A singleton with no persisted attempts may dispatch directly. Any task with
+history, and every multi-task wave, goes to the orchestrator AI with project/task
+identity, fingerprints, reviewer evidence, retained branch tips and origin
+ancestry. A failed history read stops the tick; it never means "no attempts".
+
+`.harness/cron-plan.json` dispatch entries support `action` (`fresh`, `resume`,
+`rereview`), `source_run_id` for recovery, `adapter`, `model` and `reason`.
+History requires an explicit action, model and rationale. The AI decides whether
+commits are useful; `fresh` must explain why prior work is being discarded.
+`skip` defers. No error-prose classifier, retry count or escalation ladder chooses
+this policy.
+
+Cron, parked manual approvals, `dispatch-resume_failed(run_id, escalate)` and
+`dispatch-rereview(run_id)` enqueue through the project Oban queue. Public recovery
+returns the queued run id, not a promise that an agent has already started.
+Resume pins the retained SHA and injects the exact reviewer report; rereview
+enters the reviewer gate without an implementer. Existing live `dispatch-resume`
+and approved-work `dispatch-reland` retain their distinct meanings.
+
+Approval retains action, source SHA, fingerprint, selected agent/model, rationale
+and secret scrubbing. The worker revalidates identity, history, routing, branch
+availability/tip and origin ancestry before spawning. Stale selections cancel
+visibly for re-planning; there is no fallback to a clean run. Coalesced recovery
+is rejected rather than narrowing membership; legacy membership is checked from
+retained Oban job data when absent from the run record. Unknown membership or
+missing fingerprints cannot establish safe recovery identity.
+
+Run records and status/verdict responses expose `dispatch_decision`; durable
+`task_ids` preserves coalesced membership. Deploy migration
+`20260918230000_add_dispatch_decision_to_run_records` before activating this code.
+The driving orchestrator owns runtime activation and installed-skill propagation.

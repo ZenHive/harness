@@ -9,9 +9,9 @@ defmodule Harness.Cron.RoadmapPoller do
     * **The gate (mechanical, every tick).** Count how many `rmap ready
       --dispatchable` tasks carry autonomous dispatch intent (a real, non-human
       `assignee`). Counting is ~free and decides nothing about grouping.
-    * **One task → direct dispatch.** A lone task has no batching judgment to make,
-      so it is routed by its `assignee` and enqueued without orchestrator overhead.
-    * **Many tasks → the orchestrator AI** (`Harness.Cron.Orchestrator`). It reads
+    * **One task without history → direct dispatch.** A genuine first attempt
+      is routed by its `assignee`. History read failures stop dispatch.
+    * **Prior attempts or many tasks → the orchestrator AI** (`Harness.Cron.Orchestrator`). It reads
       the full ready set + in-flight touches + capability facts and emits a
       dispatch plan; harness reads the plan mechanically and enqueues it. The
       grouping/sequencing JUDGMENT (which tasks batch, which defer to avoid a
@@ -59,6 +59,8 @@ defmodule Harness.Cron.RoadmapPoller do
   alias Harness.Cron.PendingDispatch
   alias Harness.Cron.Settings
   alias Harness.Cron.UnroutableNotice
+  alias Harness.Dispatch.Attempts
+  alias Harness.Dispatch.Decision
   alias Harness.Dispatch.WriteSetPlan
   alias Harness.Git
   alias Harness.Git.TargetSync
@@ -79,7 +81,7 @@ defmodule Harness.Cron.RoadmapPoller do
   @dispatch_meta %{harness_stage: "cron_poll"}
   # The orchestrator reasons about touch-disjointness, so the ready set is
   # projected with full task context (not just routing keys) when fetched here.
-  @orchestrator_ready_fields ~w(id assignee model markers scores touches files_to_modify dep_layer title body)
+  @orchestrator_ready_fields ~w(id assignee model markers scores touches files_to_modify dep_layer title body acceptance_criteria out_of_scope)
   @default_subscription_env_scrubs %{
     claude: %{"ANTHROPIC_API_KEY" => false},
     codex: %{"OPENAI_API_KEY" => false}
@@ -175,11 +177,7 @@ defmodule Harness.Cron.RoadmapPoller do
     end
   end
 
-  # The mechanical upside-count gate (mantra: count facts in code). Counting how
-  # many tasks carry dispatch intent is pure arithmetic; the grouping JUDGMENT is
-  # the orchestrator's, woken only when the count shows upside (≥2). Zero →
-  # nothing; one → direct dispatch (no orchestrator overhead for a lone task);
-  # many → the orchestrator decides the wave.
+  # History is a fact, never a policy: a prior attempt requires an AI decision.
   @spec dispatch_decision(Project.t(), [map()]) :: :ok
   defp dispatch_decision(%Project{} = project, tasks) do
     {dispatchable, undispatchable} = Enum.split_with(tasks, &dispatchable?/1)
@@ -188,10 +186,11 @@ defmodule Harness.Cron.RoadmapPoller do
     plan = WriteSetPlan.plan(dispatchable)
     log_serialized_ready_set(project, plan)
 
-    case first_wave(plan) do
-      [] -> :ok
-      [task] -> direct_dispatch(project, task)
-      many -> orchestrate(project, many)
+    case Attempts.attach(project, first_wave(plan)) do
+      {:ok, []} -> :ok
+      {:ok, [%{"attempts" => []} = task]} -> direct_dispatch(project, task)
+      {:ok, tasks} -> orchestrate(project, tasks)
+      {:error, reason} -> log_orchestrator_error(project, {:history_unavailable, reason})
     end
   end
 
@@ -218,14 +217,13 @@ defmodule Harness.Cron.RoadmapPoller do
     match?(agent when is_atom(agent) and agent not in [:human, :no_assignee], task_agent(task))
   end
 
-  # The N==1 path: a lone task has no grouping to judge, so route by its assignee
-  # and enqueue directly without paying the orchestrator round-trip.
+  # A singleton with no prior attempt uses its roadmap routing directly.
   @spec direct_dispatch(Project.t(), map()) :: :ok
   defp direct_dispatch(%Project{} = project, task) do
     route_and_enqueue(project, to_string(task["id"]), task_agent(task), task)
   end
 
-  # The N≥2 path: the orchestrator AI returns the dispatch plan; harness reads it
+  # Prior attempts and multi-task waves require an AI plan; harness reads it
   # mechanically. An empty/malformed/agent-failed plan dispatches NOTHING this
   # tick (never a blind fan-out — that was the stale-base damage); the next tick
   # re-plans against the fresher base.
@@ -246,18 +244,25 @@ defmodule Harness.Cron.RoadmapPoller do
   # task is in the woken set, the named adapter resolves, the agent is available —
   # then enqueues. Concurrency stays capped by the Oban queue limit.
   @spec enqueue_planned(Project.t(), Orchestrator.dispatch_entry(), %{optional(String.t()) => map()}) :: :ok
-  defp enqueue_planned(%Project{} = project, %{task_id: item_id, adapter: adapter}, tasks_by_id) do
+  defp enqueue_planned(%Project{} = project, %{task_id: item_id, adapter: adapter} = entry, tasks_by_id) do
     with {:ok, task} <- Map.fetch(tasks_by_id, item_id),
-         agent when is_atom(agent) <- resolve_assignee(adapter) do
+         agent when is_atom(agent) <- resolve_assignee(adapter),
+         {:ok, decision} <- Decision.capture(project, task, entry) do
+      task =
+        if task["attempts"] == [] and not Map.has_key?(entry, :action),
+          do: task,
+          else: Map.put(task, "decision", decision)
+
       route_and_enqueue(project, item_id, agent, task)
     else
+      {:error, reason} -> log_dispatch_skip(project, item_id, reason)
       :error -> log_dispatch_skip(project, item_id, :not_in_ready_set)
       {:unsupported_assignee, raw} -> log_dispatch_skip(project, item_id, {:unsupported_adapter, raw})
     end
   end
 
-  # Shared tail for both dispatch paths (the N==1 direct path and each N>=2
-  # planned entry): resolve the agent to an adapter, apply the operator/
+  # Shared tail for direct dispatch and planned entries: resolve the adapter,
+  # apply the operator/
   # availability gate, then enqueue OR park. A disabled or quota-exhausted agent
   # is logged and skipped, never dispatched. The mode gate keys solely off the
   # project's dispatch mode — no "is this run high-stakes" judgment in code.
@@ -266,7 +271,14 @@ defmodule Harness.Cron.RoadmapPoller do
     with {:ok, adapter} <- AgentRegistry.delegatable_module_for_agent(agent),
          :ok <- ensure_adapter_available(agent, adapter),
          :ok <- ensure_model_available(agent, adapter, task, item_id) do
-      enqueue_or_park(project, item_id, adapter)
+      opts = [
+        requested_model: effective_model(task, agent),
+        task_fingerprint: task["task_fingerprint"],
+        cron_first_attempt: task["attempts"] == []
+      ]
+
+      opts = if task["decision"], do: Keyword.put(opts, :dispatch_decision, task["decision"]), else: opts
+      enqueue_or_park(project, item_id, adapter, opts)
     else
       {:error, reason} -> log_dispatch_skip(project, item_id, reason)
       {:suppress, reason, adapter} -> log_dispatch_suppression(project, item_id, adapter, reason)
@@ -302,6 +314,8 @@ defmodule Harness.Cron.RoadmapPoller do
   end
 
   @spec effective_model(map(), AgentRegistry.agent()) :: String.t() | nil
+  defp effective_model(%{"decision" => %{"model" => model}}, _agent) when is_binary(model), do: model
+
   defp effective_model(%{"model" => model} = task, agent) when is_binary(model) and model != "" do
     if task_agent(task) == agent, do: model, else: Config.agent_model(agent)
   end
@@ -311,20 +325,20 @@ defmodule Harness.Cron.RoadmapPoller do
   # The single enqueue boundary both autonomous paths share. Under `:manual` the
   # resolved decision is parked for operator approval; under `:auto` it is
   # enqueued exactly as before (byte-identical to the pre-Task-237 behaviour).
-  @spec enqueue_or_park(Project.t(), String.t(), module()) :: :ok
-  defp enqueue_or_park(%Project{} = project, item_id, adapter) do
+  @spec enqueue_or_park(Project.t(), String.t(), module(), keyword()) :: :ok
+  defp enqueue_or_park(%Project{} = project, item_id, adapter, opts) do
     case Settings.dispatch_mode(project) do
-      :manual -> park_for_approval(project, item_id, adapter)
-      :auto -> auto_enqueue(project, item_id, adapter)
+      :manual -> park_for_approval(project, item_id, adapter, opts)
+      :auto -> auto_enqueue(project, item_id, adapter, opts)
     end
   end
 
-  @spec auto_enqueue(Project.t(), String.t(), module()) :: :ok
-  defp auto_enqueue(%Project{} = project, item_id, adapter) do
+  @spec auto_enqueue(Project.t(), String.t(), module(), keyword()) :: :ok
+  defp auto_enqueue(%Project{} = project, item_id, adapter, opts) do
     if run_in_flight?(project, item_id) do
       log_dispatch_skip(project, item_id, :run_already_in_flight)
     else
-      case enqueue_run(project, item_id, adapter) do
+      case enqueue_run(project, item_id, adapter, opts) do
         {:ok, _job} -> :ok
         {:error, reason} -> log_dispatch_skip(project, item_id, reason)
       end
@@ -335,12 +349,12 @@ defmodule Harness.Cron.RoadmapPoller do
   # now (same value the auto path applies) so approval honours it without
   # re-deriving. A witness event fires only on a freshly-parked decision, so a
   # re-tick of an already-parked task does not re-notify.
-  @spec park_for_approval(Project.t(), String.t(), module()) :: :ok
-  defp park_for_approval(%Project{} = project, item_id, adapter) do
+  @spec park_for_approval(Project.t(), String.t(), module(), keyword()) :: :ok
+  defp park_for_approval(%Project{} = project, item_id, adapter, opts) do
     if run_in_flight?(project, item_id) do
       :ok
     else
-      case PendingDispatch.park(project.name, item_id, adapter, env_scrub_for_adapter(adapter)) do
+      case PendingDispatch.park(project.name, item_id, adapter, env_scrub_for_adapter(adapter), opts) do
         {:parked, record} ->
           Notification.notify(park_event(project, record))
           log_park(project, item_id, adapter)
@@ -392,11 +406,24 @@ defmodule Harness.Cron.RoadmapPoller do
     end
   end
 
-  @spec enqueue_run(Project.t(), String.t(), module()) :: {:ok, Oban.Job.t()} | {:error, term()}
-  defp enqueue_run(%Project{} = project, item_id, adapter) when is_binary(item_id) and is_atom(adapter) do
-    opts = [env: env_scrub_for_adapter(adapter), meta: @dispatch_meta]
-    {_run_id, changeset} = RunWorker.new_dispatch_job(project, item_id, adapter, opts)
-    Harness.Oban.insert(changeset)
+  @spec enqueue_run(Project.t(), String.t(), module(), keyword()) :: {:ok, Oban.Job.t()} | {:error, term()}
+  defp enqueue_run(%Project{} = project, item_id, adapter, opts) when is_binary(item_id) and is_atom(adapter) do
+    opts = Keyword.merge(opts, env: env_scrub_for_adapter(adapter), meta: @dispatch_meta)
+    {:ok, agent} = AgentRegistry.agent_for_module(adapter)
+    decision = Keyword.get(opts, :dispatch_decision, %{})
+
+    item = %Harness.Roadmap.Item{
+      id: item_id,
+      title: "",
+      prompt: "",
+      agent: agent,
+      fingerprint: decision["task_fingerprint"]
+    }
+
+    case RunWorker.enqueue(project, item, adapter, opts) do
+      {:ok, _run_id, job} -> {:ok, job}
+      {:error, _reason} = error -> error
+    end
   end
 
   @spec env_scrub_for_adapter(module()) :: %{optional(String.t()) => false}

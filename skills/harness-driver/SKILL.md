@@ -136,6 +136,7 @@ For every dispatched task, the cross-family reviewer AI's verdict — not the im
 | `dispatch-transcript` / `dispatch-transcript_events` | Buffered raw / parsed transcript for a live run, with a `seq` to poll deltas. |
 | `dispatch-cancel` | Cancel an in-flight run (idempotent). |
 | `dispatch-hold` / `dispatch-steer` / `dispatch-resume` | Operator-mediated run recovery by `run_id`: park a run (`hold`, `interrupt:` to kill the agent now), stash guidance for the next agent boundary (`steer`), re-enter `:running` in the same worktree (`resume`). The JSON-native counterparts to `Harness.Run.hold/2` · `steer/2` · `resume/1`. |
+| `dispatch-rereview` | Queue a reviewer-only run from a retained, validated commit. No implementer runs; stale selections fail visibly instead of starting fresh. |
 | `dispatch-resume_failed` | Recover a SETTLED `:failed` run by `run_id`: re-dispatch its roadmap task on a NEW run branched off the retained `harness/<run-id>` branch (prior commits are the start point) with the failure report injected. Same agent by default; `escalate: true` routes via capability score to the recommended agent. DISTINCT from `dispatch-resume` (which un-pauses a live `:held` run). |
 | `dispatch-reland` | Re-enqueue the landing job for a run whose land-train hit its cap and left the task `blocked`. Pure git, reviewer-approved branch — **zero agent tokens**. `Harness.Dispatch.reland/1` → `Harness.Lander.enqueue/1`. |
 | `dispatch-verdict_detail` | After settle, read the **reviewer's verdict / report / ratings / checks / concerns / proposed tasks / warning flag** by `run_id` — loaded from the persisted record, so it works after the run process is gone. |
@@ -654,3 +655,38 @@ Load those in addition to this skill when doing deep harness orchestration work.
 **This skill is the thing an AI should load first when it finds itself in a context where harness is available as a delegation engine** — whether that's because it's running inside the harness checkout itself (Context B) or because its consuming repo has been wired up to drive harness (Context A).
 
 Use it. Keep it accurate. Dispatch through harness.
+
+
+## Recovery-aware cron decisions
+
+A singleton with no persisted attempts may dispatch directly. Any task with
+history, and every multi-task wave, goes to the orchestrator AI with project/task
+identity, fingerprints, reviewer evidence, retained branch tips and origin
+ancestry. A failed history read stops the tick; it never means "no attempts".
+
+`.harness/cron-plan.json` dispatch entries support `action` (`fresh`, `resume`,
+`rereview`), `source_run_id` for recovery, `adapter`, `model` and `reason`.
+History requires an explicit action, model and rationale. The AI decides whether
+commits are useful; `fresh` must explain why prior work is being discarded.
+`skip` defers. No error-prose classifier, retry count or escalation ladder chooses
+this policy.
+
+Cron, parked manual approvals, `dispatch-resume_failed(run_id, escalate)` and
+`dispatch-rereview(run_id)` enqueue through the project Oban queue. Public recovery
+returns the queued run id, not a promise that an agent has already started.
+Resume pins the retained SHA and injects the exact reviewer report; rereview
+enters the reviewer gate without an implementer. Existing live `dispatch-resume`
+and approved-work `dispatch-reland` retain their distinct meanings.
+
+Approval retains action, source SHA, fingerprint, selected agent/model, rationale
+and secret scrubbing. The worker revalidates identity, history, routing, branch
+availability/tip and origin ancestry before spawning. Stale selections cancel
+visibly for re-planning; there is no fallback to a clean run. Coalesced recovery
+is rejected rather than narrowing membership; legacy membership is checked from
+retained Oban job data when absent from the run record. Unknown membership or
+missing fingerprints cannot establish safe recovery identity.
+
+Run records and status/verdict responses expose `dispatch_decision`; durable
+`task_ids` preserves coalesced membership. Deploy migration
+`20260918230000_add_dispatch_decision_to_run_records` before activating this code.
+The driving orchestrator owns runtime activation and installed-skill propagation.
