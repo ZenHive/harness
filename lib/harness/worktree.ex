@@ -177,7 +177,8 @@ defmodule Harness.Worktree do
 
   @typedoc "A reason a worktree operation can fail with."
   @type error ::
-          {:repo_not_found, String.t()}
+          File.posix()
+          | {:repo_not_found, String.t()}
           | {:not_a_git_repo, String.t()}
           | {:worktree_missing, String.t()}
           | {:marker_write_failed, String.t(), File.posix()}
@@ -727,9 +728,21 @@ defmodule Harness.Worktree do
   @doc "Serializes preparation writes and finalization for one worktree on this node."
   @spec with_write_lock(String.t(), (-> result)) :: result | {:error, error()} when result: var
   def with_write_lock(path, fun) do
-    case :global.trans({{__MODULE__, :writes, Path.expand(path)}, self()}, fun, [node()]) do
-      :aborted -> {:error, {:worktree_lock_aborted, path}}
-      result -> result
+    with {:ok, identity} <- write_lock_identity(path) do
+      case :global.trans({{__MODULE__, :writes, identity}, self()}, fun, [node()]) do
+        :aborted -> {:error, {:worktree_lock_aborted, path}}
+        result -> result
+      end
+    end
+  end
+
+  @spec write_lock_identity(String.t()) :: {:ok, term()} | {:error, File.posix()}
+  defp write_lock_identity(path) do
+    # Symlink aliases (including macOS /var and /private/var) share one lock.
+    case File.stat(path) do
+      {:ok, stat} -> {:ok, {stat.major_device, stat.minor_device, stat.inode}}
+      {:error, :enoent} -> {:ok, Path.expand(path)}
+      {:error, _reason} = error -> error
     end
   end
 

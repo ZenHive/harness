@@ -337,7 +337,7 @@ defmodule Harness.ProjectCacheTest do
     )
   end
 
-  test "empty and omitted exclusions preserve the independently reconstructed legacy key", c do
+  test "empty and omitted exclusions share the physical-source generation key", c do
     path = "kept\tfile\n"
     File.write!(Path.join(c.repo, path), "retained bytes")
     commit(c.repo, path)
@@ -359,8 +359,9 @@ defmodule Harness.ProjectCacheTest do
 
     {tree, 0} = System.cmd("git", ["ls-tree", "-r", "-z", wt.base_sha, "--", "."], cd: c.repo)
 
+    # Generation format 2 stores physical source paths for PLT relocation.
     identity =
-      {1, Path.expand(c.repo), tree, legacy, [:crypto.hash(:sha256, "tool-one")], :os.type(),
+      {2, Path.expand(c.repo), tree, legacy, [:crypto.hash(:sha256, "tool-one")], :os.type(),
        :erlang.system_info(:system_architecture), %{}}
 
     expected = :sha256 |> :crypto.hash(:erlang.term_to_binary(identity, [:deterministic])) |> Base.encode16(case: :lower)

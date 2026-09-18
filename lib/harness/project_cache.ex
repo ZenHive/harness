@@ -16,6 +16,9 @@ defmodule Harness.ProjectCache do
 
   require Logger
 
+  # Generations record physical build roots so restored PLT paths match OTP.
+  @generation_format_version 2
+
   @doc "Prepares and seeds configured artifacts, then performs legacy warming."
   @spec warm(Worktree.t(), map() | nil, keyword()) :: :ok
   def warm(worktree, recipe, opts \\ []) do
@@ -115,7 +118,7 @@ defmodule Harness.ProjectCache do
          {:ok, tools} <-
            Command.run_all(recipe["identity_commands"], worktree.path, environment, owner, deadline, :digest) do
       identity = {
-        1,
+        @generation_format_version,
         Path.expand(worktree.repo),
         filter_inputs(inputs, recipe["exclude_inputs"]),
         recipe_identity(recipe),
@@ -194,6 +197,8 @@ defmodule Harness.ProjectCache do
       with :ok <- File.mkdir_p(stage),
            {:ok, _} <- Git.run(["clone", "--shared", "--no-checkout", "--", worktree.repo, source], stage),
            {:ok, _} <- Git.run(["checkout", "--detach", worktree.base_sha], source),
+           {:ok, physical_source} <- Git.run(["rev-parse", "--show-toplevel"], source),
+           source = String.trim(physical_source),
            :ok <- Artifacts.validate_outputs(source, recipe["paths"]),
            {:ok, seed} <- seed_build(%{worktree | path: source}, recipe, destination, owner, deadline),
            {:ok, _outputs} <- Command.run_all(recipe["commands"], source, recipe["env"], owner, deadline),

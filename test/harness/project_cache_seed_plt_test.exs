@@ -10,7 +10,10 @@ defmodule Harness.ProjectCacheSeedPltTest do
   test "application-containing PLT is relocated, updated and still rejects a changed invalid contract" do
     repo = GitFixture.init_repo()
     base = GitFixture.tmp_base()
+    physical_cache = GitFixture.tmp_base()
+    File.mkdir_p!(physical_cache)
     cache = GitFixture.tmp_base()
+    File.ln_s!(physical_cache, cache)
     File.mkdir_p!(Path.join(repo, "lib"))
     File.mkdir_p!(Path.join(repo, "vendor/dep/lib"))
     File.write!(Path.join(repo, ".gitignore"), "_build/\n")

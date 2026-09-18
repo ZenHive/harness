@@ -10,7 +10,10 @@ defmodule Harness.ProjectCachePltTest do
   test "real Elixir dependency builds in dev/test and a relocated project PLT survives normal checking" do
     repo = GitFixture.init_repo()
     base = GitFixture.tmp_base()
+    physical_cache = GitFixture.tmp_base()
+    File.mkdir_p!(physical_cache)
     cache = GitFixture.tmp_base()
+    File.ln_s!(physical_cache, cache)
     File.mkdir_p!(Path.join(repo, "vendor/cache_dep/lib"))
     File.mkdir_p!(Path.join(repo, "priv"))
     File.mkdir_p!(Path.join(repo, "lib"))
