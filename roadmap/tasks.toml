@@ -13478,7 +13478,7 @@ scored_at = "2026-09-14"
 id = "435"
 phase = 19
 bundle = "contract"
-status = "pending"
+status = "in_progress"
 title = "Preserve failed-attempt context and let the cron orchestrator choose recover versus restart"
 scores = { d = 7, b = 10, u = 9 }
 markers = ["bug"]
@@ -13499,4 +13499,5 @@ Carry the decision action, source run, selected SHA, task fingerprint, agent/mod
 Update existing driver/workflow documentation to remove the contradictory blind redispatch guidance and describe the new artifacts/API behavior; do not edit AGENTS.md by hand. Runtime activation, installed-skill propagation and Tapakly recovery are owned by the driving orchestrator after this task lands. Do not modify live settings, start/restart services, enable cron, touch other repos or mutate the operator checkout.
 """
 created_at = "2026-09-18"
+started_at = "2026-09-18"
 scored_at = "2026-09-18"
