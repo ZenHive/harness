@@ -37,7 +37,7 @@ defmodule Harness.RoutingTest do
     put_installed(%{Claude => true, Codex => true, Cursor => true})
     enable_agents([:claude, :codex, :cursor])
     put_catalogs()
-    put_agent_models(claude: "claude-opus-4-8", codex: "gpt-5.5", cursor: "composer-2.5")
+    put_agent_models(claude: "claude-opus-4-8", codex: "gpt-6-astra", cursor: "composer-2.5")
 
     on_exit(fn ->
       AgentRegistry.reset()
@@ -56,7 +56,7 @@ defmodule Harness.RoutingTest do
     assert :ok = ResultStore.record_run(ResultStoreContract.log_record(run_id: "r2", agent: :codex), store)
 
     assert {:ok, %{pairs: pairs}} = Routing.brief(include_all: true, domains: ["otp"])
-    codex = pair!(pairs, "codex", "gpt-5.5")
+    codex = pair!(pairs, "codex", "gpt-6-astra")
 
     assert %{
              roster: %{
@@ -87,11 +87,11 @@ defmodule Harness.RoutingTest do
                  run_id: "reviewer-false-approval",
                  agent: :cursor,
                  reviewer_adapter: Codex,
-                 reviewer_model: "gpt-5.5",
+                 reviewer_model: "gpt-6-astra",
                  verdict: :approve,
                  approved_then_found_red: %{
                    "reviewer_agent" => "codex",
-                   "reviewer_model" => "gpt-5.5",
+                   "reviewer_model" => "gpt-6-astra",
                    "cold_check" => %{"passed" => false}
                  }
                ),
@@ -99,7 +99,7 @@ defmodule Harness.RoutingTest do
              )
 
     assert {:ok, %{pairs: pairs} = brief} = Routing.brief(include_all: true)
-    codex = pair!(pairs, "codex", "gpt-5.5")
+    codex = pair!(pairs, "codex", "gpt-6-astra")
 
     assert codex.kpi.reviewer_false_approval == %{value: 1.0, n: 1, count: 1}
     assert codex.kpi.reviewer_rejection == %{value: 0.0, n: 1, count: 0}
@@ -132,7 +132,7 @@ defmodule Harness.RoutingTest do
 
     assert Enum.map(pairs, &{&1.agent, &1.model, &1.model_required}) == [
              {"claude", "claude-opus-4-8", false},
-             {"codex", "gpt-5.5", false},
+             {"codex", "gpt-6-astra", false},
              {"cursor", "composer-2.5", false}
            ]
   end
@@ -183,7 +183,7 @@ defmodule Harness.RoutingTest do
 
     assert {:ok, %{pairs: pairs}} = Routing.brief(domains: ["otp"])
 
-    assert Enum.map(pairs, &{&1.agent, &1.model}) == [{"codex", "gpt-5.5"}]
+    assert Enum.map(pairs, &{&1.agent, &1.model}) == [{"codex", "gpt-6-astra"}]
   end
 
   test "include_all restores blocked and disabled catalog pairs" do
@@ -194,14 +194,14 @@ defmodule Harness.RoutingTest do
 
     assert pair!(pairs, "claude", "claude-opus-4-8").roster.enabled == false
     assert pair!(pairs, "cursor", "composer-2.5").availability.blocked == true
-    assert pair!(pairs, "codex", "gpt-5.5").availability.available == true
+    assert pair!(pairs, "codex", "gpt-6-astra").availability.available == true
   end
 
   test "agents filter narrows the returned pairs and ignores unknown agents" do
     assert {:ok, %{pairs: pairs}} = Routing.brief(agents: ["codex", "missing"])
 
     assert Enum.map(pairs, & &1.agent) == ["codex"]
-    assert pair!(pairs, "codex", "gpt-5.5")
+    assert pair!(pairs, "codex", "gpt-6-astra")
   end
 
   test "agents filter expands the selected agent to its full available catalog" do
@@ -256,12 +256,12 @@ defmodule Harness.RoutingTest do
   test "domains option still scopes KPI cells" do
     assert {:ok, %{domains: ["otp"], pairs: pairs}} = Routing.brief(domains: ["otp"], agents: ["codex"])
 
-    assert pair!(pairs, "codex", "gpt-5.5").kpi.domains == ["otp"]
+    assert pair!(pairs, "codex", "gpt-6-astra").kpi.domains == ["otp"]
   end
 
   test "domain cold-start surfaces n zero and explore candidate through KPI" do
     assert {:ok, %{pairs: pairs}} = Routing.brief(["otp"])
-    codex = pair!(pairs, "codex", "gpt-5.5")
+    codex = pair!(pairs, "codex", "gpt-6-astra")
 
     assert %{kpi: %{n: 0, explore_candidate: true}} = codex
     refute Map.has_key?(codex, :capability)
@@ -272,7 +272,7 @@ defmodule Harness.RoutingTest do
              ResultStore.record_run(ResultStoreContract.log_record(run_id: "configured-store", agent: :codex))
 
     assert {:ok, %{pairs: pairs}} = Routing.brief()
-    codex = pair!(pairs, "codex", "gpt-5.5")
+    codex = pair!(pairs, "codex", "gpt-6-astra")
 
     assert codex.kpi.n == 1
   end
@@ -322,7 +322,7 @@ defmodule Harness.RoutingTest do
     catalogs =
       Map.merge(
         %{
-          codex: [%{id: "gpt-5.5", label: "GPT-5.5", annotations: []}],
+          codex: [%{id: "gpt-6-astra", label: "GPT-6 Astra", annotations: []}],
           claude: [%{id: "claude-opus-4-8", label: "Opus 4.8", annotations: []}],
           cursor: [%{id: "composer-2.5", label: "Composer 2.5", annotations: []}]
         },

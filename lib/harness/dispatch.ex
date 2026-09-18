@@ -1314,7 +1314,7 @@ defmodule Harness.Dispatch do
   # A task's pinned model belongs to its pinned assignee. When a dispatch resolves
   # to a DIFFERENT agent than the pin (an explicit-adapter override, or — before the
   # precedence fix — a recommend/default override), carrying the pinned model yields
-  # an agent+model pair that's invalid or budget-capped (cursor + gpt-5.5, cursor +
+  # an agent+model pair that's invalid or budget-capped (cursor + gpt-6-astra, cursor +
   # grok-4.5). So a pinned model applies only on its own assignee's adapter; a
   # cross-agent dispatch uses the resolved agent's configured default instead. A
   # model pin with no assignee has no agent to contradict it, so it carries through.

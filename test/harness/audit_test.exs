@@ -347,7 +347,7 @@ defmodule Harness.AuditTest do
 
       seed_landed_record(store, ctx, "run-cold", "224", landed_sha,
         reviewer_adapter: FakeAdapter,
-        reviewer_model: "gpt-5.5-review",
+        reviewer_model: "gpt-5.6-sol",
         review_facets: %{"surface" => "otp"},
         domains: [:otp]
       )
@@ -400,7 +400,7 @@ defmodule Harness.AuditTest do
       assert record.approved_then_found_red == %{
                "reviewer_adapter" => Atom.to_string(FakeAdapter),
                "reviewer_agent" => nil,
-               "reviewer_model" => "gpt-5.5-review",
+               "reviewer_model" => "gpt-5.6-sol",
                "review_facets" => %{"surface" => "otp"},
                "domains" => ["otp"],
                "cold_check" => %{
@@ -813,10 +813,10 @@ defmodule Harness.AuditTest do
       # Regression: the audit Invocation must thread a model, or a model-capable
       # auditor (codex/claude/...) trips AgentAdapter.invoke/2's {:model_required}
       # guard and every post-merge audit errors out.
-      Application.put_env(:harness, :agent_model, codex: "gpt-5.5")
+      Application.put_env(:harness, :agent_model, codex: "gpt-6-astra")
       on_exit(fn -> Application.delete_env(:harness, :agent_model) end)
 
-      assert Audit.auditor_model(Harness.AgentAdapter.Codex) == "gpt-5.5"
+      assert Audit.auditor_model(Harness.AgentAdapter.Codex) == "gpt-6-astra"
     end
 
     test "yields nil for a module the registry can't reverse-map (test double)" do

@@ -440,7 +440,7 @@ defmodule Harness.Dashboard.MCPServerTest do
 
       assert :ok = ProjectRegistry.register(project)
 
-      Application.put_env(:harness, :agent_model, codex: "gpt-5.5")
+      Application.put_env(:harness, :agent_model, codex: "gpt-6-astra")
 
       Application.put_env(:harness, :oban_insert, fn _changeset ->
         {:ok,

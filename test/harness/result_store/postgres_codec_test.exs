@@ -184,7 +184,7 @@ defmodule Harness.ResultStore.PostgresCodecTest do
       fact = %{
         "reviewer_adapter" => Atom.to_string(Codex),
         "reviewer_agent" => "codex",
-        "reviewer_model" => "gpt-5.5",
+        "reviewer_model" => "gpt-6-astra",
         "review_facets" => %{"surface" => "otp"},
         "domains" => ["otp"],
         "cold_check" => %{"passed" => false, "command" => "mix precommit", "tail" => "red"}
@@ -194,13 +194,13 @@ defmodule Harness.ResultStore.PostgresCodecTest do
         ResultStoreContract.log_record(
           run_id: "jsonb-approved-then-found-red",
           reviewer_adapter: Codex,
-          reviewer_model: "gpt-5.5",
+          reviewer_model: "gpt-6-astra",
           approved_then_found_red: fact
         )
 
       decoded = roundtrip(record)
 
-      assert decoded.reviewer_model == "gpt-5.5"
+      assert decoded.reviewer_model == "gpt-6-astra"
       assert decoded.approved_then_found_red == fact
     end
 
@@ -375,7 +375,7 @@ defmodule Harness.ResultStore.PostgresCodecTest do
       FakeRepo.put_rows([
         %{
           reviewer_adapter: Atom.to_string(Codex),
-          reviewer_model: "gpt-5.5",
+          reviewer_model: "gpt-6-astra",
           reviewed_count: 4,
           rejection_count: 1,
           no_verdict_count: 1,
@@ -392,7 +392,7 @@ defmodule Harness.ResultStore.PostgresCodecTest do
       assert kpi.no_verdict_rate == 0.25
       assert kpi.false_approval_count == 1
       assert kpi.false_approval_rate == 0.25
-      assert kpi.by_model["gpt-5.5"].false_approval_count == 1
+      assert kpi.by_model["gpt-6-astra"].false_approval_count == 1
     end
 
     test "aggregate_reviewer_reliability preserves unknown reviewer names as string keys" do
@@ -544,7 +544,7 @@ defmodule Harness.ResultStore.PostgresCodecTest do
   defp reviewer_row(reviewer_adapter) do
     %{
       reviewer_adapter: reviewer_adapter,
-      reviewer_model: "gpt-5.5",
+      reviewer_model: "gpt-6-astra",
       reviewed_count: 1,
       rejection_count: 0,
       no_verdict_count: 0,

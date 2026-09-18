@@ -18,7 +18,7 @@ defmodule Harness.Worktree.IsolationIntegrationTest do
 
   Optional per-adapter model overrides (when the default is unavailable):
 
-      HARNESS_ISOLATION_TRIPWIRE_MODEL_CODEX=gpt-5.5 \\
+      HARNESS_ISOLATION_TRIPWIRE_MODEL_CODEX=gpt-6-astra \\
       HARNESS_ISOLATION_TRIPWIRE_MODEL_CURSOR=composer-2.5 \\
         mix test --include integration test/harness/worktree/isolation_integration_test.exs
 
@@ -57,7 +57,7 @@ defmodule Harness.Worktree.IsolationIntegrationTest do
 
   @default_models %{
     Claude => "sonnet",
-    Codex => "gpt-5.5",
+    Codex => "gpt-6-astra",
     Cursor => "composer-2.5",
     Grok => "grok-composer-2.5-fast",
     Antigravity => "gemini-3.5-flash"

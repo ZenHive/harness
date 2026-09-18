@@ -401,15 +401,15 @@ defmodule Harness.AgentKPITest do
       records = [
         record(
           reviewer_adapter: CodexReviewer,
-          reviewer_model: "gpt-5.5",
+          reviewer_model: "gpt-6-astra",
           verdict: :approve,
           approved_then_found_red: %{"cold_check" => %{"passed" => false}}
         ),
-        record(reviewer_adapter: CodexReviewer, reviewer_model: "gpt-5.5", verdict: :approve),
-        record(reviewer_adapter: CodexReviewer, reviewer_model: "gpt-5.5", verdict: :reject),
+        record(reviewer_adapter: CodexReviewer, reviewer_model: "gpt-6-astra", verdict: :approve),
+        record(reviewer_adapter: CodexReviewer, reviewer_model: "gpt-6-astra", verdict: :reject),
         record(
           reviewer_adapter: CodexReviewer,
-          reviewer_model: "gpt-5.5-mini",
+          reviewer_model: "gpt-5.6-luna",
           verdict: :approve,
           approved_then_found_red: %{"cold_check" => %{"passed" => false}}
         ),
@@ -421,7 +421,7 @@ defmodule Harness.AgentKPITest do
       assert ledger[CodexReviewer].false_approval_count == 2
       assert ledger[CodexReviewer].false_approval_rate == 0.5
 
-      assert ledger[CodexReviewer].by_model["gpt-5.5"] == %{
+      assert ledger[CodexReviewer].by_model["gpt-6-astra"] == %{
                reviewed_count: 3,
                rejection_count: 1,
                rejection_rate: 1 / 3,
@@ -431,7 +431,7 @@ defmodule Harness.AgentKPITest do
                false_approval_rate: 1 / 3
              }
 
-      assert ledger[CodexReviewer].by_model["gpt-5.5-mini"].false_approval_rate == 1.0
+      assert ledger[CodexReviewer].by_model["gpt-5.6-luna"].false_approval_rate == 1.0
       assert ledger[ClaudeReviewer].false_approval_count == 0
       assert ledger[ClaudeReviewer].false_approval_rate == 0.0
     end

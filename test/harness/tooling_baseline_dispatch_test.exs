@@ -59,7 +59,7 @@ defmodule Harness.ToolingBaseline.DispatchTest do
 
     Application.put_env(:harness, :roadmap_ingest, fn {:id, "801"}, opts ->
       send(owner, {:ingested, opts[:project].name, opts[:agent]})
-      {:ok, %RoadmapItem{id: "801", title: "baseline", prompt: "prompt", agent: opts[:agent], model: "gpt-5.5"}}
+      {:ok, %RoadmapItem{id: "801", title: "baseline", prompt: "prompt", agent: opts[:agent], model: "gpt-6-astra"}}
     end)
 
     Application.put_env(:harness, :tooling_baseline_enqueuer, fn enqueued_project, item, adapter, opts ->
@@ -68,14 +68,14 @@ defmodule Harness.ToolingBaseline.DispatchTest do
     end)
 
     assert {:ok, %{tasks: [task], skipped_languages: [%{language: :rust}]}} =
-             Dispatch.dispatch(project.name, "codex", "gpt-5.5", true)
+             Dispatch.dispatch(project.name, "codex", "gpt-6-astra", true)
 
     assert task.run_id == "run-801"
     assert task.task_id == "801"
     assert task.missing == ["dep:credo", "alias:ci", "config:.credo.exs"]
     assert task.skipped_languages == [%{language: :rust, reason: {:unsupported_language, :rust}}]
 
-    assert_received {:created, "tooling-baseline-dispatch", [%TaskSpec{} = spec], "codex", "gpt-5.5"}
+    assert_received {:created, "tooling-baseline-dispatch", [%TaskSpec{} = spec], "codex", "gpt-6-astra"}
     assert spec.body =~ "Ground-truth tooling baseline drift facts"
     assert spec.body =~ "| dep | credo | dep:credo |"
     assert spec.body =~ "| alias | ci | alias:ci |"
@@ -92,7 +92,7 @@ defmodule Harness.ToolingBaseline.DispatchTest do
     assert_received {:enqueued, "tooling-baseline-dispatch", "801", Codex, opts}
     assert Keyword.fetch!(opts, :check_command) == "mix compile --warnings-as-errors && mix ci"
     assert Keyword.fetch!(opts, :env) == %{"ANTHROPIC_API_KEY" => false}
-    assert Keyword.fetch!(opts, :requested_model) == "gpt-5.5"
+    assert Keyword.fetch!(opts, :requested_model) == "gpt-6-astra"
   end
 
   test "unsupported languages are returned as skipped without creating an Elixir task" do

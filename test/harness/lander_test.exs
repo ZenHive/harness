@@ -724,11 +724,11 @@ defmodule Harness.LanderTest do
 
       put_resolver(fn %{path: path}, _opts ->
         File.write!(Path.join(path, "README.md"), "<<<<<<< HEAD\nmain side\n=======\nbranch side\n>>>>>>> x\n")
-        {:ok, %{agent: :codex, module: Codex, model: "gpt-5.5"}}
+        {:ok, %{agent: :codex, module: Codex, model: "gpt-6-astra"}}
       end)
 
       assert {:conflict, output} = Lander.land(ctx.request)
-      assert output =~ "resolver witness: agent spawned: codex model=gpt-5.5; unresolved conflict markers remain"
+      assert output =~ "resolver witness: agent spawned: codex model=gpt-6-astra; unresolved conflict markers remain"
       assert sha(ctx.origin, "refs/heads/main") == moved_main
     end
 

@@ -927,7 +927,7 @@ defmodule Harness.DispatchTest do
         prompt: "p",
         agent: :claude,
         assignee: :codex,
-        model: "gpt-5.5",
+        model: "gpt-6-astra",
         domains: [:otp]
       }
 

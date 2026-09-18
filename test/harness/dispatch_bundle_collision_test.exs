@@ -81,7 +81,7 @@ defmodule Harness.DispatchBundleCollisionTest do
     :ok = ProjectRegistry.register(project)
 
     tasks = [
-      task("27", assignee: "codex", model: "gpt-5.5"),
+      task("27", assignee: "codex", model: "gpt-6-astra"),
       task("28", assignee: "cursor", model: "composer-2.5"),
       task("29", assignee: "grok", model: "grok-composer-2.5-fast")
     ]
@@ -123,7 +123,7 @@ defmodule Harness.DispatchBundleCollisionTest do
                      %{
                        item_id: "27",
                        adapter_module: "Elixir.Harness.AgentAdapter.Codex",
-                       requested_model: "gpt-5.5"
+                       requested_model: "gpt-6-astra"
                      }}
 
     assert_received {:inserted,

@@ -72,8 +72,8 @@ defmodule Harness.MapContractsTest do
   end
 
   test "CatalogEntry coerces persisted map rows" do
-    entry = CatalogEntry.coerce(%{id: "gpt-5.5", label: "GPT-5.5", annotations: ["default"]})
-    assert entry.id == "gpt-5.5"
+    entry = CatalogEntry.coerce(%{id: "gpt-6-astra", label: "GPT-6 Astra", annotations: ["default"]})
+    assert entry.id == "gpt-6-astra"
     assert entry.annotations == ["default"]
   end
 

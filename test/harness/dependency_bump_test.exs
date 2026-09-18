@@ -73,7 +73,7 @@ defmodule Harness.DependencyBumpTest do
 
     Application.put_env(:harness, :roadmap_ingest, fn {:id, "501"}, opts ->
       send(owner, {:ingested, opts[:project].name, opts[:agent]})
-      {:ok, %Item{id: "501", title: "deps", prompt: "prompt", agent: opts[:agent], model: "gpt-5.5"}}
+      {:ok, %Item{id: "501", title: "deps", prompt: "prompt", agent: opts[:agent], model: "gpt-6-astra"}}
     end)
 
     Application.put_env(:harness, :dependency_bump_enqueuer, fn enqueued_project, item, adapter, opts ->
@@ -81,12 +81,12 @@ defmodule Harness.DependencyBumpTest do
       {:ok, "run-501", %Oban.Job{id: 501}}
     end)
 
-    assert {:ok, %{tasks: [task]}} = DependencyBump.dispatch(project.name, "codex", "gpt-5.5", true)
+    assert {:ok, %{tasks: [task]}} = DependencyBump.dispatch(project.name, "codex", "gpt-6-astra", true)
     assert task.run_id == "run-501"
     assert task.task_id == "501"
     assert task.dependencies == ["req", "plug"]
 
-    assert_received {:created, "dependency-bump-dispatch", [%TaskSpec{} = spec], "codex", "gpt-5.5"}
+    assert_received {:created, "dependency-bump-dispatch", [%TaskSpec{} = spec], "codex", "gpt-6-astra"}
     assert spec.body =~ "Ground-truth dependency freshness facts"
     assert spec.body =~ "| req | 0.5.0 | 0.5.1 | yes |"
 
@@ -95,7 +95,7 @@ defmodule Harness.DependencyBumpTest do
     assert_received {:enqueued, "dependency-bump-dispatch", "501", Codex, opts}
     assert Keyword.fetch!(opts, :check_command) == "mix test.json --quiet --all --include integration"
     assert Keyword.fetch!(opts, :env) == %{"ANTHROPIC_API_KEY" => false}
-    assert Keyword.fetch!(opts, :requested_model) == "gpt-5.5"
+    assert Keyword.fetch!(opts, :requested_model) == "gpt-6-astra"
   end
 
   @spec rows() :: [Row.t()]

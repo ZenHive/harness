@@ -264,7 +264,7 @@ defmodule Harness.ResultStoreContract do
         reviewer_reprompt_count: 1,
         reviewer_rotation_count: 2,
         reviewer_adapter: Codex,
-        reviewer_model: "gpt-5.5-review",
+        reviewer_model: "gpt-5.6-sol",
         review_report: "fixed a credo nit inline; approving",
         review_facets: %{"language" => "elixir", "surface" => "otp", "archetype" => "feature"},
         review_skills: %{"otp" => %{"score" => 8, "note" => "clean gen_statem"}},
@@ -283,7 +283,7 @@ defmodule Harness.ResultStoreContract do
         approved_then_found_red: %{
           "reviewer_adapter" => Atom.to_string(Codex),
           "reviewer_agent" => "codex",
-          "reviewer_model" => "gpt-5.5-review",
+          "reviewer_model" => "gpt-5.6-sol",
           "review_facets" => %{"surface" => "otp"},
           "domains" => ["otp"],
           "cold_check" => %{"passed" => false}
@@ -301,7 +301,7 @@ defmodule Harness.ResultStoreContract do
     assert rf.reviewer_reprompt_count == 1
     assert rf.reviewer_rotation_count == 2
     assert rf.reviewer_adapter == Codex
-    assert rf.reviewer_model == "gpt-5.5-review"
+    assert rf.reviewer_model == "gpt-5.6-sol"
     assert rf.review_report == "fixed a credo nit inline; approving"
     # facets (routing KEY) + skills (routing VALUE) round-trip verbatim, including
     # the nested {score, note} maps — free-form string keys preserved at every level.
@@ -323,7 +323,7 @@ defmodule Harness.ResultStoreContract do
     assert rf.approved_then_found_red == %{
              "reviewer_adapter" => Atom.to_string(Codex),
              "reviewer_agent" => "codex",
-             "reviewer_model" => "gpt-5.5-review",
+             "reviewer_model" => "gpt-5.6-sol",
              "review_facets" => %{"surface" => "otp"},
              "domains" => ["otp"],
              "cold_check" => %{"passed" => false}

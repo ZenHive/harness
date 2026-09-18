@@ -145,7 +145,7 @@ defmodule Harness.ObanDispatchTest do
     # Task "2" pins no model; give codex a per-agent default so the dispatch
     # clears the model-required guard (a model-capable agent never falls through
     # to the CLI's ambient default).
-    Harness.Config.put({:agent_model, :codex}, "gpt-5.5", "test")
+    Harness.Config.put({:agent_model, :codex}, "gpt-6-astra", "test")
     on_exit(fn -> Harness.Config.put({:agent_model, :codex}, "", "test") end)
 
     assert {:ok, %{run_id: run_id}} = Dispatch.task("interactive", "2", "codex", true)
@@ -509,11 +509,11 @@ defmodule Harness.ObanDispatchTest do
                  "project_name" => "persisted-model-project",
                  "item_id" => "48",
                  "adapter_module" => "Elixir.Harness.AgentAdapter.Codex",
-                 "requested_model" => "gpt-5.5"
+                 "requested_model" => "gpt-6-astra"
                }
              })
 
-    assert_received {:start_requested_model, "gpt-5.5", "48"}
+    assert_received {:start_requested_model, "gpt-6-astra", "48"}
   end
 
   test "worker starts runs with the persisted run id from job args" do

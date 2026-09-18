@@ -112,13 +112,19 @@ defmodule Harness.Dashboard.SettingsComponentsTest do
   describe "agent_models_card/1" do
     test "renders a free-text model field when the agent has no catalog" do
       models = [
-        %{id: "agent_model__codex", label: "Codex", input_value: "gpt-5.5", placeholder: "agent default", options: :none}
+        %{
+          id: "agent_model__codex",
+          label: "Codex",
+          input_value: "gpt-6-astra",
+          placeholder: "agent default",
+          options: :none
+        }
       ]
 
       html = render_component(&SettingsComponents.agent_models_card/1, agent_models: models)
 
       assert html =~ "Agent models"
-      assert html =~ "gpt-5.5"
+      assert html =~ "gpt-6-astra"
       assert html =~ ~s(phx-submit="set_config")
     end
   end
@@ -154,8 +160,8 @@ defmodule Harness.Dashboard.SettingsComponentsTest do
           universe_count: 2,
           query: "gpt",
           models: [
-            %{id: "gpt-5.5", label: "gpt-5.5", dom_id: "gpt-5_5", selected?: true},
-            %{id: "gpt-5.4", label: "gpt-5.4", dom_id: "gpt-5_4", selected?: false}
+            %{id: "gpt-6-astra", label: "gpt-6-astra", dom_id: "gpt-6-astra", selected?: true},
+            %{id: "gpt-5.6-sol", label: "gpt-5.6-sol", dom_id: "gpt-5_6-sol", selected?: false}
           ]
         }
       ]

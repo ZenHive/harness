@@ -37,8 +37,8 @@ defmodule Harness.AgentsTest do
     put_installed(%{Codex => true})
     assert :ok = AgentRegistry.mark_unavailable(Codex, {:quota, "later"})
     assert :ok = Settings.set_enabled(:codex, false, "test")
-    assert :ok = Config.put({:agent_model, :codex}, "gpt-5.5-codex", "test")
-    assert :ok = Config.put({:reviewer_model, :codex}, "gpt-5.5-high", "test")
+    assert :ok = Config.put({:agent_model, :codex}, "gpt-6-astra", "test")
+    assert :ok = Config.put({:reviewer_model, :codex}, "gpt-5.6-sol", "test")
 
     codex = Enum.find(Agents.list(), &(&1.agent == "codex"))
 
@@ -51,8 +51,8 @@ defmodule Harness.AgentsTest do
              dispatchable_as_reviewer: true,
              cost_tier: "metered",
              capabilities: %{session_resume: true, auth_env_scrub: ["OPENAI_API_KEY"]},
-             model: "gpt-5.5-codex",
-             reviewer_model: "gpt-5.5-high",
+             model: "gpt-6-astra",
+             reviewer_model: "gpt-5.6-sol",
              unavailable_reason: "{:quota, \"later\"}"
            } = codex
 

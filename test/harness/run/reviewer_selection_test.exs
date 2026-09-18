@@ -141,7 +141,7 @@ defmodule Harness.Run.ReviewerSelectionTest do
       SettingsStoreMemory.reset(scope: :test_default)
       :sys.replace_state(Harness.AgentRegistry, &%{&1 | installed: installed})
       assert :ok = Harness.AgentRegistry.mark_unavailable(codex, :soft_hint)
-      put_reviewer_model_env(codex: "gpt-5-codex")
+      put_reviewer_model_env(codex: "gpt-6-astra")
 
       on_exit(fn ->
         SettingsStoreMemory.reset(scope: :test_default)
@@ -161,7 +161,7 @@ defmodule Harness.Run.ReviewerSelectionTest do
       SettingsStoreMemory.reset(scope: :test_default)
       :sys.replace_state(Harness.AgentRegistry, &put_in(&1, [:installed, codex], true))
       assert :ok = Harness.AgentRegistry.mark_unavailable(codex, :soft_hint)
-      put_reviewer_model_env(codex: "gpt-5-codex")
+      put_reviewer_model_env(codex: "gpt-6-astra")
 
       on_exit(fn ->
         SettingsStoreMemory.reset(scope: :test_default)

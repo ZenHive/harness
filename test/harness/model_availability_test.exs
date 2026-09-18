@@ -128,27 +128,20 @@ defmodule Harness.ModelAvailabilityTest do
     end
 
     test "codex JSON yields visibility=list slugs, dropping hidden internal models" do
-      # Real `codex debug models` shape (trimmed to the parsed fields), 2026-07-10 —
-      # includes the GPT-5.6 Sol/Terra/Luna frontier family.
+      # `codex debug models` response shape with the supported model family.
       output =
         ~s({"models":[) <>
-          ~s({"slug":"gpt-5.5","display_name":"GPT-5.5","visibility":"list"},) <>
+          ~s({"slug":"gpt-6-astra","display_name":"GPT-6 Astra","visibility":"list"},) <>
           ~s({"slug":"gpt-5.6-sol","display_name":"GPT-5.6-Sol","visibility":"list"},) <>
           ~s({"slug":"gpt-5.6-terra","display_name":"GPT-5.6-Terra","visibility":"list"},) <>
           ~s({"slug":"gpt-5.6-luna","display_name":"GPT-5.6-Luna","visibility":"list"},) <>
-          ~s({"slug":"gpt-5.4","display_name":"GPT-5.4","visibility":"list"},) <>
-          ~s({"slug":"gpt-5.4-mini","display_name":"GPT-5.4-Mini","visibility":"list"},) <>
-          ~s({"slug":"gpt-5.3-codex-spark","display_name":"GPT-5.3-Codex-Spark","visibility":"list"},) <>
           ~s({"slug":"codex-auto-review","display_name":"Codex Auto Review","visibility":"hide"}]})
 
       assert [
-               %{id: "gpt-5.5", label: "GPT-5.5", annotations: []},
+               %{id: "gpt-6-astra", label: "GPT-6 Astra", annotations: []},
                %{id: "gpt-5.6-sol", label: "GPT-5.6-Sol", annotations: []},
                %{id: "gpt-5.6-terra", label: "GPT-5.6-Terra", annotations: []},
-               %{id: "gpt-5.6-luna", label: "GPT-5.6-Luna", annotations: []},
-               %{id: "gpt-5.4", label: "GPT-5.4", annotations: []},
-               %{id: "gpt-5.4-mini", label: "GPT-5.4-Mini", annotations: []},
-               %{id: "gpt-5.3-codex-spark", label: "GPT-5.3-Codex-Spark", annotations: []}
+               %{id: "gpt-5.6-luna", label: "GPT-5.6-Luna", annotations: []}
              ] = ModelAvailability.parse_catalog_output(:codex, output)
     end
 

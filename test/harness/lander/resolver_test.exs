@@ -193,7 +193,7 @@ defmodule Harness.Lander.ResolverTest do
       AgentRegistry.reset()
       mark_all_installed(false)
       mark_installed(Codex, true)
-      put_model_env(agent_model: [], reviewer_model: [codex: "gpt-5.5"])
+      put_model_env(agent_model: [], reviewer_model: [codex: "gpt-6-astra"])
       on_exit(fn -> AgentRegistry.reset() end)
 
       repo = conflicted_repo("resolver-spawn-model")
@@ -205,7 +205,7 @@ defmodule Harness.Lander.ResolverTest do
         {:ok, :spawned}
       end
 
-      assert {:ok, %{agent: :codex, module: Codex, model: "gpt-5.5"}} =
+      assert {:ok, %{agent: :codex, module: Codex, model: "gpt-6-astra"}} =
                Resolver.resolve(worktree,
                  implementer: "claude",
                  reviewer: "codex",
@@ -213,13 +213,13 @@ defmodule Harness.Lander.ResolverTest do
                  driver: driver
                )
 
-      assert_receive {:resolver_spawn, Codex, "gpt-5.5"}
+      assert_receive {:resolver_spawn, Codex, "gpt-6-astra"}
     end
 
     test "reports no conflicted files after selecting a resolver" do
       AgentRegistry.reset()
       mark_installed(Codex, true)
-      put_model_env(agent_model: [codex: "gpt-5.5"], reviewer_model: [])
+      put_model_env(agent_model: [codex: "gpt-6-astra"], reviewer_model: [])
       on_exit(fn -> AgentRegistry.reset() end)
 
       repo = GitFixture.init_repo(name: "resolver-no-conflict")
