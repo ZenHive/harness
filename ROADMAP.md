@@ -235,7 +235,7 @@
 ## Phase 19: Self-Healing Run Loop
 
 <!-- TASKS:BEGIN phase=19 -->
-> 44 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-19-self-healing-run-loop).
+> 45 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-19-self-healing-run-loop).
 <!-- TASKS:END -->
 
 ---
@@ -371,7 +371,7 @@
 | Task 382 | ✅ | 🎁 **audit-perf** · 🚀 **v0_16** · Remove the per-lookup Postgres landing-settings round trip from ProjectRegistry [D:3/B:5/U:4 → Eff:1.5?] 🚀 |
 | Task 383 | ✅ | 🎁 **resilience** · 🐛 Delivery commit exclusion missed .harness/agent-rules.md — harness's own scaffolding rode in a deliverable [D:3/B:6/U:5 → Eff:1.83?] 🚀 |
 | Task 384 | ✅ | 🎁 **deferred** · Migrate anubis_mcp 1.x -> 2.0.0 (Application callback removal, transport/supervision rewrite) [D:5/B:3/U:2 → Eff:0.5?] ⚠️ |
-| Task 389 | ✅ | 🎁 **config-surface** · 🚀 **v0_16** · Expose roadmap_target_branch on the operator registration surfaces [D:3/B:6/U:5 → Eff:1.83] 🚀 |
+| Task 389 | ✅ | 🎁 **config-surface** · 🚀 **v0_16** · Expose roadmap_target_branch on the operator registration surfaces [D:3/B:6/U:5 → Eff:1.83?] 🚀 |
 | Task 391 | ✅ | 🎁 **surface** · Four `roadmap-mark_*` MCP tools expose zero parameters — declare their params, then guard the class [D:3/B:6/U:6 → Eff:2.0] 🎯 |
 | Task 403 | ✅ | 🎁 **audit-hygiene** · 🚀 **v0_16** · 🔒 Make the loopback posture true: Origin/Host guard on /harness/mcp + source-URL validation before git clone [D:2/B:9/U:7 → Eff:4.0] 🎯 |
 | Task 404 | ✅ | 🎁 **audit-perf** · 🚀 **v0_16** · Take the uncached SettingsStore reads and the synchronous CLI catalog probes off the 5s settings tick [D:3/B:5/U:5 → Eff:1.67] 🚀 |
