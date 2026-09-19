@@ -840,10 +840,13 @@ the agent-process count in the service cgroup are zero; non-code changes do not 
 restart. Agents deliver through harness's reviewer gate and lander. Do not add a restart
 flag file or grant agents a self-restart path: either would bypass that gate.
 
-**Production sequence: land → wait for autodeploy → observe the restarted runtime.**
+**Production sequence: land → sync the base checkout → wait for autodeploy → observe the restarted runtime.**
+The root timer does not fetch or pull: it watches the base checkout's `HEAD`. The
+orchestrator/operator integrates already-landed commits there, preserving local work;
+do not confuse a push to origin with deployment of the base checkout.
 Before another wave, verify the deployed revision, service start time, dashboard/MCP
 reachability and required migrations. Use Git and the service journal while deployment is
-pending. Do not manually advance the live base checkout or call `recompile()` as a deployment
+pending. After syncing the base, do not call `recompile()` or Tidewave as a deployment
 shortcut. Even an apparently read-only Tidewave `project_eval` can automatically compile a
 changed checkout before evaluating the requested expression. An empty run list does not
 make this safe: background services still execute those modules.
