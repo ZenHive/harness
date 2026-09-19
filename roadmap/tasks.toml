@@ -13616,7 +13616,7 @@ scored_at = "2026-09-19"
 id = "437"
 phase = 22
 bundle = "operator-surface"
-status = "pending"
+status = "done"
 title = "Suite-health never runs deps.get — its guard is unreachable because warm paths always seed deps/"
 scores = { d = 3, b = 7, u = 6 }
 markers = ["bug"]
@@ -13644,8 +13644,12 @@ The fix is to gate on the lock rather than the directory — `mix deps.get` is a
 
 Same family as the service-level gap filed as task 436, which was mitigated on the host by an ignore-failure `ExecStartPre=-mix deps.get`.
 """
+implemented = 'ensure_deps/2 no longer gates on File.dir?("deps"): Harness.Worktree seeds every worktree from the parent checkout via @default_warm_paths, so the directory was always present and mix deps.get was unreachable. deps.get now runs unconditionally (idempotent, no-op on a matching lock); warming keeps its value. Covered by test/harness/suite_health/bootstrap_test.exs — warmed worktree, cold worktree, failed fetch. Landed directly by the operator, not through the review gate.'
+delivered_by = "claude"
 created_at = "2026-09-19"
 scored_at = "2026-09-19"
+done_at = "2026-09-19"
+shipped_in = "ac2d9e3"
 
 [[task]]
 id = "438"
