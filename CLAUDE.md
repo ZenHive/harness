@@ -215,7 +215,7 @@ From the core loop onward, harness is developed *with* harness whenever the work
   - *Net-new visual identity with no spec* — exploratory look-and-feel / motion / brand work where distinctiveness is the goal and no design source-of-truth exists yet (the `frontend-design` skill's territory). **Incremental UI/LiveView/heex/CSS work against an existing design system or a frontend-design doc is normal dispatch** — the old blanket "hand-build all UI" rule is retired; an in-repo design spec gives the agent something to build against, so the reviewer AI gates it like any other task.
 - **Multi-project autonomy (46/48/51):** dogfooding extends to N registered projects, each with its own `check_command` + `roadmap_path`; with cron enabled it runs unattended.
 
-### 🚨 The running node goes STALE — refresh it before every wave (self-host hygiene)
+### 🚨 Self-host deployment — root autodeploy owns runtime activation
 
 **This is an orchestrator/operator responsibility, NOT a harness feature.** Do not
 propose a `Harness.SelfHost.staleness/0`, a dispatch precondition, or a dashboard
@@ -233,22 +233,37 @@ Axis B is the dangerous one: observed 2026-08-25, task 398's `AgentDriver` fix h
 landed and was on disk, but `Harness.AgentDriver` was **not loaded** in the node — so
 every dispatch from that node would have reproduced the exact bug just fixed.
 
-**Pre-wave sequence — all three, in order, before dispatching:**
+**The production loop is closed through root, not through the dispatched agent.** The
+root-owned autodeployer uses the base repository's Git revision as its deployment signal.
+It restarts `harness.service` for code changes only after both the in-flight run count and
+the agent-process count in the service cgroup are zero; non-code changes do not require a
+restart. Agents deliver through harness's reviewer gate and lander. Do not add a restart
+flag file or grant agents a self-restart path: either would bypass that gate.
 
-1. `git fetch origin <target> && git rebase origin/<target>` — axis A. `recompile()` cannot do this.
-2. Confirm `Harness.Run.Supervisor.list_runs()` is `[]`. A second purge kills processes still
-   executing old code; hot-loading under a live run's `gen_statem` is a real hazard, not a nit.
-3. `import IEx.Helpers; recompile()` via `mcp__tidewave__project_eval` — axis B. Works in this
-   node (`Mix.Project.get() == Harness.MixProject`); returns `:noop` when nothing changed.
+**Production sequence: land → wait for autodeploy → observe the restarted runtime.**
+Before another wave, verify the deployed revision, service start time, dashboard/MCP
+reachability and required migrations. Use Git and the service journal while deployment is
+pending. Do not manually advance the live base checkout or call `recompile()` as a deployment
+shortcut. Even an apparently read-only Tidewave `project_eval` can automatically compile a
+changed checkout before evaluating the requested expression. An empty run list does not
+make this safe: background services still execute those modules.
 
-**Where `recompile()` is NOT enough — ask the operator for a real restart.** It swaps module
-code while the supervision tree keeps running with its old state: changed `init/1`, child specs,
-supervision topology, `config/*.exs` / Application env, Oban queue config, and Endpoint options
-are **not** picked up. Rule of thumb: function-body changes → `recompile()`; anything that
-reshapes the tree or the config → restart. **Never boot or restart the node yourself** — the
-operator starts it (see § Commands).
+**Observed 2026-09-19:** after the live checkout was updated, a Tidewave migration query
+triggered compilation; `Harness.ResultStore.Replayer` and the dashboard encountered
+temporarily unavailable modules, and dashboard/MCP went down. `start_permanent` plus
+systemd's `Restart=` provides crash recovery; that is distinct from autodeploy. A manual
+restart requires explicit operator instruction, not an agent's inference from staleness.
 
-**Verifying liveness (the probe that actually answers "is it live?"):** compare each module's
+**Operator evidence, 2026-09-15:** autodeploy deferred for 85 minutes while runs or agent
+processes remained, then deployed a landed commit. Premature restarts on September 13–14
+had lost work when `TimeoutStopSec=120` expired. Preserve both idle checks.
+
+**Runtime verification has a separate boundary.** An implementer verifies in its worktree;
+production-only behavior is observed after landing and restart. A post-restart smoke check
+or a disposable second instance could shorten that feedback loop, but neither is claimed
+to exist here. A runtime regression returns to the reviewed fix cycle, not self-restart.
+
+**After deployment, with an unchanged checkout**, compare each module's
 loaded md5 against the on-disk `.beam`. `:code.get_object_code/1` alone reads only the disk and
 proves nothing about the running node — but the comparison has one sharp edge that makes the
 probe lie in the alarming direction, so copy this shape rather than rewriting it:
@@ -272,4 +287,4 @@ end)
 
 A non-empty result is axis-B staleness; `[]` means the node's image matches disk. Confirm a
 scary reading against a second signal (node uptime, `.beam` mtime vs source mtime) before
-asking the operator for a restart — detectors fail toward the alarming verdict.
+requesting operator intervention — detectors fail toward the alarming verdict.
