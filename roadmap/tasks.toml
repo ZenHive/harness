@@ -13571,3 +13571,44 @@ created_at = "2026-09-18"
 scored_at = "2026-09-18"
 depends_on = ["433"]
 
+[[task]]
+id = "436"
+phase = 25
+bundle = "core-loop"
+status = "pending"
+title = "Boot chain never fetches deps — a landed mix.lock change crash-loops the service"
+scores = { d = 2, b = 8, u = 7 }
+markers = ["bug"]
+acceptance_criteria = ["A commit that changes mix.lock and lands on the base checkout does not prevent harness.service from starting", "The boot chain fetches deps before running migrations, and a fetch failure does not by itself block the boot", "harness-autodeploy restarting for a mix.lock-only change results in a running service, not a restart loop", "The failure mode and its fix are recorded next to the migration one they mirror"]
+out_of_scope = ["Removing mix.lock from harness-autodeploy's CODE_RE — a dep bump is code and must deploy", "Vendoring deps or switching to a release build; this task keeps the mix-run deployment shape", "The slow MCP-SSE drain on shutdown (separate: task 427)"]
+touches = ["/etc/systemd/system/harness.service.d/30-migrate.conf", "/usr/local/sbin/harness-autodeploy"]
+body = '''
+The systemd boot chain runs `mix ecto.migrate` (ExecStartPre) then `mix run --no-halt` (ExecStart). It never runs `mix deps.get`. Verified: no `deps.get` anywhere in `harness.service`, its drop-ins, or `/home/harness/bin/harness-start`.
+
+So any landed commit that touches `mix.lock` arms a boot failure. mix refuses to run a task whose deps do not match the lock, ExecStartPre exits 1, and `Restart=on-failure` + `RestartSec=10` retry forever.
+
+Observed 2026-09-19. Commit 7b0e466 changed 6 lock entries (tzdata, sourceror, spitfire, phoenix, phoenix_live_view, oban_web); mix.lock landed in the base checkout at 00:47:21. The 00:52:39 restart then failed ten times in a row, restart counter 1 -> 10, from 00:52:59 to 00:54:44:
+
+    Unchecked dependencies for environment dev:
+    * tzdata (Hex package)
+      lock mismatch: the dependency is out of date. To fetch locked version run "mix deps.get"
+    ...
+    ** (Mix) Can't continue due to errors on dependencies
+
+It only recovered because an operator ran `mix deps.get` by hand (deps/ mtime 00:54:35); the next start at 00:54:44 came up.
+
+This is the same failure class 30-migrate.conf was written for, one layer short. That drop-in's own comment describes it for migrations — "jeder Task, der eine Migration landet, schaerft einen Boot-Fehler ... crasht endlos im 10-Sekunden-Takt" — and the dependency case was never closed.
+
+It also breaks the autonomy loop specifically. harness-autodeploy lists `mix\.lock$` in CODE_RE, so it restarts *precisely* for this change and then drives the service into the loop. An agent landing a dep bump therefore always needs a human.
+
+Mitigated on the box 2026-09-19 01:00 by adding, ahead of the migrate line:
+
+    ExecStartPre=-/home/harness/.asdf/shims/mix deps.get
+
+The leading `-` is deliberate: a Hex/network outage must not block the boot, and if the deps really are wrong the unguarded ecto.migrate below still fails exactly as before. Verified by restart: "All dependencies have been fetched" -> "Migrations already up" -> Started, NRestarts=0.
+
+This task is to carry that host-local change into whatever provisions the unit, and to decide whether the same guard belongs on the agent-run/verification path, which bootstraps deps per worktree and can hit the same lock mismatch after a rebase.
+'''
+created_at = "2026-09-19"
+scored_at = "2026-09-19"
+
