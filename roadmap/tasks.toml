@@ -1038,6 +1038,7 @@ out_of_scope = [
   "Replacing or competing with the native adapters that already preserve subscription auth",
 ]
 assignee = "codex"
+model = "gpt-6-astra"
 blocked_reason = "Deferred by subscription-auth blocker: revisit only when an ACP backend preserves Claude subscription OAuth, or API-billing dispatch is deliberately accepted for a specific workload."
 body = """
 DEFERRED — original "speculative, awaiting ACP adoption" framing superseded 2026-05-27 by a sharper blocker. ACP adoption itself is no longer the issue: the ACP Registry went live 2026-01-28 with Claude Code, Codex CLI, Cursor, Gemini CLI, Copilot CLI, and Pi as registered backends; Zed 1.0 (2026-04-29) and JetBrains (late 2025) ship first-class ACP support; `openclaw/acpx` provides a headless ACP CLI client suitable as a Port target. The reason to stay deferred is **subscription auth incompatibility**.
@@ -10758,7 +10759,7 @@ files_to_modify = ["lib/harness/dispatch.ex", "lib/harness/dispatch/"]
 touches = ["lib/harness/dispatch.ex", "lib/harness/dispatch/", "lib/harness/manifest.ex", "test/harness/dispatch_test.exs", "test/harness/chat/tools_test.exs", "test/harness/manifest_test.exs"]
 domains = ["otp"]
 assignee = "codex"
-model = "gpt-5.6-sol"
+model = "gpt-6-astra"
 body = """
 Surfaced by the 2026-07-12 project health audit (arch-review.md #2). `lib/harness/dispatch.ex`
 is ~1900 lines (1913 as of 2026-07-29, growing) and the second-highest outgoing-coupling module in the project. It is the
@@ -10802,7 +10803,7 @@ files_to_modify = [".reach.exs", "lib/harness/manifest.ex"]
 touches = ["lib/harness/", ".reach.exs"]
 domains = ["otp"]
 assignee = "codex"
-model = "gpt-5.6-sol"
+model = "gpt-6-astra"
 body = """
 Surfaced by the 2026-07-12 project health audit (arch-review.md #1). `mix xref graph --format
 cycles` reports ONE strongly-connected cycle of 71 modules (~30% of the codebase) spanning
@@ -11041,7 +11042,7 @@ acceptance_criteria = ["Harness.AgentAdapter.Kimi implements capabilities/0, rul
 out_of_scope = ["The rmap-side --to kimi render target (rmap repo task 53 — must land and the installed rmap binary be rebuilt before a kimi-assigned task can dispatch, since harness shells out to rmap delegate)", "Operator auth (kimi login device-code flow is a one-time host step, not code)", "Promoting kimi into the cross-family reviewer trust defaults (operator decision after dispatch data exists)", "Parsing kimi's event stream beyond the transcript-parser mapping (raw passthrough stays the contract)"]
 touches = ["lib/harness/agent_adapter/kimi.ex", "test/harness/agent_adapter/kimi_test.exs", "test/harness/agent_adapter/kimi_conformance_test.exs", "lib/harness/roadmap.ex", "lib/harness/agent_registry.ex", "lib/harness/config.ex", "lib/harness/agent_adapter/registry.ex", "lib/harness/model_availability.ex", "lib/harness/dashboard/transcript/parser.ex", "CLAUDE.md", "skills/harness-driver/SKILL.md", "priv/includes/harness-workflow.md"]
 assignee = "codex"
-model = "gpt-5.6-sol"
+model = "gpt-6-astra"
 body = """
 Add a Harness.AgentAdapter for Kimi Code (Moonshot's coding CLI, installed at
 ~/.kimi-code/bin/kimi, v0.26.0, docs https://moonshotai.github.io/kimi-code/).
@@ -11316,7 +11317,7 @@ acceptance_criteria = ["A versioned append-only harness_events table/store recor
 out_of_scope = ["Cryptographic signing / per-agent keypairs (Buzz's Schnorr identity) — separate decision, only relevant beyond single-operator", "Replacing ResultStore run records — they stay the per-run aggregate; the event log is the fine-grained stream beside them", "Task 373's per-actor trail query surface — that task can consume this substrate but ships independently", "Nostr/relay protocol compatibility"]
 touches = ["lib/harness/", "priv/repo/migrations", "test/harness/"]
 assignee = "codex"
-model = "gpt-5.6-sol"
+model = "gpt-6-astra"
 body = "Inspired by Block's Buzz event history, but without importing its signed-identity claim: harness currently scatters lifecycle facts across ResultStore projections, Notification sinks, Oban rows, artifacts, and soft process state. Add one versioned append-only harness_events history beside ResultStore. The task is a repo-wide writer audit, not a suggestive sample: define a closed taxonomy, instrument every lifecycle mutation including operator recovery controls, and pin idempotency, ordering, append-failure, and query-bound contracts. Notification becomes a delivery projection of the same persisted facts; PendingDispatch stays intentionally soft state; ResultStore stays the per-run aggregate. Facts only — meaning remains with the agents that query them. Dispatch as a solo/exclusive wave because the write-set spans the lifecycle surface."
 created_at = "2026-07-28"
 scored_at = "2026-08-07"
@@ -11780,7 +11781,7 @@ scores = { d = 5, b = 7, u = 6 }
 acceptance_criteria = ["A landing whose rmap-advance commit or push fails does not settle the Oban job as completed: it retries or errors loudly, and never records landed_sha while origin lacks the advance", "A regression test covers the delivery-pushed-but-advance-failed path", "dispatch-reland on a run with a recorded landed_sha and no surviving branch performs an advance-only reland instead of discarding with checkout_failed (test)"]
 out_of_scope = ["Changing the witness sink or notification format"]
 assignee = "codex"
-model = "gpt-5.6-sol"
+model = "gpt-6-astra"
 body = """
 Observed trading_dashboard 2026-08-14: task 64's landing job (Oban job 6898, queue landing_trading_dashboard) finished state=completed at 05:02:16Z, the ResultStore record carries landed_sha 92d18a91f0d4 (delivery 36537ec + two reviewer commits, all on origin/main), the run branch was cleaned up — but NO "roadmap: task 64 -> done" commit ever reached origin. The next landing on the same queue (task 56, job 6900, 25s later) pushed delivery AND advance normally. Consequence: origin diverged from the lander's own record — rmap still said in_progress for landed work, which is exactly the duplicate-land trap the workflow include warns about, except this time the STALE side was origin itself, so no amount of fetch/rebase could disprove "didn't land". The orchestrator had to hand-write the advance (trading_dashboard 9b6f4ab) with provenance copied from the ResultStore.
 
@@ -11827,7 +11828,7 @@ acceptance_criteria = ["Separate /harness/inbox and /harness/activity routes app
 out_of_scope = ["Creating, editing, reprioritizing, or dragging rmap tasks", "A new event store, event taxonomy, or notification channel", "Acknowledgement state for informational warnings", "Automated action prioritization, severity scoring, or lifecycle diagnosis", "Cost, runner, files, or knowledge-management dashboards"]
 touches = ["lib/harness/dashboard/", "test/harness/dashboard/"]
 assignee = "codex"
-model = "gpt-5.6-sol"
+model = "gpt-6-astra"
 body = "Add separate operator Inbox and Activity dashboard surfaces over the lifecycle contracts delivered by Tasks 374 and 373. The Inbox is an explicit queue of interventions supported by existing Harness operations; Activity is a bounded chronological view of persisted lifecycle facts. Reuse the Dispatch facade and event-query APIs rather than reimplementing action eligibility, storage, or meaning in LiveView code."
 created_at = "2026-08-15"
 scored_at = "2026-08-15"
@@ -12754,7 +12755,7 @@ files_to_modify = ["lib/harness/project.ex", "lib/harness/project_registry.ex", 
 touches = ["lib/harness/project.ex", "lib/harness/project_registry.ex", "lib/harness/run.ex", "lib/harness/dispatch.ex", "lib/harness/result_store/postgres.ex", "priv/repo/migrations", "test/harness/project_test.exs", "test/harness/run_test.exs"]
 domains = ["otp"]
 assignee = "codex"
-model = "gpt-5.6-sol"
+model = "gpt-6-astra"
 body = """
 `Harness.AgentAdapter.Invocation` carries `env`, a map of variable name to either a string (set) or `false` (scrub, so the agent does not inherit it). It threads into the Port spawn via `build_command/1`, and `false` is the Erlang Port convention for removing a variable. The mechanism is complete and shipped — Task 25 built it.
 

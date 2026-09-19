@@ -1203,6 +1203,7 @@
       "markers": [],
       "depends_on": [],
       "assignee": "codex",
+      "model": "gpt-6-astra",
       "acceptance_criteria": [
         "DEFERRED — no implementation work scheduled. Revisit only when an ACP backend preserves Claude subscription OAuth (per the conditions documented in body), or when API-billing dispatches are an accepted cost for a specific workload; at revisit time, define AC then."
       ],
@@ -16322,7 +16323,7 @@
       "markers": [],
       "depends_on": [],
       "assignee": "codex",
-      "model": "gpt-5.6-sol",
+      "model": "gpt-6-astra",
       "acceptance_criteria": [
         "Harness.Dispatch's public function/arity set and its MCP tool names are unchanged (Manifest + generated tool list identical)",
         "Dispatch delegates to per-concern modules; no single module carries all five concern groups",
@@ -16373,7 +16374,7 @@
         359
       ],
       "assignee": "codex",
-      "model": "gpt-5.6-sol",
+      "model": "gpt-6-astra",
       "acceptance_criteria": [
         "`mix xref graph --format cycles` no longer reports the 71-module component (idiomatic behaviour↔impl + parser dispatch cycles may remain)",
         "Driver-surface core modules have no compile/export edge back into Manifest, Chat.*, or Dashboard.*",
@@ -16648,7 +16649,7 @@
       ],
       "depends_on": [],
       "assignee": "codex",
-      "model": "gpt-5.6-sol",
+      "model": "gpt-6-astra",
       "acceptance_criteria": [
         "Harness.AgentAdapter.Kimi implements capabilities/0, rule_channel/0, and build_command/1; defaults from `use Harness.AgentAdapter` cover the rest; the shared Harness.AgentAdapter.ConformanceCase passes unchanged",
         "build_command/1 is verified against the installed Kimi CLI and current official command reference: prompt mode passes -p/--prompt as an option argument with --output-format stream-json and model_args via -m; it does not combine prompt mode with --yolo, --auto, or --plan because prompt mode already uses autonomous permissions",
@@ -17030,7 +17031,7 @@
       "markers": [],
       "depends_on": [],
       "assignee": "codex",
-      "model": "gpt-5.6-sol",
+      "model": "gpt-6-astra",
       "acceptance_criteria": [
         "A versioned append-only harness_events table/store records the closed lifecycle taxonomy after an explicit writer audit: dispatch enqueue, hold, steer, resume, cancel, resume_failed, rereview, reland, reviewer verdict, recovery outcome, land/blocked/conflict, post-merge audit, and approval park/approve; each event carries project, run_id when applicable, actor/seat, occurred_at, sequence/ordering metadata, schema version, and raw fact payload",
         "Every writer supplies a stable idempotency key so Oban retries, repeated callbacks, and recovery re-entry cannot duplicate the same lifecycle fact; tests exercise duplicate append and ordering semantics",
@@ -17647,7 +17648,7 @@
       "markers": [],
       "depends_on": [],
       "assignee": "codex",
-      "model": "gpt-5.6-sol",
+      "model": "gpt-6-astra",
       "acceptance_criteria": [
         "A landing whose rmap-advance commit or push fails does not settle the Oban job as completed: it retries or errors loudly, and never records landed_sha while origin lacks the advance",
         "A regression test covers the delivery-pushed-but-advance-failed path",
@@ -17733,7 +17734,7 @@
         373
       ],
       "assignee": "codex",
-      "model": "gpt-5.6-sol",
+      "model": "gpt-6-astra",
       "acceptance_criteria": [
         "Separate /harness/inbox and /harness/activity routes appear in dashboard navigation; Inbox displays the current count of unresolved supported actions",
         "Inbox includes parked manual dispatch approvals, held runs, failed committed runs eligible for resume or rereview, and approved runs eligible for land or reland, using existing eligibility facts and guards",
@@ -19017,7 +19018,7 @@
         375
       ],
       "assignee": "codex",
-      "model": "gpt-5.6-sol",
+      "model": "gpt-6-astra",
       "acceptance_criteria": [
         "%Harness.Project{} carries an optional credential allowlist of environment-variable NAMES. Unset (the default) preserves today's behaviour exactly — the agent inherits the orchestrator's full environment — so no registered project's integration suite breaks on the day this lands",
         "When a project declares the allowlist, Harness.Run builds the Invocation.env scrub map by diffing the orchestrator's live environment against that list plus the names harness itself must pass, and sets every remaining name to false. The agent Port therefore receives the declared set and nothing else. This uses the existing Invocation.env mechanism; do not add a second env pathway",
