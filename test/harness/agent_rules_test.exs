@@ -37,6 +37,17 @@ defmodule Harness.AgentRulesTest do
   end
 
   describe "render_for_languages/1" do
+    test "isolated test-server permission and operator protection reach every language" do
+      for languages <- [[:elixir], [:rust]] do
+        rendered = AgentRules.render_for_languages(languages)
+
+        assert rendered =~ "Project-owned isolated test servers are allowed"
+        assert rendered =~ "isolated test database"
+        assert rendered =~ "Never reuse or control an operator or production server"
+        assert rendered =~ "success, failure or cancellation"
+      end
+    end
+
     test "keeps Elixir sections for Elixir projects" do
       rendered = AgentRules.render_for_languages([:elixir])
 

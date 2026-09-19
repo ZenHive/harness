@@ -573,6 +573,17 @@ true = Harness.AgentAdapter.supports?(Harness.AgentAdapter.Pi, {:cost_tier, :fre
 
 ## Sharp Edges & Gotchas
 
+### Isolated browser-test servers
+
+Implementers and reviewers may run a project's documented browser-test lifecycle in
+their assigned worktree. The project test runner owns server startup/readiness/shutdown,
+a private loopback port and isolated test data/storage; it must not reuse an operator or
+production server/database. Harness supplies the run's test partition and agent process
+supervision, not a generic Phoenix auto-start. Preserve the partition contract and verify
+cleanup on normal completion, test failure and cancellation. Missing prerequisites fail
+loudly; do not silently fall back to a shared localhost endpoint. The operator-server
+prohibition still applies to the long-lived harness node and the operator's dev instances.
+
 **Cross-checkout (Context A) specifics:**
 
 - **Don't confuse the two MCP endpoints.** `mcp__tidewave__project_eval` runs inside *your repo's* BEAM (useful for inspecting your app's runtime state); `mcp__harness__project_eval` runs inside *harness's* `:4018` BEAM (this is the dispatch surface). Sending a `Harness.Run.Supervisor.start_run/4` call to your own Tidewave will fail with `undefined function` — harness modules aren't loaded there.
