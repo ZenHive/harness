@@ -36,15 +36,26 @@ defmodule Harness.SuiteHealth.Bootstrap do
       (&default_runner/4)
   end
 
+  # A present `deps/` proves nothing about the lock, so it must not gate the
+  # fetch. `Harness.Worktree` seeds every fresh worktree from the parent
+  # checkout via `@default_warm_paths ["deps", "_build", "priv/plts"]`, which
+  # means the directory is always there and the old `File.dir?/1` guard made
+  # this fetch unreachable — `mix deps.get` never ran here for any project.
+  #
+  # That bites because suite-health deliberately checks out `origin/<target>`
+  # HEAD while `deps/` arrives from whatever the parent checkout happened to
+  # hold. Any lock delta between the two surfaced downstream as
+  # "lock mismatch ... Can't continue due to errors on dependencies", and the
+  # error was then lost to the `skip_reason` truncation below the store.
+  #
+  # `mix deps.get` is idempotent and a cheap no-op when the lock already
+  # matches, so it now runs unconditionally. Warming keeps its full value: the
+  # already-fetched bytes are reused and only a drifted dep is refetched.
   @spec ensure_deps(String.t(), runner()) :: :ok | {:error, term()}
   defp ensure_deps(worktree_path, runner) do
-    if File.dir?(Path.join(worktree_path, "deps")) do
-      :ok
-    else
-      case runner.("mix", @deps_get_args, worktree_path, []) do
-        {_output, 0} -> :ok
-        {output, exit} -> {:error, {:deps_get_failed, exit, output}}
-      end
+    case runner.("mix", @deps_get_args, worktree_path, []) do
+      {_output, 0} -> :ok
+      {output, exit} -> {:error, {:deps_get_failed, exit, output}}
     end
   end
 

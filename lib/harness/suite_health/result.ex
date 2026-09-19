@@ -6,6 +6,11 @@ defmodule Harness.SuiteHealth.Result do
   never classifies flakes or gates dispatch on this fact.
   """
 
+  # Mirrors the `skip_reason` column width in
+  # priv/repo/migrations/20260707120000_add_suite_health_results.exs.
+  @skip_reason_limit 255
+  @truncation_marker "…"
+
   @enforce_keys [:project_name, :checked_at]
   defstruct [
     :project_name,
@@ -53,10 +58,34 @@ defmodule Harness.SuiteHealth.Result do
     }
   end
 
-  @doc "Builds a skipped witness — no suite was executed."
+  @doc """
+  Builds a skipped witness — no suite was executed.
+
+  The reason is truncated to `skip_reason_limit/0`. Callers pass
+  `inspect(reason)` of a bootstrap failure, which carries the whole mix output
+  and routinely runs to thousands of characters, while the column is a
+  `varchar(255)`. Before this bound, such a witness was rejected by Postgres
+  with `22001 string_data_right_truncation`, the poller logged a warning and
+  moved on, and — because the table is keyed on `project_name` and written by
+  upsert — the stale previous row stayed visible in the dashboard with its old
+  `checked_at`. A check that could not run must still leave a fact behind.
+  """
   @spec skipped(String.t(), String.t(), keyword()) :: t()
   def skipped(project_name, reason, opts \\ []) when is_binary(project_name) and is_binary(reason) do
-    build(project_name, Keyword.merge(opts, skip_reason: reason, passed: nil, exit_code: nil))
+    build(project_name, Keyword.merge(opts, skip_reason: truncate_reason(reason), passed: nil, exit_code: nil))
+  end
+
+  @doc "Maximum stored length of `skip_reason`, matching the column width."
+  @spec skip_reason_limit() :: pos_integer()
+  def skip_reason_limit, do: @skip_reason_limit
+
+  @spec truncate_reason(String.t()) :: String.t()
+  defp truncate_reason(reason) do
+    if String.length(reason) <= @skip_reason_limit do
+      reason
+    else
+      String.slice(reason, 0, @skip_reason_limit - String.length(@truncation_marker)) <> @truncation_marker
+    end
   end
 
   @doc "Serializes a witness to a plain map for persistence."

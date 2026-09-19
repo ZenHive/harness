@@ -20274,6 +20274,84 @@
       "created_at": "2026-09-19",
       "scored_at": "2026-09-19",
       "cross_repo": []
+    },
+    {
+      "id": "437",
+      "phase": 22,
+      "bundle": "operator-surface",
+      "status": "pending",
+      "title": "Suite-health never runs deps.get — its guard is unreachable because warm paths always seed deps/",
+      "scores": {
+        "d": 3,
+        "b": 7,
+        "u": 6
+      },
+      "eff": 2.17,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "Suite-health bootstrap decides on the lock state, not on the mere existence of deps/ — a worktree whose deps do not match its mix.lock gets them fetched",
+        "A worktree checked out at origin/<target> whose mix.lock differs from the parent checkout bootstraps successfully",
+        "Warming stays a pure optimization: it never causes a bootstrap to skip work it actually needs",
+        "Test covers a warmed worktree with a stale lock — deps.get runs; and a warmed worktree with a matching lock — it does not"
+      ],
+      "out_of_scope": [
+        "Dropping deps from @default_warm_paths — warming is the whole point and cold-fetching every run is the regression",
+        "The agent-run/verification bootstrap path, unless it shares this exact guard",
+        "The silent loss of the resulting error (separate task: skip_reason truncation)"
+      ],
+      "touches": [
+        "lib/harness/suite_health/bootstrap.ex",
+        "lib/harness/worktree.ex"
+      ],
+      "body": "`SuiteHealth.Bootstrap.ensure_deps/2` (`bootstrap.ex:39-41`) short-circuits on directory existence alone:\n\n    if File.dir?(Path.join(worktree_path, \"deps\")) do\n      :ok\n    else\n      runner.(\"mix\", ~w(deps.get --quiet), worktree_path, [])\n\nThe `else` branch is dead. `Harness.Worktree` seeds every fresh worktree from the parent checkout with `@default_warm_paths [\"deps\", \"_build\", \"priv/plts\"]` (`worktree.ex:135`), reflink-cloned. `deps/` is therefore present before bootstrap ever looks — confirmed on disk: every `worktrees/tapakly/run-*` carries a 157-158 entry `deps/`. So `mix deps.get` never runs in suite-health, for any Elixir project.\n\nThat matters because suite-health deliberately checks out a *cold worktree off `origin/<target>` HEAD* (task 333), while `deps/` arrives from whatever the parent checkout happened to hold. Any lock delta between the two produces the same failure the service itself hit on 2026-09-19:\n\n    Unchecked dependencies for environment dev:\n    * tzdata (Hex package)\n      lock mismatch: the dependency is out of date. To fetch locked version run \"mix deps.get\"\n    ** (Mix) Can't continue due to errors on dependencies\n\nThe fix is to gate on the lock rather than the directory — `mix deps.get` is already idempotent and cheap when the lock matches, so simply always running it is a valid answer; a `deps/.mix_lock`-style comparison is another. What must not change is warming itself: cold-fetching per run is exactly the cost warming exists to avoid.\n\nSame family as the service-level gap filed as task 436, which was mitigated on the host by an ignore-failure `ExecStartPre=-mix deps.get`.\n",
+      "created_at": "2026-09-19",
+      "scored_at": "2026-09-19",
+      "cross_repo": []
+    },
+    {
+      "id": "438",
+      "phase": 22,
+      "bundle": "operator-surface",
+      "status": "pending",
+      "title": "A failed suite-health bootstrap is silently dropped — inspect(reason) overflows skip_reason varchar(255)",
+      "scores": {
+        "d": 2,
+        "b": 8,
+        "u": 7
+      },
+      "eff": 3.75,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "acceptance_criteria": [
+        "A bootstrap/infrastructure failure is recorded as a witness fact, distinguishable from a genuine red suite",
+        "No witness write can be lost to a column-width error — the reason is bounded before it reaches the database",
+        "The dashboard never presents a stale checked_at as if it were today's result: a project whose check could not run says so",
+        "Test covers a bootstrap error whose inspected reason exceeds the column width"
+      ],
+      "out_of_scope": [
+        "Classifying whether a red suite is real or flaky — task 333 forbids a harness classifier and that stands",
+        "The dead deps.get guard that produces these errors today (separate task)",
+        "Widening every varchar in the schema as a blanket change"
+      ],
+      "touches": [
+        "lib/harness/suite_health.ex",
+        "lib/harness/suite_health/result.ex",
+        "lib/harness/suite_health_store/schema/result.ex",
+        "lib/harness/cron/suite_health_poller.ex"
+      ],
+      "body": "When a suite-health check cannot run, the failure never reaches the witness table.\n\n`SuiteHealth.check_project/2` turns the error into a skip (`suite_health.ex:45`):\n\n    {:error, reason} -> Result.skipped(project.name, inspect(reason), languages: ...)\n\n`reason` here is `{:ecto_bootstrap_failed, exit, output}` carrying the full mix output. `inspect/1` on that is thousands of characters, and `skip_reason` is `:string` — `varchar(255)` (`priv/repo/migrations/20260707120000_add_suite_health_results.exs:13`). Postgres rejects the insert:\n\n    [warning] harness suite health cron: tapakly %Postgrex.Error{\n      code: :string_data_right_truncation,\n      message: \"value too long for type character varying(255)\",\n      file: \"varchar.c\", line: \"637\", pg_code: \"22001\"}\n\n`SuiteHealthPoller.perform/1` then only logs (`suite_health_poller.ex:29`): `{:error, reason} -> Logger.warning(...)`. Nothing is persisted.\n\nBecause `suite_health_results` is keyed on `project_name` and written by upsert, the previous row survives untouched. The dashboard keeps showing an old result with an old `checked_at` and no signal that the check failed. Observed 2026-09-18 for tapakly: twelve-plus 22001 warnings in the journal across 16:24-16:33, while the stored witness still reads `checked_at 16:32:28`.\n\nThe consequence is the sharp one: the mechanism whose only job is to surface that a project's suite is broken cannot surface that it was itself unable to run. As of 2026-09-19, 10 of 16 projects show red and the table cannot say which of those are genuine.\n\nTwo things need fixing and they are independent: bound the reason before it is written, and make \"could not run\" a first-class witness state rather than a skip that happens to be unwritable. Bounding alone would still record an infrastructure failure in a field the dashboard reads as a project-health fact.\n",
+      "created_at": "2026-09-19",
+      "scored_at": "2026-09-19",
+      "cross_repo": []
     }
   ]
 }
