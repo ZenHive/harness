@@ -823,6 +823,35 @@ defmodule Harness.Dashboard.LiveTest do
       assert Enum.any?(diff.files, &(&1.path == "new.ex"))
     end
 
+    test "refreshes live patches on the metadata tick and loads the committed diff at settle" do
+      repo = GitFixture.init_repo()
+      run_id = unique_run_id("live-diff")
+      branch = "harness/#{run_id}"
+      worktree = GitFixture.tmp_base()
+      GitFixture.git!(repo, ["worktree", "add", "-q", "-b", branch, worktree])
+      name = unique_run_id("live-project")
+      :ok = ProjectRegistry.register(ProjectFixture.from_repo(repo, name: name))
+      on_exit(fn -> ProjectRegistry.unregister(name) end)
+      status = %Status{run_id: run_id, task_id: "1", state: :running, project_name: name, worktree_path: worktree}
+      socket = show_lifecycle_socket(run_id, status)
+      File.write!(Path.join(worktree, "README.md"), "live change\n")
+
+      {:noreply, socket} = Live.handle_info(:meta_tick, socket)
+      assert {:ok, %{added: 1, deleted: 1} = diff} = socket.assigns.run_diff
+      html = status |> show_render_assigns("") |> Map.put(:run_diff, {:ok, diff}) |> Live.render() |> rendered_to_string()
+      assert html =~ "dl-add"
+      assert html =~ "+live change"
+      assert html =~ "-harness git fixture"
+
+      File.write!(Path.join(worktree, "README.md"), "updated\nsecond line\n")
+      {:noreply, socket} = Live.handle_info(:meta_tick, socket)
+      assert {:ok, %{added: 2, deleted: 1}} = socket.assigns.run_diff
+      GitFixture.git!(worktree, ["add", "README.md"])
+      GitFixture.git!(worktree, ["commit", "-q", "-m", "delivery"])
+      {:noreply, socket} = Live.handle_info({:harness_run_settled, %{status | state: :done}}, socket)
+      assert {:ok, %{added: 2, deleted: 1}} = socket.assigns.run_diff
+    end
+
     test "leaves run_diff nil for a run with no live process and no record" do
       run_id = unique_run_id("absent-diff")
 

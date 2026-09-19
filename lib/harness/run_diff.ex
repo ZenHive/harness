@@ -104,6 +104,79 @@ defmodule Harness.RunDiff do
   # non-binary input resolves to :unknown_project rather than crashing.
   def for_run(_run_id, _project_name), do: {:error, :unknown_project}
 
+  @doc """
+  Reads a running worktree's committed and uncommitted changes from its fork
+  point, including non-ignored untracked files. Never changes the Git index.
+  Harness artifacts are excluded. Uses the same patch cap as `for_run/2`.
+  """
+  @spec for_worktree(String.t(), String.t() | nil, String.t() | nil) ::
+          {:ok, t()} | {:error, reason()}
+  def for_worktree(run_id, project_name, path) when is_binary(project_name) do
+    with {:ok, project} <- lookup(project_name),
+         :ok <- ensure_repo(path),
+         {:ok, base} <- Git.run(["merge-base", "HEAD", @branch_prefix <> run_id], Project.repo_path(project)),
+         {:ok, tracked} <-
+           Git.run(
+             [
+               "diff",
+               "--no-ext-diff",
+               "--no-textconv",
+               "--no-color",
+               "--find-renames",
+               "--src-prefix=a/",
+               "--dst-prefix=b/",
+               String.trim(base),
+               "--",
+               ".",
+               ":(exclude).harness"
+             ],
+             path
+           ),
+         {:ok, names} <-
+           Git.run(
+             ["ls-files", "--others", "--exclude-standard", "-z", "--", ".", ":(exclude).harness"],
+             path
+           ),
+         {:ok, raw} <- untracked_patch(String.split(names, "\0", trim: true), tracked, path) do
+      {capped, truncated?} = cap(raw)
+      {:ok, summarize(@branch_prefix <> run_id, parse(capped), truncated?)}
+    end
+  end
+
+  def for_worktree(_run_id, _project_name, _path), do: {:error, :unknown_project}
+
+  @spec untracked_patch([String.t()], String.t(), String.t()) :: {:ok, String.t()} | {:error, Git.error()}
+  defp untracked_patch([], patch, _path), do: {:ok, patch}
+  defp untracked_patch(_names, patch, _path) when byte_size(patch) > @patch_cap_bytes, do: {:ok, patch}
+
+  defp untracked_patch([name | names], patch, path) do
+    with {:ok, diff} <- untracked_file(name, path) do
+      untracked_patch(names, patch <> diff, path)
+    end
+  end
+
+  @spec untracked_file(String.t(), String.t()) :: {:ok, String.t()} | {:error, Git.error()}
+  defp untracked_file(name, path) do
+    args = [
+      "diff",
+      "--no-index",
+      "--no-ext-diff",
+      "--no-textconv",
+      "--no-color",
+      "--src-prefix=a/",
+      "--dst-prefix=b/",
+      "--",
+      "/dev/null",
+      name
+    ]
+
+    case Git.run(args, path) do
+      # git diff --no-index exits 1 when it found differences.
+      {:error, {:git_failed, _, 1, diff}} -> {:ok, diff}
+      result -> result
+    end
+  end
+
   # ── Repo / branch resolution ──────────────────────────────────────────────
 
   @spec lookup(String.t()) :: {:ok, Project.t()} | {:error, :unknown_project}
@@ -114,7 +187,9 @@ defmodule Harness.RunDiff do
     end
   end
 
-  @spec ensure_repo(String.t()) :: :ok | {:error, :repo_unavailable}
+  @spec ensure_repo(String.t() | nil) :: :ok | {:error, :repo_unavailable}
+  defp ensure_repo(nil), do: {:error, :repo_unavailable}
+
   defp ensure_repo(repo) do
     if File.dir?(repo) and Git.work_tree?(repo), do: :ok, else: {:error, :repo_unavailable}
   end

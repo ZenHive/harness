@@ -24,6 +24,7 @@ defmodule Harness.Dashboard.LiveMountTest do
   alias Harness.Roadmap.Item
   alias Harness.Run
   alias Harness.Run.LogRecord
+  alias Harness.Run.Status
   alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
 
   setup %{conn: conn} do
@@ -330,6 +331,29 @@ defmodule Harness.Dashboard.LiveMountTest do
   end
 
   describe "run-detail (:show) navigation" do
+    test "live git patches refresh without transcript events", %{conn: conn} do
+      repo = GitFixture.init_repo()
+      worktree = GitFixture.tmp_base()
+      run_id = "live-patch-#{System.unique_integer([:positive])}"
+      GitFixture.git!(repo, ["worktree", "add", "-q", "-b", "harness/#{run_id}", worktree])
+      project = ProjectFixture.from_repo(repo)
+      :ok = ProjectRegistry.register(project)
+      on_exit(fn -> ProjectRegistry.unregister(project.name) end)
+      on_exit(fn -> ResultStore.delete_run(run_id) end)
+      seed_history(run_id, project_name: project.name)
+      {:ok, view, _html} = live(conn, "/harness/runs/#{run_id}")
+      File.write!(Path.join(worktree, "README.md"), "live content\n")
+      status = %Status{run_id: run_id, task_id: "t", state: :running, project_name: project.name, worktree_path: worktree}
+      send(view.pid, {:harness_run_update, status})
+      assert render(view) =~ "+live content"
+      assert has_element?(view, "#run-diff .dl-del", "-harness git fixture")
+
+      File.write!(Path.join(worktree, "new.ex"), "new content\n")
+      send(view.pid, :meta_tick)
+      assert render(view) =~ "+new content"
+      assert has_element?(view, "#run-diff details.cf-file summary", "new.ex")
+    end
+
     test "mounts the detail view for a live run, backfilling status + transcript", %{conn: conn} do
       {run_id, _pid} = start_sleeping_run()
 

@@ -31,6 +31,39 @@ defmodule Harness.RunDiffTest do
     name
   end
 
+  describe "for_worktree/3" do
+    test "reads committed, staged, unstaged and untracked changes without modifying the index" do
+      {repo, run_id} = repo_with_run()
+      name = register(repo)
+      worktree = GitFixture.tmp_base()
+      GitFixture.git!(repo, ["worktree", "add", "-q", worktree, "harness/#{run_id}"])
+      File.write!(Path.join(worktree, "README.md"), "staged\n")
+      GitFixture.git!(worktree, ["add", "README.md"])
+      File.write!(Path.join(worktree, "README.md"), "working\n")
+      File.write!(Path.join(worktree, "new file.ex"), "untracked\n")
+      File.mkdir_p!(Path.join(worktree, ".harness"))
+      File.write!(Path.join(worktree, ".harness/review.json"), "private artifact")
+      before = GitFixture.git!(worktree, ["status", "--porcelain"])
+
+      assert {:ok, diff} = RunDiff.for_worktree(run_id, name, worktree)
+      assert Enum.sort(Enum.map(diff.files, & &1.path)) == ["README.md", "lib.ex", "new file.ex"]
+      readme = Enum.find(diff.files, &(&1.path == "README.md"))
+      assert %{kind: :add, text: "+working"} in readme.lines
+      assert %{kind: :del, text: "-harness git fixture"} in readme.lines
+      refute Enum.any?(readme.lines, &(&1.text == "+staged"))
+      assert Enum.find(diff.files, &(&1.path == "new file.ex")).added == 1
+      assert before == GitFixture.git!(worktree, ["status", "--porcelain"])
+    end
+
+    test "reports missing worktrees and projects explicitly" do
+      {repo, run_id} = repo_with_run()
+      name = register(repo)
+      assert {:error, :repo_unavailable} = RunDiff.for_worktree(run_id, name, nil)
+      assert {:error, :repo_unavailable} = RunDiff.for_worktree(run_id, name, GitFixture.tmp_base())
+      assert {:error, :unknown_project} = RunDiff.for_worktree(run_id, nil, repo)
+    end
+  end
+
   describe "for_run/2" do
     test "returns the aggregate diff: file list, counts, classified lines" do
       {repo, run_id} = repo_with_run()
@@ -100,7 +133,8 @@ defmodule Harness.RunDiffTest do
 
     test "returns :repo_unavailable when the project's path is not a git tree" do
       dir = GitFixture.tmp_base()
-      File.mkdir_p!(dir)
+      # An empty .git prevents discovery of a repository above the fixture root.
+      File.mkdir_p!(Path.join(dir, ".git"))
 
       name = "rundiff-nogit-#{System.unique_integer([:positive])}"
       :ok = ProjectRegistry.register(ProjectFixture.from_repo(dir, name: name))

@@ -25,9 +25,9 @@ defmodule Harness.Dashboard.Live do
   per-tick disk scan.
 
   Sidebar metadata (registered projects) has no event source, so a slow
-  **5s `:meta_tick`** keeps it fresh. That tick does no disk I/O and never
-  touches the run streams. Adapter install/enable/quota state lives on the
-  Settings page (`Harness.Dashboard.SettingsLive`), not here.
+  **5s `:meta_tick`** keeps it fresh. On run detail pages it also refreshes
+  the live worktree diff; it never touches the run streams. Adapter
+  install/enable/quota state lives on the Settings page (`Harness.Dashboard.SettingsLive`), not here.
 
   An operator can kill an in-flight run from either view via a confirm-gated
   "Kill run" button (`Task 94`); the `"kill_run"` event routes through
@@ -257,14 +257,15 @@ defmodule Harness.Dashboard.Live do
 
   defp take_live_runs(socket), do: {StatusView.live_runs(), socket}
 
-  # A terminal run (live-but-lingering or replayed from the store) has its work
-  # committed on the `harness/<run_id>` branch — read the real diff from git on
-  # demand. In-flight and not-found runs carry no committed diff; the show view
-  # renders the live edited-files list instead.
+  # Settled runs read their branch; live runs include the worktree edits.
   @spec maybe_load_diff(Socket.t()) :: Socket.t()
   defp maybe_load_diff(%{assigns: %{run_status: %Status{state: state} = status}} = socket)
        when state in [:done, :failed] do
     assign(socket, :run_diff, RunDiff.for_run(status.run_id, status.project_name))
+  end
+
+  defp maybe_load_diff(%{assigns: %{run_status: %Status{} = status}} = socket) do
+    assign(socket, :run_diff, RunDiff.for_worktree(status.run_id, status.project_name, status.worktree_path))
   end
 
   defp maybe_load_diff(socket), do: socket
@@ -303,6 +304,11 @@ defmodule Harness.Dashboard.Live do
     # tallies keep counting the gone run until the next fleet event. live_runs/0
     # is in-memory (no disk), and recompute_active only assigns — no stream patch.
     socket = if socket.assigns.live_action == :index, do: recompute_active(socket), else: socket
+
+    socket =
+      if socket.assigns.live_action == :show and killable?(socket.assigns.run_status),
+        do: maybe_load_diff(socket),
+        else: socket
 
     {:noreply, socket}
   end
@@ -476,7 +482,7 @@ defmodule Harness.Dashboard.Live do
   @spec refresh_focused_run(Socket.t(), Status.t()) :: Socket.t()
   defp refresh_focused_run(socket, %Status{run_id: run_id} = status) do
     if socket.assigns.run_id == run_id do
-      assign(socket, :run_status, status)
+      socket |> assign(:run_status, status) |> maybe_load_diff()
     else
       socket
     end
@@ -975,7 +981,10 @@ defmodule Harness.Dashboard.Live do
         :if={killable?(@run_status)}
         files={Components.edited_file_stats(@transcript_events)}
       />
-      <Components.run_diff_view :if={not killable?(@run_status)} diff={@run_diff} />
+      <p :if={killable?(@run_status)} class="cf-note">
+        Live git diff · refreshes every 5 seconds. Expand a file to see its patch.
+      </p>
+      <Components.run_diff_view diff={@run_diff} />
     </div>
 
     <h2 id="run-transcript" class="run-section">Transcript</h2>
