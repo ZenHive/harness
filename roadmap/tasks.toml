@@ -13401,7 +13401,7 @@ scored_at = "2026-09-13"
 id = "430"
 phase = 4
 bundle = "contract"
-status = "pending"
+status = "in_progress"
 title = "Vendor the AGENTS.md generator into the repo so a dispatched agent can regenerate it instead of hand-editing a generated file"
 scores = { d = 4, b = 7, u = 7 }
 markers = ["bug"]
@@ -13418,6 +13418,7 @@ Make AGENTS.md regeneration reproducible from a clean clone and an isolated harn
 Score rationale: portability includes recursive inputs, not only the script; it enables reproducible reviewer rules and Task 395.
 '''
 created_at = "2026-09-13"
+started_at = "2026-09-20"
 scored_at = "2026-09-20"
 
 [[task]]

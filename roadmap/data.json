@@ -20022,7 +20022,7 @@
       "id": "430",
       "phase": 4,
       "bundle": "contract",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Vendor the AGENTS.md generator into the repo so a dispatched agent can regenerate it instead of hand-editing a generated file",
       "scores": {
         "d": 4,
@@ -20072,6 +20072,7 @@
       ],
       "body": "Make AGENTS.md regeneration reproducible from a clean clone and an isolated harness worktree. The current command depends on a personal marketplace checkout and recursively imported home-directory files; historical deliveries manually mirrored generated content when those inputs were unavailable. Vendor the generator and all required transitive include sources as version-controlled snapshots with provenance, using the canonical in-repo harness-workflow source where available. Keep regeneration explicit and add a portable --check to the full gate. Missing inputs must fail clearly in negative tests, but the delivered clone must contain every required input and succeed with an empty HOME. Task 395 owns narrative relocation and budget checking, not another generator. Compare the unchanged source against the old generator using identical input snapshots, and make later snapshot refreshes explicit reviewed updates.\n\nScore rationale: portability includes recursive inputs, not only the script; it enables reproducible reviewer rules and Task 395.\n",
       "created_at": "2026-09-13",
+      "started_at": "2026-09-20",
       "scored_at": "2026-09-20",
       "cross_repo": []
     },
