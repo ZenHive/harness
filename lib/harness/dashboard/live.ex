@@ -890,6 +890,9 @@ defmodule Harness.Dashboard.Live do
   defp render_show(assigns) do
     ~H"""
     <h1>Run {@run_id}</h1>
+    <p>
+      <.link navigate={"/harness/insights?" <> URI.encode_query(%{"run_id" => @run_id})}>Related Run Insights</.link>
+    </p>
     <p><a href="/harness">← All runs</a></p>
     <Components.operator_flash notice={@notice} include_persistent={false} />
 

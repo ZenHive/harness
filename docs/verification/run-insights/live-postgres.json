@@ -1,0 +1,275 @@
+{
+  "first_pass": {
+    "at": "2026-09-20T03:47:09.420410Z",
+    "changed_runs": 2,
+    "committed": true,
+    "finding_context_count": 0,
+    "id": "live-pg-first",
+    "observer": {
+      "agent": "claude",
+      "model": "sonnet"
+    },
+    "partial": false,
+    "pending": false,
+    "sources": [
+      {
+        "availability": "available",
+        "content_hash": "B16763EBC04C2E79A8EA5B711ACE79A3A78410D756C3BEB13E6EAD52D777FD53",
+        "field": "record",
+        "project": "insights-pg",
+        "provisional": false,
+        "run_id": "live-pg-a",
+        "source_id": "live-pg-a/record",
+        "text": "%{state: \"done\", verdict: \"approve\", approved_then_found_red: %{}, recovery_attempts: 0, recovery_outcome: nil, recovery_repaired: nil, landed_sha: nil, cold_check: nil, review_report: \"Reviewer fixed the missing empty-input validation and added a regression test.\", reviewer_diff_size: 18, agent_output_hash: \"dbe79a86f48dd9170408d2fb16c38bb3\", reviewer_output_hash: \"975dd9dcd0f24a56206be4683f08391f\"}"
+      },
+      {
+        "availability": "available",
+        "content_hash": "6435A9549D0829E18B085B97FF5886F283E07DFBF87BB080E748136CEF219002",
+        "field": "agent_output",
+        "project": "insights-pg",
+        "provisional": false,
+        "run_id": "live-pg-a",
+        "source_id": "live-pg-a/agent_output",
+        "text": "implementation done"
+      },
+      {
+        "availability": "available",
+        "content_hash": "55C238669DAD17EEE1D6CF38E3BC01C0C5F7BF7519ECA32A077557376DF6BFF9",
+        "field": "reviewer_output",
+        "project": "insights-pg",
+        "provisional": false,
+        "run_id": "live-pg-a",
+        "source_id": "live-pg-a/reviewer_output",
+        "text": "reviewer repaired missing validation"
+      },
+      {
+        "availability": "available",
+        "content_hash": "8F6BA242E87AB6741D3A89C45339BCC74B462DE9352E61C0C84A1EB3B2FFDD0E",
+        "field": "record",
+        "project": "insights-other",
+        "provisional": false,
+        "run_id": "live-pg-b",
+        "source_id": "live-pg-b/record",
+        "text": "%{state: \"done\", verdict: \"approve\", approved_then_found_red: %{}, recovery_attempts: 0, recovery_outcome: nil, recovery_repaired: nil, landed_sha: nil, cold_check: nil, review_report: \"Reviewer again fixed the missing empty-input validation and added a regression test.\", reviewer_diff_size: 21, agent_output_hash: \"dbe79a86f48dd9170408d2fb16c38bb3\", reviewer_output_hash: \"975dd9dcd0f24a56206be4683f08391f\"}"
+      },
+      {
+        "availability": "available",
+        "content_hash": "6435A9549D0829E18B085B97FF5886F283E07DFBF87BB080E748136CEF219002",
+        "field": "agent_output",
+        "project": "insights-other",
+        "provisional": false,
+        "run_id": "live-pg-b",
+        "source_id": "live-pg-b/agent_output",
+        "text": "implementation done"
+      },
+      {
+        "availability": "available",
+        "content_hash": "55C238669DAD17EEE1D6CF38E3BC01C0C5F7BF7519ECA32A077557376DF6BFF9",
+        "field": "reviewer_output",
+        "project": "insights-other",
+        "provisional": false,
+        "run_id": "live-pg-b",
+        "source_id": "live-pg-b/reviewer_output",
+        "text": "reviewer repaired missing validation"
+      }
+    ],
+    "state": "successful"
+  },
+  "later_pass": {
+    "at": "2026-09-20T03:47:28.835948Z",
+    "changed_runs": 1,
+    "committed": true,
+    "finding_context_count": 1,
+    "id": "live-pg-later",
+    "observer": {
+      "agent": "claude",
+      "model": "sonnet"
+    },
+    "partial": false,
+    "pending": false,
+    "sources": [
+      {
+        "availability": "available",
+        "content_hash": "B03C463F880883B1B476729B849CCE048BC3416A9631D2C4E465BC8EC707F4AA",
+        "field": "record",
+        "project": "insights-pg",
+        "provisional": false,
+        "run_id": "live-pg-a",
+        "source_id": "live-pg-a/record",
+        "text": "%{state: \"done\", verdict: \"approve\", approved_then_found_red: %{}, recovery_attempts: 0, recovery_outcome: nil, recovery_repaired: nil, landed_sha: nil, cold_check: %{\"passed\" => false, \"report\" => \"A later check still fails on empty input after merge. The earlier reviewer repair did not resolve the recurrence.\"}, review_report: \"Reviewer fixed the missing empty-input validation and added a regression test.\", reviewer_diff_size: 18, agent_output_hash: \"dbe79a86f48dd9170408d2fb16c38bb3\", reviewer_output_hash: \"975dd9dcd0f24a56206be4683f08391f\"}"
+      },
+      {
+        "availability": "available",
+        "content_hash": "6435A9549D0829E18B085B97FF5886F283E07DFBF87BB080E748136CEF219002",
+        "field": "agent_output",
+        "project": "insights-pg",
+        "provisional": false,
+        "run_id": "live-pg-a",
+        "source_id": "live-pg-a/agent_output",
+        "text": "implementation done"
+      },
+      {
+        "availability": "available",
+        "content_hash": "55C238669DAD17EEE1D6CF38E3BC01C0C5F7BF7519ECA32A077557376DF6BFF9",
+        "field": "reviewer_output",
+        "project": "insights-pg",
+        "provisional": false,
+        "run_id": "live-pg-a",
+        "source_id": "live-pg-a/reviewer_output",
+        "text": "reviewer repaired missing validation"
+      }
+    ],
+    "state": "successful"
+  },
+  "histories": [
+    {
+      "finding": {
+        "assessment": "This updates the prior provisional assessment: previously no post-approval outcome evidence existed for live-pg-a, so resolution could not be confirmed either way. Now cold_check evidence is available and it disconfirms resolution — the approve verdict and reviewer's claimed fix did not hold up under later checking. landed_sha is still absent, so full landing/deployment status remains unconfirmed.",
+        "at": "2026-09-20T03:47:51.719741Z",
+        "citations": [
+          {
+            "availability": "available",
+            "content_hash": "B03C463F880883B1B476729B849CCE048BC3416A9631D2C4E465BC8EC707F4AA",
+            "excerpt": "A later check still fails on empty input after merge. The earlier reviewer repair did not resolve the recurrence.",
+            "field": "record",
+            "project": "insights-pg",
+            "provisional": false,
+            "run_id": "live-pg-a",
+            "source_id": "live-pg-a/record"
+          },
+          {
+            "availability": "available",
+            "content_hash": "B03C463F880883B1B476729B849CCE048BC3416A9631D2C4E465BC8EC707F4AA",
+            "excerpt": "Reviewer fixed the missing empty-input validation and added a regression test.",
+            "field": "record",
+            "project": "insights-pg",
+            "provisional": false,
+            "run_id": "live-pg-a",
+            "source_id": "live-pg-a/record"
+          }
+        ],
+        "contradictions": "Direct contradiction within live-pg-a's own record: review_report asserts the validation issue was fixed with a regression test, while cold_check explicitly states the same failure still occurs on empty input after merge.",
+        "explanation": "New evidence for live-pg-a now includes a populated cold_check field (previously nil), which directly contradicts the review_report's claim that the missing empty-input validation was fixed. The cold_check reports the same failure recurring after merge, even though a reviewer diff and regression test were added.",
+        "facts": "live-pg-a record now shows cold_check: {passed: false, report: 'A later check still fails on empty input after merge. The earlier reviewer repair did not resolve the recurrence.'}. landed_sha remains nil and recovery_attempts remains 0. review_report still states the reviewer 'fixed the missing empty-input validation and added a regression test' (reviewer_diff_size: 18).",
+        "hypothesis": "The reviewer's diff or regression test likely addressed only a narrow or surface-level case of empty-input handling rather than the actual failure path exercised by the later cold check, so the underlying gap persisted despite appearing resolved at review time.",
+        "id": "d21d10d7-4c1d-4f83-a2f4-86a0d3795fe2",
+        "improvement": "N/A for this advisory role; noting only that the discrepancy between review_report and cold_check suggests review-time validation/tests were insufficient to catch the recurrence.",
+        "observer": {
+          "agent": "claude",
+          "model": "sonnet"
+        },
+        "pass_id": "live-pg-later",
+        "projects": [
+          "insights-pg",
+          "insights-other"
+        ],
+        "provisional": false,
+        "recurrence": "This is a same-run recurrence (not just cross-run): the identical empty-input validation gap previously flagged as fixed in live-pg-a has now been shown, via cold_check, to persist post-merge. The prior cross-run pattern with live-pg-b (same missing-validation issue, identical output hashes) is not re-confirmed here since live-pg-b is not present in this evidence page.",
+        "runs": [
+          "live-pg-a",
+          "live-pg-b"
+        ],
+        "title": "Cold-check evidence shows the reviewer's empty-input fix did not actually resolve the issue in live-pg-a"
+      },
+      "next_offset": null,
+      "revisions": [
+        {
+          "assessment": "Both runs reached verdict=approve only after reviewer intervention, not from the agent's original output. Neither run has landed_sha or cold_check populated, so no post-approval landing/outcome evidence is available in this page — approval alone does not establish the fix is confirmed resolved.",
+          "at": "2026-09-20T03:47:28.830115Z",
+          "citations": [
+            {
+              "availability": "available",
+              "content_hash": "B16763EBC04C2E79A8EA5B711ACE79A3A78410D756C3BEB13E6EAD52D777FD53",
+              "excerpt": "Reviewer fixed the missing empty-input validation and added a regression test.",
+              "field": "record",
+              "project": "insights-pg",
+              "provisional": false,
+              "run_id": "live-pg-a",
+              "source_id": "live-pg-a/record"
+            },
+            {
+              "availability": "available",
+              "content_hash": "8F6BA242E87AB6741D3A89C45339BCC74B462DE9352E61C0C84A1EB3B2FFDD0E",
+              "excerpt": "Reviewer again fixed the missing empty-input validation and added a regression test.",
+              "field": "record",
+              "project": "insights-other",
+              "provisional": false,
+              "run_id": "live-pg-b",
+              "source_id": "live-pg-b/record"
+            }
+          ],
+          "contradictions": "The identical agent_output_hash and reviewer_output_hash across two different run_ids/projects is unusual for independent runs; without more evidence this could reflect duplicated/mirrored data rather than two distinct instances of the same agent gap, so the 'recurring' framing is provisional.",
+          "explanation": "Two separate runs (live-pg-a in project insights-pg, live-pg-b in project insights-other) both ended in state=done/verdict=approve, and in both cases the review_report states the reviewer had to add empty-input validation and a regression test that the agent's own output lacked. Both runs also share identical agent_output_hash (dbe79a86f48dd9170408d2fb16c38bb3) and reviewer_output_hash (975dd9dcd0f24a56206be4683f08391f) despite being different run_ids/projects.",
+          "facts": "live-pg-a record: review_report='Reviewer fixed the missing empty-input validation and added a regression test.' live-pg-b record: review_report='Reviewer again fixed the missing empty-input validation and added a regression test.' Both records show recovery_attempts:0, landed_sha:nil, cold_check:nil. agent_output_hash and reviewer_output_hash are identical strings across both runs.",
+          "hypothesis": "The agent may be systematically omitting empty-input validation as a generation gap (e.g., a prompt/skill blind spot), and the reviewer step is compensating consistently. The identical hashes across two distinct run_ids/projects could indicate a shared/templated agent output being reused, or could reflect a genuine coincidence/data-pipeline duplication rather than independent agent runs — this should be treated as an anomaly, not confirmed causation.",
+          "id": "d21d10d7-4c1d-4f83-a2f4-86a0d3795fe2",
+          "improvement": "If the agent output was genuinely regenerated independently in both cases, consider whether the underlying skill/prompt should explicitly require empty-input validation to reduce reliance on reviewer correction.",
+          "observer": {
+            "agent": "claude",
+            "model": "sonnet"
+          },
+          "pass_id": "live-pg-first",
+          "projects": [
+            "insights-pg",
+            "insights-other"
+          ],
+          "provisional": false,
+          "recurrence": "Same missing empty-input validation issue reported in both live-pg-a and live-pg-b records within this evidence page; no prior findings exist in this history to cross-reference by id.",
+          "runs": [
+            "live-pg-a",
+            "live-pg-b"
+          ],
+          "title": "Missing empty-input validation recurs across two runs with identical output fingerprints"
+        },
+        {
+          "assessment": "This updates the prior provisional assessment: previously no post-approval outcome evidence existed for live-pg-a, so resolution could not be confirmed either way. Now cold_check evidence is available and it disconfirms resolution — the approve verdict and reviewer's claimed fix did not hold up under later checking. landed_sha is still absent, so full landing/deployment status remains unconfirmed.",
+          "at": "2026-09-20T03:47:51.719741Z",
+          "citations": [
+            {
+              "availability": "available",
+              "content_hash": "B03C463F880883B1B476729B849CCE048BC3416A9631D2C4E465BC8EC707F4AA",
+              "excerpt": "A later check still fails on empty input after merge. The earlier reviewer repair did not resolve the recurrence.",
+              "field": "record",
+              "project": "insights-pg",
+              "provisional": false,
+              "run_id": "live-pg-a",
+              "source_id": "live-pg-a/record"
+            },
+            {
+              "availability": "available",
+              "content_hash": "B03C463F880883B1B476729B849CCE048BC3416A9631D2C4E465BC8EC707F4AA",
+              "excerpt": "Reviewer fixed the missing empty-input validation and added a regression test.",
+              "field": "record",
+              "project": "insights-pg",
+              "provisional": false,
+              "run_id": "live-pg-a",
+              "source_id": "live-pg-a/record"
+            }
+          ],
+          "contradictions": "Direct contradiction within live-pg-a's own record: review_report asserts the validation issue was fixed with a regression test, while cold_check explicitly states the same failure still occurs on empty input after merge.",
+          "explanation": "New evidence for live-pg-a now includes a populated cold_check field (previously nil), which directly contradicts the review_report's claim that the missing empty-input validation was fixed. The cold_check reports the same failure recurring after merge, even though a reviewer diff and regression test were added.",
+          "facts": "live-pg-a record now shows cold_check: {passed: false, report: 'A later check still fails on empty input after merge. The earlier reviewer repair did not resolve the recurrence.'}. landed_sha remains nil and recovery_attempts remains 0. review_report still states the reviewer 'fixed the missing empty-input validation and added a regression test' (reviewer_diff_size: 18).",
+          "hypothesis": "The reviewer's diff or regression test likely addressed only a narrow or surface-level case of empty-input handling rather than the actual failure path exercised by the later cold check, so the underlying gap persisted despite appearing resolved at review time.",
+          "id": "d21d10d7-4c1d-4f83-a2f4-86a0d3795fe2",
+          "improvement": "N/A for this advisory role; noting only that the discrepancy between review_report and cold_check suggests review-time validation/tests were insufficient to catch the recurrence.",
+          "observer": {
+            "agent": "claude",
+            "model": "sonnet"
+          },
+          "pass_id": "live-pg-later",
+          "projects": [
+            "insights-pg",
+            "insights-other"
+          ],
+          "provisional": false,
+          "recurrence": "This is a same-run recurrence (not just cross-run): the identical empty-input validation gap previously flagged as fixed in live-pg-a has now been shown, via cold_check, to persist post-merge. The prior cross-run pattern with live-pg-b (same missing-validation issue, identical output hashes) is not re-confirmed here since live-pg-b is not present in this evidence page.",
+          "runs": [
+            "live-pg-a",
+            "live-pg-b"
+          ],
+          "title": "Cold-check evidence shows the reviewer's empty-input fix did not actually resolve the issue in live-pg-a"
+        }
+      ]
+    }
+  ]
+}

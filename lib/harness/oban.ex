@@ -255,6 +255,7 @@ defmodule Harness.Oban do
     |> enable_cron_queue()
     |> enable_suite_health_queue()
     |> enable_audit_queue()
+    |> enable_insights_queue()
     |> enable_lifeline_plugin()
     |> enable_cron_plugin()
     |> Keyword.put(:name, __MODULE__)
@@ -394,6 +395,14 @@ defmodule Harness.Oban do
     end)
   end
 
+  @spec enable_insights_queue(keyword()) :: keyword()
+  defp enable_insights_queue(opts) do
+    Keyword.update(opts, :queues, [insights: 1], fn
+      queues when is_list(queues) -> Keyword.put(queues, :insights, 1)
+      _other -> [insights: 1]
+    end)
+  end
+
   @spec enable_lifeline_plugin(keyword()) :: keyword()
   defp enable_lifeline_plugin(opts) do
     plugin = {Lifeline, rescue_after: @lifeline_rescue_after_ms}
@@ -432,7 +441,8 @@ defmodule Harness.Oban do
       RoadmapPoller.cron_entry(),
       DepFreshnessPoller.cron_entry(),
       SuiteHealthPoller.cron_entry(),
-      PRPoller.cron_entry()
+      PRPoller.cron_entry(),
+      {"* * * * *", Harness.Insights.Tick, [queue: :cron]}
     ]
   end
 end

@@ -19,6 +19,7 @@ defmodule Harness.Manifest do
   use Descripex, namespace: "/manifest"
 
   @driver_surface [
+    Harness.Insights,
     Harness.Agents,
     Harness.Routing,
     Harness.Autonomy,

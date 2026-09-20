@@ -24,7 +24,7 @@ defmodule Harness.ResultStore.Memory do
       seq = state.seq + 1
       runs = Map.update(state.runs, record.run_id, {record, seq}, &merge_record(&1, record, seq))
 
-      %{state | seq: seq, runs: runs}
+      %{state | seq: seq, runs: runs, touched: Map.put(state.touched, record.run_id, DateTime.utc_now())}
     end)
   end
 
@@ -65,10 +65,28 @@ defmodule Harness.ResultStore.Memory do
     {:ok, records}
   end
 
+  @doc "Returns a bounded run-id page for the read-only observation scan."
+  @spec observation_page(String.t(), [String.t()], DateTime.t(), pos_integer(), keyword()) :: [LogRecord.t()]
+  def observation_page(cursor, projects, since, limit, opts) when limit in 1..100 do
+    state = read(opts)
+
+    state.runs
+    |> Map.values()
+    |> Enum.map(&elem(&1, 0))
+    |> Enum.filter(fn record ->
+      record.run_id > cursor and record.project_name in projects and
+        DateTime.compare(Map.fetch!(state.touched, record.run_id), since) != :lt
+    end)
+    |> Enum.sort_by(& &1.run_id)
+    |> Enum.take(limit)
+  end
+
   @impl Harness.ResultStore
   @spec delete_run(String.t(), keyword()) :: :ok
   def delete_run(run_id, opts) when is_binary(run_id) and is_list(opts) do
-    update(opts, fn state -> %{state | runs: Map.delete(state.runs, run_id)} end)
+    update(opts, fn state ->
+      %{state | runs: Map.delete(state.runs, run_id), touched: Map.delete(state.touched, run_id)}
+    end)
   end
 
   @impl Harness.ResultStore
@@ -78,7 +96,7 @@ defmodule Harness.ResultStore.Memory do
       {:ok, _record_with_seq} ->
         update(opts, fn state ->
           runs = Map.update!(state.runs, run_id, &mark_record_landed(&1, sha))
-          %{state | runs: runs}
+          %{state | runs: runs, touched: Map.put(state.touched, run_id, DateTime.utc_now())}
         end)
 
       :error ->
@@ -128,7 +146,7 @@ defmodule Harness.ResultStore.Memory do
 
   @spec empty() :: map()
   defp empty do
-    %{runs: %{}, batches: %{}, seq: 0}
+    %{runs: %{}, batches: %{}, seq: 0, touched: %{}}
   end
 
   @spec mark_record_landed({LogRecord.t(), non_neg_integer()}, String.t()) ::

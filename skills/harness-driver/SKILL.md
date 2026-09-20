@@ -701,3 +701,38 @@ Run records and status/verdict responses expose `dispatch_decision`; durable
 `task_ids` preserves coalesced membership. Deploy migration
 `20260918230000_add_dispatch_decision_to_run_records` before activating this code.
 The driving orchestrator owns runtime activation and installed-skill propagation.
+
+### Run Insights — advisory witness
+
+`insights-status` reports independent enablement (disabled by default), explicit
+Claude/model selection, hourly default cadence, last successful pass, next pass,
+durable scan progress and persistence mode. Configure at
+`/harness/insights/settings`; dispatch autonomy does not enable the witness.
+
+- `insights-observe_now`: enqueue one serialized pass when enabled.
+- `insights-findings(project: "", run_id: "", offset: 0)`: at most 50 findings,
+  newest revision first, filtered before pagination; follow `next_offset`.
+- `insights-history(id: "…", offset: 0)`: finding plus at most 50 revisions and
+  preserved citations. Revisions are chronological within each page; later pages
+  contain older revisions.
+- Elixir equivalents: `Harness.Insights.status/0`, `observe_now/0`,
+  `findings/3`, `history/2`, `configure/1` (string-keyed settings map).
+
+The observer has no MCP tools, shell, file tools, hooks, skills or lifecycle
+capabilities. Only Claude's tested tool-free invocation is selectable. Its
+output is validated as advisory finding data; it cannot dispatch, recover,
+steer, edit repositories or write roadmaps. Source excerpts are untrusted text.
+
+Bootstrap covers seven days of changed records, then cycles through bounded
+pages with persisted fingerprints, including later landing/audit updates and
+active snapshots. Partial/missing/truncated evidence is explicit; a pass is not
+proof that all history was reviewed. Active conclusions are provisional. A
+merge alone does not resolve a finding; later outcome evidence must support it.
+Existing findings are fed back in bounded pages for AI revision and deduplication.
+Repeated publication of the same pass id is idempotent. Failure preserves the
+last successful checkpoint. Postgres retains passes, excerpts and revisions;
+`repo_enabled: false` is visibly ephemeral and has no persistent Oban scheduler.
+
+Independent reviewers must check each claim against retained citations, including
+contradictions and recurrence, rather than accepting the observer's self-report.
+Installed-skill propagation and production enablement belong to the orchestrator.
