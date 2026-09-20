@@ -139,12 +139,35 @@ defmodule Harness.ConfigTest do
 
   describe "put/3" do
     test "validates, persists, and hot-applies an editable non-restart key" do
-      assert :ok = Config.put({:run, :lifetime_timeout}, 99_000, "test")
+      assert :ok = Config.put({:run, :idle_timeout}, 99_000, "test")
       # Live cache updated immediately.
-      assert Config.get({:run, :lifetime_timeout}) == 99_000
+      assert Config.get({:run, :idle_timeout}) == 99_000
       # Persisted to the store under the :config key.
       assert {:ok, overrides} = SettingsStore.fetch(:config)
-      assert overrides[{:run, :lifetime_timeout}] == 99_000
+      assert overrides[{:run, :idle_timeout}] == 99_000
+    end
+
+    test "lifetime changes apply at boot together with the Lifeline bound" do
+      lifetime = Config.get({:run, :lifetime_timeout})
+      assert {:ok, %{restart_required: true}} = Config.get_config("run.lifetime_timeout")
+
+      for requested <- [lifetime * 2, div(lifetime, 2)] do
+        effective = Config.get({:run, :lifetime_timeout})
+        assert :ok = Config.put({:run, :lifetime_timeout}, requested, "test")
+        assert Config.get({:run, :lifetime_timeout}) == effective
+        assert rescue_bound() == effective + to_timeout(minute: 5)
+
+        assert :ok = Config.load_into_env()
+        assert Config.get({:run, :lifetime_timeout}) == requested
+        assert rescue_bound() == requested + to_timeout(minute: 5)
+      end
+    end
+
+    test "rejects an unbounded lifetime because crash rescue needs a finite bound" do
+      effective = Config.get({:run, :lifetime_timeout})
+      assert {:error, :invalid_value} = Config.put({:run, :lifetime_timeout}, nil, "test")
+      assert Config.get({:run, :lifetime_timeout}) == effective
+      assert SettingsStore.fetch(:config) == :not_found
     end
 
     test "accepts nil for a nullable duration (unbounded)" do
@@ -311,4 +334,8 @@ defmodule Harness.ConfigTest do
 
   defp restore(key, nil), do: Application.delete_env(:harness, key)
   defp restore(key, value), do: Application.put_env(:harness, key, value)
+
+  defp rescue_bound do
+    Harness.Oban.oban_opts()[:plugins][Oban.Plugins.Lifeline][:rescue_after]
+  end
 end

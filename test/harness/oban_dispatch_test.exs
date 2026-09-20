@@ -1083,7 +1083,9 @@ defmodule Harness.ObanDispatchTest do
         terminal_linger: 100
       ]
 
-      RunSupervisor.start_run(item, run_project, FakeAdapter, opts ++ run_opts)
+      {:ok, started_id, pid} = RunSupervisor.start_run(item, run_project, FakeAdapter, opts ++ run_opts)
+      send(self(), {:retry_run, pid, Process.monitor(pid)})
+      {:ok, started_id, pid}
     end)
 
     assert :ok =
@@ -1099,6 +1101,8 @@ defmodule Harness.ObanDispatchTest do
              })
 
     assert GitFixture.git!(repo, ["ls-tree", "-r", "--name-only", branch]) =~ "agent_output.txt"
+    assert_received {:retry_run, pid, ref}
+    assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 1_000
   end
 
   describe "Task 131: claim on run start + revert only on terminal failure (via seams)" do
@@ -1318,6 +1322,7 @@ defmodule Harness.ObanDispatchTest do
 
       assert HarnessOban.queue_name(p1) == "project_demo"
       assert HarnessOban.queue_name("foo") == "project_foo"
+      assert HarnessOban.queue_limit(%{p2 | concurrency_cap: nil}) == 1
 
       # Headroom guard: when ! (enabled? and whereis), returns true without hitting Ecto agg or limit.
       # This exercises the public queue_headroom? + private queues_enabled? + the else branch.
@@ -1325,13 +1330,29 @@ defmodule Harness.ObanDispatchTest do
       assert HarnessOban.queue_headroom?(p2) == true
     end
 
-    test "oban_opts/0 includes Lifeline with a thirty minute rescue window" do
+    test "tracking queries degrade when the repository is unavailable" do
+      project = ProjectFixture.from_repo("/tmp/harness-offline-tracking", name: "offline-tracking")
+      refute Process.whereis(Harness.Repo)
+      assert HarnessOban.tracked_landing_branches(project) == []
+      refute HarnessOban.unfinished_run_job?(project, "439")
+    end
+
+    test "oban_opts/0 derives Lifeline rescue from the configured run lifetime" do
       plugins = HarnessOban.oban_opts()[:plugins]
 
       assert {Lifeline, opts} =
                Enum.find(plugins, &match?({Lifeline, _opts}, &1))
 
-      assert opts[:rescue_after] == to_timeout(minute: 30)
+      assert opts[:rescue_after] == Harness.Config.get({:run, :lifetime_timeout}) + to_timeout(minute: 5)
+    end
+
+    test "an old explicit Lifeline window cannot override the run lifetime bound" do
+      previous = Application.get_env(:harness, Oban)
+      on_exit(fn -> Application.put_env(:harness, Oban, previous) end)
+      Application.put_env(:harness, Oban, plugins: [{Lifeline, rescue_after: 1_000}])
+
+      assert HarnessOban.oban_opts()[:plugins][Lifeline][:rescue_after] ==
+               Harness.Config.get({:run, :lifetime_timeout}) + to_timeout(minute: 5)
     end
 
     test "oban_opts/0 serializes insights on its own queue and schedules an independent tick" do

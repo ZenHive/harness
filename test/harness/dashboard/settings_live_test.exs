@@ -358,11 +358,11 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     assert html =~ ~s(id="config-form-run_records__transcript_retention_ms")
     assert html =~ "ResultStore transcript retention defaults"
     assert html =~ "to 30 days"
-    # The port carries the restart pill; run timeouts don't.
+    # The port and run lifetime carry the restart pill.
     assert html =~ "restart"
   end
 
-  test "editing a run timeout persists through Harness.Config and confirms (Task 167)", %{conn: conn} do
+  test "editing the run lifetime persists it for the next node restart", %{conn: conn} do
     Application.put_env(:harness, :run, lifetime_timeout: 5_400_000)
 
     {:ok, view, _html} = live(conn, "/harness/settings")
@@ -372,8 +372,10 @@ defmodule Harness.Dashboard.SettingsLiveTest do
       |> form("#config-form-run__lifetime_timeout", %{value: "99000"})
       |> render_submit()
 
-    assert html =~ "lifetime_timeout saved."
-    assert Config.get({:run, :lifetime_timeout}) == 99_000
+    assert html =~ "lifetime_timeout saved — applies on the next node restart."
+    assert Config.get({:run, :lifetime_timeout}) == 5_400_000
+    assert {:ok, overrides} = SettingsStore.fetch(:config)
+    assert overrides[{:run, :lifetime_timeout}] == 99_000
   end
 
   test "editing transcript retention persists through Harness.Config and confirms", %{conn: conn} do

@@ -21,7 +21,7 @@ defmodule Harness.Config do
   var → persisted UI override). `put/3` validates against the schema,
   write-throughs to `Harness.SettingsStore`, and — unless the key is
   `restart_required?` — applies
-  the value to app env live, so a run timeout edit takes effect on the next run
+  the value to app env live, so an idle or total timeout edit takes effect on the next run
   with no restart. `load_into_env/0` runs once on boot to re-apply persisted
   overrides.
 
@@ -34,8 +34,8 @@ defmodule Harness.Config do
 
   ## Restart-required keys are persisted, not hot-applied
 
-  `restart_required?` keys (e.g. the dashboard port, bound by the endpoint at
-  boot) are persisted by `put/3` but **not** applied to app env live — the running
+  `restart_required?` keys (the dashboard port and run lifetime, also used by
+  Oban Lifeline at boot) are persisted by `put/3` but **not** applied to app env live — the running
   value is unchanged until the next boot, when `load_into_env/0` seeds the
   persisted value. The dashboard labels these so the operator knows the edit is
   deferred.
@@ -90,7 +90,10 @@ defmodule Harness.Config do
       ),
       e("Run timeouts", "total_timeout", {:run, :total_timeout}, nil, :duration_ms, ui_editable?: true),
       e("Run timeouts", "idle_timeout", {:run, :idle_timeout}, nil, :duration_ms, ui_editable?: true),
-      e("Run timeouts", "lifetime_timeout", {:run, :lifetime_timeout}, 5_400_000, :duration_ms, ui_editable?: true),
+      e("Run timeouts", "lifetime_timeout", {:run, :lifetime_timeout}, 5_400_000, :duration_ms,
+        ui_editable?: true,
+        restart_required?: true
+      ),
       e("Run timeouts", "max_hold_timeout", {:run, :max_hold_timeout}, 1_800_000, :duration_ms, ui_editable?: true),
       e("Run timeouts", "terminal_linger", {:run, :terminal_linger}, 5_000, :duration_ms, ui_editable?: true),
       e("Run timeouts", "reviewer_spawn_timeout", {:run, :reviewer_spawn_timeout}, 60_000, :duration_ms,
@@ -272,6 +275,7 @@ defmodule Harness.Config do
   end
 
   @spec validate(Entry.t(), term()) :: :ok | {:error, :invalid_value}
+  defp validate(%Entry{key: {:run, :lifetime_timeout}}, nil), do: {:error, :invalid_value}
   defp validate(%Entry{type: :duration_ms}, value) when is_nil(value) or (is_integer(value) and value >= 0), do: :ok
   defp validate(%Entry{type: :integer}, value) when is_integer(value) and value > 0, do: :ok
   defp validate(%Entry{type: :agent}, value) when value in @implementer_agents, do: :ok

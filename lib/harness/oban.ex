@@ -5,12 +5,26 @@ defmodule Harness.Oban do
   Harness uses one Oban queue per registered project. Open-source Oban enforces
   each queue's local limit independently, so total local concurrency is the sum
   of all project queue limits.
+
+  Oban 2.24 Lifeline checks job age, without queue or process-liveness filters.
+  Lifeline rescues executing jobs after the configured run lifetime plus five
+  minutes for setup and settlement. Its one-minute polling interval gives an
+  abandoned job a rescue bound of lifetime + six minutes from attempted_at,
+  while the database and elected Oban peer are available. The default is 96
+  minutes, shared by dispatch, landing and audit queues. Exhausted jobs are
+  discarded by Oban rather than made available.
+
+  The lifetime setting requires a node restart: Config loads it before Oban
+  starts, so runs and Lifeline share the same effective budget. Direct app-env
+  mutation or reloading Config alone is not a supported reconfiguration path.
+  Boot recovery separately releases orphaned dispatch jobs immediately.
   """
 
   use Supervisor
 
   import Ecto.Query, only: [from: 2]
 
+  alias Harness.Config
   alias Harness.Cron.DepFreshnessPoller
   alias Harness.Cron.RoadmapPoller
   alias Harness.Cron.SuiteHealthPoller
@@ -20,7 +34,7 @@ defmodule Harness.Oban do
   alias Oban.Plugins.Lifeline
 
   @default_queue_limit 1
-  @lifeline_rescue_after_ms to_timeout(minute: 30)
+  @lifeline_margin_ms to_timeout(minute: 5)
   @headroom_states ~w(available scheduled executing retryable)
   @run_worker Oban.Worker.to_string(Harness.Run.Worker)
   @orphan_rescue_child_id Harness.Oban.OrphanedRunRescue
@@ -405,10 +419,11 @@ defmodule Harness.Oban do
 
   @spec enable_lifeline_plugin(keyword()) :: keyword()
   defp enable_lifeline_plugin(opts) do
-    plugin = {Lifeline, rescue_after: @lifeline_rescue_after_ms}
+    rescue_after = Config.get({:run, :lifetime_timeout}) + @lifeline_margin_ms
+    plugin = {Lifeline, rescue_after: rescue_after}
 
     Keyword.update(opts, :plugins, [plugin], fn
-      plugins when is_list(plugins) -> Keyword.put_new(plugins, Lifeline, rescue_after: @lifeline_rescue_after_ms)
+      plugins when is_list(plugins) -> Keyword.put(plugins, Lifeline, rescue_after: rescue_after)
       _other -> [plugin]
     end)
   end
