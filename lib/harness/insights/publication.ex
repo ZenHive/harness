@@ -24,12 +24,8 @@ defmodule Harness.Insights.Publication do
     findings
     |> Enum.with_index()
     |> Enum.reduce_while({:ok, [], MapSet.new()}, fn {finding, index}, {:ok, docs, ids} ->
-      with true <- is_map(finding),
+      with :ok <- validate_finding(finding, known, ids),
            id = finding["id"] || Ecto.UUID.generate(),
-           true <- is_nil(finding["id"]) or MapSet.member?(known, id),
-           false <- MapSet.member?(ids, id),
-           true <- Enum.all?(@fields, &(is_binary(finding[&1]) and byte_size(finding[&1]) <= 12_000)),
-           true <- finding["title"] != "",
            {:ok, citations} <- citations(finding["citations"], source_map) do
         data =
           finding
@@ -48,7 +44,7 @@ defmodule Harness.Insights.Publication do
         revision = {"revision/" <> pass_id <> "/" <> to_string(index), "revision/" <> id, data}
         {:cont, {:ok, docs ++ [{"finding/" <> id, "finding", data}, revision], MapSet.put(ids, id)}}
       else
-        _ -> {:halt, {:error, :invalid_finding_or_citation}}
+        {:error, reason} -> {:halt, {:error, {:invalid_finding, index, reason}}}
       end
     end)
     |> case do
@@ -57,21 +53,38 @@ defmodule Harness.Insights.Publication do
     end
   end
 
+  @spec validate_finding(term(), MapSet.t(), MapSet.t()) :: :ok | {:error, term()}
+  defp validate_finding(finding, known, ids) when is_map(finding) do
+    invalid_fields = Enum.reject(@fields, &(is_binary(finding[&1]) and byte_size(finding[&1]) <= 12_000))
+
+    cond do
+      not is_nil(finding["id"]) and not MapSet.member?(known, finding["id"]) -> {:error, :unknown_finding_id}
+      MapSet.member?(ids, finding["id"]) -> {:error, :duplicate_finding_id}
+      invalid_fields != [] -> {:error, {:invalid_text_fields, invalid_fields}}
+      finding["title"] == "" -> {:error, :empty_title}
+      true -> :ok
+    end
+  end
+
+  defp validate_finding(_, _, _), do: {:error, :expected_finding_object}
+
   @spec references([map()], String.t(), map() | nil, String.t()) :: [String.t()]
   defp references(citations, field, prior, key) do
     Enum.uniq(Enum.map(citations, & &1[field]) ++ Map.get(prior || %{}, key, []))
   end
 
-  @spec citations(term(), map()) :: {:ok, [map()]} | {:error, atom()}
+  @spec citations(term(), map()) :: {:ok, [map()]} | {:error, term()}
   defp citations(citations, sources) when is_list(citations) and length(citations) in 1..20 do
-    Enum.reduce_while(citations, {:ok, []}, fn citation, {:ok, result} ->
+    Enum.reduce_while(Enum.with_index(citations), {:ok, []}, fn {citation, index}, {:ok, result} ->
       with %{"source_id" => id, "excerpt" => excerpt} when is_binary(excerpt) and byte_size(excerpt) in 1..8000 <-
              citation,
-           %{"text" => text} = source <- Map.get(sources, id),
-           true <- String.contains?(text, excerpt) do
+           {:ok, source} <- Map.fetch(sources, id),
+           true <- String.contains?(source["text"], excerpt) do
         {:cont, {:ok, result ++ [source |> Map.delete("text") |> Map.put("excerpt", excerpt)]}}
       else
-        _ -> {:halt, {:error, :invalid_citation}}
+        :error -> {:halt, {:error, {:invalid_citation, index, :unknown_source_id}}}
+        false -> {:halt, {:error, {:invalid_citation, index, :excerpt_not_in_source}}}
+        _ -> {:halt, {:error, {:invalid_citation, index, :invalid_excerpt_shape_or_size}}}
       end
     end)
   end

@@ -765,7 +765,11 @@ The AI can request older finding pages (20 per read) and immutable source
 continuations (8,000 bytes per read) before publication. Full source hashes
 observe changes beyond excerpts, including structured reviewer checks, concerns
 and run reasons. At most 32 retrievals fit within a 180-second consultation;
-exhaustion fails without consuming evidence. Retrieval performs no semantic
+exhaustion fails without consuming evidence. Invalid publications receive one AI
+correction turn with indexed structural/citation diagnostics within that same
+deadline and read budget. Repeated invalid output fails with the concrete reason
+and preserves the successful checkpoint; exact citation validation is never relaxed.
+Retrieval performs no semantic
 ranking or relevance filtering.
 Repeated publication of the same pass id is idempotent. Failure preserves the
 last successful checkpoint; attempt scheduling is separate, so exhausted retries

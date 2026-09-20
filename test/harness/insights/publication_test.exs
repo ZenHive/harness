@@ -41,6 +41,26 @@ defmodule Harness.Insights.PublicationTest do
     assert {:ok, []} = Publication.prepare(%{"findings" => []}, [source], [], "pass", %{})
   end
 
+  test "diagnostics identify the finding and citation without persisting rejected text" do
+    source = Evidence.source("run-a", "project", "record", "facts", false)
+    finding = InsightsWitness.finding(source)
+
+    for {changed, reason} <- [
+          {Map.put(finding, "id", "unknown"), :unknown_finding_id},
+          {Map.put(finding, "title", ""), :empty_title},
+          {Map.put(finding, "facts", nil), {:invalid_text_fields, ["facts"]}},
+          {put_in(finding, ["citations", Access.at(0), "source_id"], "unknown"),
+           {:invalid_citation, 0, :unknown_source_id}},
+          {put_in(finding, ["citations", Access.at(0), "excerpt"], "invented"),
+           {:invalid_citation, 0, :excerpt_not_in_source}},
+          {put_in(finding, ["citations", Access.at(0), "excerpt"], ""),
+           {:invalid_citation, 0, :invalid_excerpt_shape_or_size}}
+        ] do
+      assert {:error, {:invalid_finding, 1, ^reason}} =
+               Publication.prepare(%{"findings" => [finding, changed]}, [source], [], "pass", %{})
+    end
+  end
+
   test "missing and truncated sources are explicit and bounded" do
     assert Evidence.source("a", "p", "transcript", nil, true)["availability"] == "unavailable"
     assert Evidence.source("a", "p", "transcript", "", true)["availability"] == "unavailable"

@@ -2,6 +2,7 @@ defmodule Harness.Insights.Consultation do
   @moduledoc "AI-directed bounded reads of immutable evidence and prior finding pages."
   alias Harness.Insights.CodexWitness
   alias Harness.Insights.Evidence
+  alias Harness.Insights.Publication
   alias Harness.Insights.Store
   alias Harness.Insights.Witness
 
@@ -26,7 +27,7 @@ defmodule Harness.Insights.Consultation do
 
     timeout = Application.get_env(:harness, :insights_timeout_ms, 180_000)
     config = Map.put(config, "deadline", System.monotonic_time(:millisecond) + timeout)
-    consult(context, batch, config, batch.sources, previous, @reads)
+    consult(context, batch, Map.put(config, "publication_repairs", 1), batch.sources, previous, @reads)
   end
 
   @spec consult(map(), map(), map(), [map()], [map()], non_neg_integer()) ::
@@ -48,7 +49,25 @@ defmodule Harness.Insights.Consultation do
         {:error, :retrieval_limit_reached}
 
       {:ok, response} ->
+        validate_response(response, context, batch, config, sources, previous, remaining)
+
+      {:error, _} = error ->
+        error
+    end
+  end
+
+  @spec validate_response(map(), map(), map(), map(), [map()], [map()], non_neg_integer()) ::
+          {:ok, map(), [map()], [map()]} | {:error, term()}
+  defp validate_response(response, context, batch, config, sources, previous, remaining) do
+    repairs = config["publication_repairs"]
+
+    case Publication.prepare(response, sources, previous, "validation", %{}) do
+      {:ok, _} ->
         {:ok, response, sources, previous}
+
+      {:error, reason} when repairs > 0 ->
+        context = Map.put(context, "publication_repair", %{"error" => inspect(reason), "response" => response})
+        consult(context, batch, Map.put(config, "publication_repairs", 0), sources, previous, remaining)
 
       {:error, _} = error ->
         error
