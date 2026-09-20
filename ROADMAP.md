@@ -83,7 +83,7 @@
 | Task 425 | ✅ | 🎁 **multi-agent** · Reuse dependency and PLT build work across application-only task landings [D:6/B:7/U:7 → Eff:1.17] 📋 |
 | Task 429 | ⬜ | 🎁 **multi-agent** · 🐛 ProjectCache is Linux-only: make its runtime prerequisites and tests pass on a macOS operator machine so the architect-seat mix ci gate can go green there [D:4/B:5/U:4 → Eff:1.12] 📋 |
 | Task 430 | ⬜ | 🎁 **contract** · 🐛 Vendor the AGENTS.md generator into the repo so a dispatched agent can regenerate it instead of hand-editing a generated file [D:4/B:7/U:7 → Eff:1.75] 🚀 |
-| Task 442 | ⬜ | 🎁 **multi-agent** · Add and verify the Kimi adapter in its owning package [D:5/B:5/U:5 → Eff:1.0] 📋 |
+| Task 442 | 🔶 | 🎁 **multi-agent** · Add and verify the Kimi adapter in its owning package [D:5/B:5/U:5 → Eff:1.0] 📋 ⛔ Paused at operator request; resume only on explicit operator instruction. |
 <!-- TASKS:END -->
 
 ---

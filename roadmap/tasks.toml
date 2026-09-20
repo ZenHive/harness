@@ -13704,7 +13704,7 @@ id = "442"
 phase = 4
 bundle = "multi-agent"
 target_repo = "harness_agent_adapter"
-status = "pending"
+status = "blocked"
 title = "Add and verify the Kimi adapter in its owning package"
 scores = { d = 5, b = 5, u = 5 }
 acceptance_criteria = ["A real authenticated Kimi invocation succeeds in an isolated worktree and a relevant real rejected invocation establishes error behavior before mocks are written; the evidence records CLI version and official contract source.", "The adapter passes the package's shared conformance suite unchanged, preserves raw output, pins the requested model and worktree, threads environment controls and rejects unsupported option/resume combinations.", "Rule discovery is proved in the actual worktree, including ancestor AGENTS.md behavior; authentication precedence is observed without capturing credential values.", "Focused tests cover the observed invocation permutations and failure paths; a durable package commit is recorded for Task 366 to consume."]
@@ -13712,6 +13712,7 @@ out_of_scope = ["Harness-side catalog, dashboard, roadmap and transcript wiring 
 touches = ["lib/harness/agent_adapter/kimi.ex", "lib/harness/agent_adapter/registry.ex", "test/harness/agent_adapter/", "README.md"]
 assignee = "codex"
 model = "gpt-6-astra"
+blocked_reason = "Paused at operator request; resume only on explicit operator instruction."
 body = "Task 366's adapter implementation belongs in harness_agent_adapter, which owns the shared adapter behaviour and registry after Task 397. Implement it there and deliver a pinned package revision for harness integration in Task 366. The requested capability is an additional explicit Kimi execution route; no cost or quality advantage is assumed. Observe the installed CLI and official documentation before choosing command, auth, resume, model and rule-discovery behavior; historical CLI flags in Task 366 are not authority. Operator login is an external prerequisite: missing credentials must fail with setup instructions, never silently skip or fall back to another provider."
 created_at = "2026-09-20"
 scored_at = "2026-09-20"

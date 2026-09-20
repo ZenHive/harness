@@ -20543,7 +20543,7 @@
       "phase": 4,
       "bundle": "multi-agent",
       "target_repo": "harness_agent_adapter",
-      "status": "pending",
+      "status": "blocked",
       "title": "Add and verify the Kimi adapter in its owning package",
       "scores": {
         "d": 5,
@@ -20576,6 +20576,7 @@
       "body": "Task 366's adapter implementation belongs in harness_agent_adapter, which owns the shared adapter behaviour and registry after Task 397. Implement it there and deliver a pinned package revision for harness integration in Task 366. The requested capability is an additional explicit Kimi execution route; no cost or quality advantage is assumed. Observe the installed CLI and official documentation before choosing command, auth, resume, model and rule-discovery behavior; historical CLI flags in Task 366 are not authority. Operator login is an external prerequisite: missing credentials must fail with setup instructions, never silently skip or fall back to another provider.",
       "created_at": "2026-09-20",
       "scored_at": "2026-09-20",
+      "blocked_reason": "Paused at operator request; resume only on explicit operator instruction.",
       "cross_repo": []
     },
     {
