@@ -16320,7 +16320,7 @@
       "phase": 23,
       "bundle": "audit-architecture",
       "milestone": "v0_16",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Separate Dispatch concerns behind the existing public facade",
       "scores": {
         "d": 5,
@@ -16361,6 +16361,7 @@
       ],
       "body": "Surfaced by the 2026-07-12 project health audit (arch-review.md #2). `lib/harness/dispatch.ex`\nis ~1900 lines (1913 as of 2026-07-29, growing) and the second-highest outgoing-coupling module in the project. It is the\nMCP/driver-surface facade but does not stay thin — it houses five-plus distinct concern\ngroups at different abstraction levels and for different audiences:\n\n- run dispatch + await (task/4, await/3, await_runs/2, await_result/2)\n- lifecycle control (cancel/1, hold/2, steer/2, resume/1, resume_failed/2, rereview/1, reland/1)\n- project administration (register_project/6)\n- cron/manual-approval admin (pending/1, approve/1)\n- cross-adapter benchmarking + verdict detail (compare/3..5, verdict_detail/1)\n- capability routing (recommend/2, assess_facets/1)\n- adapter/model resolution internals + await-summary presentation helpers\n\nExtract into per-concern modules (e.g. Dispatch.Lifecycle, Dispatch.Admin, Dispatch.Compare)\nthat Dispatch delegates to, keeping Dispatch itself a thin re-export facade IF the descripex\n`api()` / MCP tool-naming convention requires one flat namespace (verify against\nHarness.Manifest's @driver_surface and the generated MCP tool list before moving anything —\nthe MCP surface names must not change). Also lift the presentation helpers (turning a\n%LogRecord{} into human-readable await/review prose) out of the orchestration path.\n\nMantra check: this is pure structure — no judgment logic is added or removed; every extracted\nfunction keeps its exact behaviour. The MCP tool surface and every public arity must be\nbyte-for-byte preserved.\n\n2026-09-20 scope refinement: At review on 2026-09-20 dispatch.ex has 1,962 lines. This is context, not the success metric: preserve function/arity and MCP contracts while separating orchestration concerns from presentation. Choose module boundaries from the current call paths, not the historical example names.\n",
       "created_at": "2026-07-12",
+      "started_at": "2026-09-20",
       "scored_at": "2026-07-12",
       "cross_repo": []
     },

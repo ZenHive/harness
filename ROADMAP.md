@@ -9,7 +9,7 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (23 of 30 done · 0 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (23 of 30 done · 1 in progress)
 
 **Last shipped:** Task 377 — Retry safe post-land cleanup and reclaim historical run branches/worktree orphans, Task 424 — Sync the roadmap checkout (fetch + ff-only) before ingest and writeback so dispatch reads the tasks that are actually on origin, Task 428 — Node-pressure gate samples a naive RSS sum, not memory headroom — switch to MemAvailable and give the mark an env override on 2026-09-13
 
@@ -357,7 +357,7 @@
 | Task | Status | Notes |
 |------|--------|-------|
 | Task 358 | ✅ | 🎁 **audit-perf** · 🚀 **v0_16** · Bound KPI dashboard fleet-wide aggregate reads on run settlement [D:3/B:5/U:4 → Eff:1.5?] 🚀 |
-| Task 359 | ⬜ | 🎁 **audit-architecture** · 🚀 **v0_16** · Separate Dispatch concerns behind the existing public facade [D:5/B:5/U:4 → Eff:0.9?] ⚠️ |
+| Task 359 | 🔄 | 🎁 **audit-architecture** · 🚀 **v0_16** · Separate Dispatch concerns behind the existing public facade [D:5/B:5/U:4 → Eff:0.9?] ⚠️ |
 | Task 360 | ⬜ | 🎁 **audit-architecture** · 🚀 **v0_16** · Enforce consumer-to-core dependency boundaries and remove accidental reverse edges [D:7/B:6/U:4 → Eff:0.71] ⚠️ |
 | Task 361 | ✅ | 🎁 **audit-tests** · 🚀 **v0_16** · Add direct coverage for Harness.Store.EtsScope create/lookup and owner-exit table ownership [D:2/B:5/U:4 → Eff:2.25?] 🎯 |
 | Task 362 | ⬜ | 🎁 **audit-tests** · 🚀 **v0_16** · 🐛 Diagnose and eliminate the AgentRegistry empty-registry test flake [D:4/B:6/U:5 → Eff:1.38?] 📋 |
