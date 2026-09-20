@@ -13519,9 +13519,11 @@ status = "pending"
 title = "Suite-health check leaks its test database on every successful run"
 scores = { d = 3, b = 7, u = 6 }
 markers = ["bug"]
-acceptance_criteria = ["A completed suite-health run leaves no `<base>_h_suite_health` database behind, on both the green and the red path", "Teardown runs via `try/after` (or equivalent) so a raised/exited suite command still drops the partition", "A teardown failure logs with evidence and never changes the recorded suite-health witness result", "`Harness.Run.TestDbIsolation` exposes a teardown that takes an explicit partition, so a fixed-partition caller can reuse the guarded drop instead of open-coding one", "Test covers: Bootstrap.prepare + run_suite round-trip drops the partition it created"]
+acceptance_criteria = ["A completed suite-health run leaves no `<base>_h_suite_health` database behind, on both the green and the red path", "Teardown runs via `try/after` (or equivalent) so a raised/exited suite command still drops the partition", "A teardown failure logs with evidence and never changes the recorded suite-health witness result", "`Harness.Run.TestDbIsolation` exposes a teardown that takes an explicit partition, so a fixed-partition caller can reuse the guarded drop instead of open-coding one", "Test covers: Bootstrap.prepare + run_suite round-trip drops the partition it created", "Cleanup also runs when bootstrap creates the partition but migrations or later setup fail; tests pin green, red, bootstrap-failure and exception paths.", "Isolation opt-out never drops a shared test database; active sessions are skipped and reported, never terminated or force-dropped.", "Two successive real PostgreSQL suite-health checks leave the same scratch database inventory; cleanup failures remain separate from the suite witness."]
 out_of_scope = ["Sweeping the databases already leaked by this bug — operator cleanup, and task 434 for the general orphan class", "Changing the fixed `_h_suite_health` partition name or making it per-run", "Touching the agent-run teardown path in lib/harness/run/actions/worktree.ex, which is correct"]
 touches = ["lib/harness/suite_health/runner.ex", "lib/harness/suite_health/bootstrap.ex", "lib/harness/run/test_db_isolation.ex"]
+assignee = "cursor"
+model = "cursor-grok-4.6-high"
 body = """
 `Harness.SuiteHealth` creates a test database and never drops it. Not on failure — on the **green** path, by construction, once per project per day.
 
@@ -13539,6 +13541,9 @@ Why it was probably never wired: `TestDbIsolation.teardown/4` derives the partit
 Observed on the production box 2026-09-18: 28 leaked `_h_suite_health` databases across four projects, 21 of them for `tapakly` alone (~381 MB). The multiplier is project-side — tapakly's `config/test.exs` (T337) derives its base name from a sha256 of the checkout path, so every fresh cron worktree yields a new base name under the same fixed partition suffix, i.e. one new never-dropped database per day.
 
 harness already holds itself to this standard for the sibling resource: "A crashed run does not leak an orphan worktree" is an acceptance criterion of the worktree task, delivered with `Harness.Worktree.Sweeper`. Databases got the create half and not the destroy half.
+
+2026-09-20 operator refinement: confirmed against server checkout c6d42bc and live PostgreSQL inventory. Cleaned 85 attributable historical scratch databases without terminating sessions; preserved primary databases, retained-worktree databases and ambiguous names. This task remains pending; no dispatch authorized by this refinement. Implement the immediate suite-health lifecycle fix; task 434 supplies durable crash recovery.
+
 """
 created_at = "2026-09-18"
 scored_at = "2026-09-18"
@@ -13552,9 +13557,12 @@ bundle = "operator-surface"
 status = "pending"
 title = "Orphan test-database sweeper — the Worktree.Sweeper equivalent for scratch DBs"
 scores = { d = 4, b = 5, u = 3 }
-acceptance_criteria = ["A boot-time (or scheduled) sweeper reclaims harness-created scratch databases whose owning run has settled, mirroring how `Harness.Worktree.Sweeper` reclaims orphan worktrees", "It drops only databases it can positively attribute to harness — marker comment and/or owner plus partition-suffix shape — never an unmarked database", "It never drops a database with open connections and never terminates another session", "It is reportable before it is destructive: an operator can list what would be reclaimed without reclaiming it", "Test covers: settled-run orphan reclaimed, in-flight run untouched, unmarked database untouched"]
+depends_on = ["433"]
+acceptance_criteria = ["A boot-time (or scheduled) sweeper reclaims harness-created scratch databases whose owning run has settled, mirroring how `Harness.Worktree.Sweeper` reclaims orphan worktrees", "It drops only databases it can positively attribute to harness — marker comment and/or owner plus partition-suffix shape — never an unmarked database", "It never drops a database with open connections and never terminates another session", "It is reportable before it is destructive: an operator can list what would be reclaimed without reclaiming it", "Test covers: settled-run orphan reclaimed, in-flight run untouched, unmarked database untouched", "Persist the exact database identity, PostgreSQL server, owner and owning run or suite-health check durably so cleanup works after worktree removal without booting Mix in that worktree.", "Run reclamation at startup and daily; dry-run and destructive execution use identical selection rules. Recheck ownership, completion and connections before each non-forced drop.", "Only positively marked harness-owned scratch databases are automatically reclaimed; unmarked historical databases require explicit operator inventory and selection. Protect templates, primary databases, live runs and retained recovery worktrees.", "Failed or busy drops remain visible and eligible for a later safe retry; repeated cleanup is idempotent. Real PostgreSQL tests cover process death, missing worktree, active sessions, foreign ownership and unmarked databases.", "Integrate the ownership lifecycle with ordinary non-template run databases and suite-health partitions, not only template clones; audit-created scratch databases must either use the same lifecycle or be explicitly reported as unmanaged."]
 out_of_scope = ["The suite-health-specific create/drop asymmetry — that is task 433 and lands first", "Time-based template cache or automatic template refresh (explicitly rejected in docs/test-db-templates.md)", "Sweeping databases of projects harness does not own"]
 touches = ["lib/harness/run/test_db_isolation.ex", "lib/harness/run/test_db_template.ex", "docs/test-db-templates.md"]
+assignee = "codex"
+model = "gpt-6-astra"
 body = """
 `docs/test-db-templates.md:109-113` states the gap plainly: cancellation or process death can leave an orphan database, including in the window between `CREATE DATABASE` and its marker, and **"There is no automatic orphan sweep."** The doc then puts the burden on an operator, who must verify run id, partition, server and owner by hand before removing anything.
 
@@ -13567,10 +13575,12 @@ Note the real teardown preconditions that make orphans likely in practice. `Test
 Measured on the production box 2026-09-18: 156 databases in the cluster, ~5.6 GB, of which 31 are `_h_<run>` scratch partitions (tapakly 13, trading 12, aave 4, starpatron 2) with zero open connections and no executing Oban jobs.
 
 The guard rails in the existing template cleanup are the right model to reuse: drop only the exact partition, owned by the connecting role, carrying `COMMENT 'harness:test-run:<partition>'`, with `IS_TEMPLATE false`, never forced, never terminating other sessions.
+
+2026-09-20 operator refinement: confirmed against server checkout c6d42bc and live PostgreSQL inventory. Cleaned 85 attributable historical scratch databases without terminating sessions; preserved primary databases, retained-worktree databases and ambiguous names. This task remains pending; no dispatch authorized by this refinement. Use startup plus daily reconciliation, exact durable identities and strict ownership markers. Activation follows reviewed landing and root-owned autodeploy; do not manually restart the harness service.
+
 """
 created_at = "2026-09-18"
 scored_at = "2026-09-18"
-depends_on = ["433"]
 
 [[task]]
 id = "436"
