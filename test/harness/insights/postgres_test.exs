@@ -1,10 +1,12 @@
 defmodule Harness.Insights.PostgresTest do
   use Harness.DataCase, async: false
+  use Harness.Test.InsightsEvidenceContract
 
   alias Harness.Insights
   alias Harness.Insights.Document
   alias Harness.Insights.Store
   alias Harness.Insights.Tick
+  alias Harness.Insights.Worker
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
   alias Harness.ResultStore
@@ -13,6 +15,15 @@ defmodule Harness.Insights.PostgresTest do
   @moduletag :integration
 
   setup do
+    old_models = Application.get_env(:harness, :agent_model)
+    Application.put_env(:harness, :agent_model, codex: "gpt-6-astra")
+
+    on_exit(fn ->
+      if old_models,
+        do: Application.put_env(:harness, :agent_model, old_models),
+        else: Application.delete_env(:harness, :agent_model)
+    end)
+
     old_repo = Application.get_env(:harness, :repo_enabled)
     old_store = Application.get_env(:harness, :result_store)
     Application.put_env(:harness, :repo_enabled, true)
@@ -109,10 +120,49 @@ defmodule Harness.Insights.PostgresTest do
     assert :ok = Insights.observe("overlap")
   end
 
+  test "a rejected final database write fails the pass and leaves the checkpoint intact" do
+    assert :ok = Insights.observe("before-write-failure")
+    checkpoint = Store.get("progress")
+    :ok = ResultStore.record_run(record("write-failure"))
+
+    Repo.query!("""
+    CREATE FUNCTION pg_temp.reject_insights_progress() RETURNS trigger LANGUAGE plpgsql AS $$
+    BEGIN
+      IF NEW.id = 'progress' THEN RAISE EXCEPTION 'injected final publication failure'; END IF;
+      RETURN NEW;
+    END $$
+    """)
+
+    Repo.query!(
+      "CREATE TRIGGER reject_insights_progress BEFORE INSERT OR UPDATE ON run_insights_documents FOR EACH ROW EXECUTE FUNCTION pg_temp.reject_insights_progress()"
+    )
+
+    assert {:error, _} = Insights.observe("write-failure")
+    assert Store.get("progress") == checkpoint
+    assert Store.get("pass/write-failure")["state"] == "failed"
+    refute Store.get("pass/write-failure")["committed"]
+    assert Store.get("seen/record/write-failure") == nil
+    assert Insights.findings()["items"] == []
+  end
+
+  test "discarded retry groups do not enqueue every minute with Daily selected" do
+    start_supervised!({Oban, name: Harness.Oban, repo: Repo, testing: :manual, queues: false, plugins: false})
+    assert :ok = Insights.configure(Map.put(Insights.settings(), "cadence_minutes", 1440))
+    :ok = ResultStore.record_run(record("daily-pg"))
+    Application.put_env(:harness, :insights_test_response, {:error, :provider_unavailable})
+    assert {:ok, job_id} = Insights.observe_now()
+    job = Repo.get!(Oban.Job, job_id)
+    for _ <- 1..3, do: assert({:error, :provider_unavailable} = Worker.perform(job))
+    Repo.update_all(from(j in Oban.Job, where: j.id == ^job_id), set: [state: "discarded"])
+    for _ <- 1..3, do: assert(:ok = Tick.perform(%Oban.Job{}))
+    assert Repo.aggregate(from(j in Oban.Job, where: j.worker == "Harness.Insights.Worker"), :count) == 1
+    assert Store.get("progress") == nil
+  end
+
   @tag :live_agent
   @tag timeout: 300_000
   test "live configured witness publishes and revises Postgres observations from collected run evidence" do
-    Application.put_env(:harness, :insights_witness, Harness.Insights.Witness)
+    Application.delete_env(:harness, :insights_witness)
     :ok = ProjectRegistry.register(ProjectFixture.from_repo("/tmp/insights-pg-other", name: "insights-other"))
 
     first = %{
@@ -132,7 +182,7 @@ defmodule Harness.Insights.PostgresTest do
     :ok = ResultStore.record_run(second)
 
     assert :ok = Insights.observe("live-pg-first"),
-           "Live observer requires `claude auth login` or export ANTHROPIC_API_KEY='your-key' from https://console.anthropic.com/settings/keys."
+           "Live observer requires `codex login` or export OPENAI_API_KEY='your-key' from https://platform.openai.com/api-keys."
 
     assert [_ | _] = findings = Insights.findings()["items"]
     ids = Enum.map(findings, & &1["id"])
@@ -152,7 +202,7 @@ defmodule Harness.Insights.PostgresTest do
     File.mkdir_p!(".harness")
 
     File.write!(
-      ".harness/insights-live-postgres.json",
+      ".harness/insights-codex-postgres.json",
       Jason.encode!(
         %{
           first_pass: Store.get("pass/live-pg-first"),
@@ -160,6 +210,21 @@ defmodule Harness.Insights.PostgresTest do
           histories: Enum.map(ids, &Insights.history/1)
         },
         pretty: true
+      )
+    )
+  end
+
+  defp evidence_record(options) do
+    ResultStoreContract.log_record(
+      Keyword.merge(
+        [
+          project_name: "insights-pg",
+          run_id: "review-run",
+          agent_output: "done",
+          reviewer_output: "approved",
+          started_at: DateTime.utc_now()
+        ],
+        options
       )
     )
   end

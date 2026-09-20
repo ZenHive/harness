@@ -1,0 +1,832 @@
+{
+  "baseline": {
+    "summary": {
+      "duration_us": 235178369,
+      "excluded": 106,
+      "failed": 1,
+      "flaky": 3,
+      "invalid": 0,
+      "passed": 2419,
+      "result": "failed",
+      "skipped": 0,
+      "total": 2529
+    },
+    "coverage": [
+      {
+        "covered_lines": 79,
+        "file": "lib/harness/dashboard/insights_live.ex",
+        "module": "Harness.Dashboard.InsightsLive",
+        "percentage": 88.76,
+        "uncovered_lines": [
+          22,
+          41,
+          42,
+          44,
+          45,
+          55,
+          172,
+          174,
+          207,
+          209
+        ]
+      },
+      {
+        "covered_lines": 76,
+        "file": "lib/harness/insights.ex",
+        "module": "Harness.Insights",
+        "percentage": 93.83,
+        "uncovered_lines": [
+          63,
+          64,
+          65,
+          66,
+          212
+        ]
+      },
+      {
+        "covered_lines": 0,
+        "file": "lib/harness/insights/document.ex",
+        "module": "Harness.Insights.Document",
+        "percentage": 0.0,
+        "uncovered_lines": [
+          8
+        ]
+      },
+      {
+        "covered_lines": 55,
+        "file": "lib/harness/insights/evidence.ex",
+        "module": "Harness.Insights.Evidence",
+        "percentage": 84.62,
+        "uncovered_lines": [
+          66,
+          67,
+          69,
+          95,
+          101,
+          102,
+          103,
+          145,
+          153,
+          164
+        ]
+      },
+      {
+        "covered_lines": 26,
+        "file": "lib/harness/insights/publication.ex",
+        "module": "Harness.Insights.Publication",
+        "percentage": 100.0,
+        "uncovered_lines": []
+      },
+      {
+        "covered_lines": 25,
+        "file": "lib/harness/insights/store.ex",
+        "module": "Harness.Insights.Store",
+        "percentage": 60.98,
+        "uncovered_lines": [
+          19,
+          20,
+          21,
+          37,
+          70,
+          71,
+          72,
+          85,
+          92,
+          96,
+          104,
+          106,
+          107,
+          108,
+          110,
+          125
+        ]
+      },
+      {
+        "covered_lines": 2,
+        "file": "lib/harness/insights/tick.ex",
+        "module": "Harness.Insights.Tick",
+        "percentage": 22.22,
+        "uncovered_lines": [
+          11,
+          12,
+          13,
+          22,
+          23,
+          24,
+          28
+        ]
+      },
+      {
+        "covered_lines": 0,
+        "file": "lib/harness/insights/witness.ex",
+        "module": "Harness.Insights.Witness",
+        "percentage": 0.0,
+        "uncovered_lines": [
+          10,
+          11,
+          12,
+          18,
+          47,
+          63,
+          66,
+          67,
+          68,
+          70,
+          71,
+          73,
+          74,
+          75,
+          78,
+          83,
+          84,
+          88,
+          89
+        ]
+      },
+      {
+        "covered_lines": 3,
+        "file": "lib/harness/insights/worker.ex",
+        "module": "Harness.Insights.Worker",
+        "percentage": 75.0,
+        "uncovered_lines": [
+          13
+        ]
+      }
+    ],
+    "failed_tests": [
+      {
+        "file": "test/harness/agent_economy_test.exs",
+        "line": 18,
+        "name": "test annotated modules carry :hints on every visible public function Harness.Insights: every non-hidden function has :hints metadata"
+      }
+    ]
+  },
+  "audit_before": {
+    "summary": {
+      "invalid": 0,
+      "total": 3,
+      "failed": 3,
+      "result": "failed",
+      "excluded": 0,
+      "passed": 0,
+      "skipped": 0,
+      "duration_us": 60273
+    },
+    "failed_tests": [
+      {
+        "file": ".audit/116d146-run-insights-regressions.exs",
+        "line": 24,
+        "name": "test structured reviewer concerns are available and concern-only updates reach the witness"
+      },
+      {
+        "file": ".audit/116d146-run-insights-regressions.exs",
+        "line": 36,
+        "name": "test an old relevant finding gets the changed evidence before it is consumed"
+      },
+      {
+        "file": ".audit/116d146-run-insights-regressions.exs",
+        "line": 47,
+        "name": "test source marked available does not silently lose review report content"
+      }
+    ]
+  },
+  "focused": {
+    "summary": {
+      "duration_us": 102697583,
+      "excluded": 0,
+      "failed": 0,
+      "invalid": 0,
+      "passed": 52,
+      "result": "passed",
+      "skipped": 0,
+      "total": 52
+    },
+    "coverage": [
+      {
+        "covered_lines": 132,
+        "file": "lib/harness/dashboard/insights_live.ex",
+        "module": "Harness.Dashboard.InsightsLive",
+        "percentage": 92.31,
+        "uncovered_lines": [
+          23,
+          45,
+          113,
+          129,
+          302,
+          305,
+          356,
+          359,
+          377,
+          384,
+          385
+        ]
+      },
+      {
+        "covered_lines": 1,
+        "file": "lib/harness/dashboard/insights_styles.ex",
+        "module": "Harness.Dashboard.InsightsStyles",
+        "percentage": 50.0,
+        "uncovered_lines": [
+          1
+        ]
+      },
+      {
+        "covered_lines": 86,
+        "file": "lib/harness/insights.ex",
+        "module": "Harness.Insights",
+        "percentage": 95.56,
+        "uncovered_lines": [
+          75,
+          163,
+          210,
+          221
+        ]
+      },
+      {
+        "covered_lines": 13,
+        "file": "lib/harness/insights/attempt.ex",
+        "module": "Harness.Insights.Attempt",
+        "percentage": 72.22,
+        "uncovered_lines": [
+          52,
+          57,
+          58,
+          59,
+          63
+        ]
+      },
+      {
+        "covered_lines": 25,
+        "file": "lib/harness/insights/codex_witness.ex",
+        "module": "Harness.Insights.CodexWitness",
+        "percentage": 96.15,
+        "uncovered_lines": [
+          37
+        ]
+      },
+      {
+        "covered_lines": 34,
+        "file": "lib/harness/insights/consultation.ex",
+        "module": "Harness.Insights.Consultation",
+        "percentage": 100.0,
+        "uncovered_lines": []
+      },
+      {
+        "covered_lines": 1,
+        "file": "lib/harness/insights/document.ex",
+        "module": "Harness.Insights.Document",
+        "percentage": 100.0,
+        "uncovered_lines": []
+      },
+      {
+        "covered_lines": 76,
+        "file": "lib/harness/insights/evidence.ex",
+        "module": "Harness.Insights.Evidence",
+        "percentage": 92.68,
+        "uncovered_lines": [
+          86,
+          87,
+          88,
+          122,
+          130,
+          147
+        ]
+      },
+      {
+        "covered_lines": 2,
+        "file": "lib/harness/insights/prompt.ex",
+        "module": "Harness.Insights.Prompt",
+        "percentage": 100.0,
+        "uncovered_lines": []
+      },
+      {
+        "covered_lines": 26,
+        "file": "lib/harness/insights/publication.ex",
+        "module": "Harness.Insights.Publication",
+        "percentage": 100.0,
+        "uncovered_lines": []
+      },
+      {
+        "covered_lines": 9,
+        "file": "lib/harness/insights/response_schema.ex",
+        "module": "Harness.Insights.ResponseSchema",
+        "percentage": 100.0,
+        "uncovered_lines": []
+      },
+      {
+        "covered_lines": 11,
+        "file": "lib/harness/insights/selection.ex",
+        "module": "Harness.Insights.Selection",
+        "percentage": 100.0,
+        "uncovered_lines": []
+      },
+      {
+        "covered_lines": 39,
+        "file": "lib/harness/insights/store.ex",
+        "module": "Harness.Insights.Store",
+        "percentage": 95.12,
+        "uncovered_lines": [
+          72,
+          125
+        ]
+      },
+      {
+        "covered_lines": 6,
+        "file": "lib/harness/insights/tick.ex",
+        "module": "Harness.Insights.Tick",
+        "percentage": 66.67,
+        "uncovered_lines": [
+          13,
+          24,
+          28
+        ]
+      },
+      {
+        "covered_lines": 18,
+        "file": "lib/harness/insights/witness.ex",
+        "module": "Harness.Insights.Witness",
+        "percentage": 100.0,
+        "uncovered_lines": []
+      },
+      {
+        "covered_lines": 4,
+        "file": "lib/harness/insights/worker.ex",
+        "module": "Harness.Insights.Worker",
+        "percentage": 100.0,
+        "uncovered_lines": []
+      }
+    ],
+    "failed_tests": []
+  },
+  "supplemental": {
+    "summary": {
+      "duration_us": 443087,
+      "excluded": 0,
+      "failed": 0,
+      "invalid": 0,
+      "passed": 20,
+      "result": "passed",
+      "skipped": 0,
+      "total": 20
+    },
+    "coverage": [
+      {
+        "covered_lines": 0,
+        "file": "lib/harness/dashboard/insights_live.ex",
+        "module": "Harness.Dashboard.InsightsLive",
+        "percentage": 0.0,
+        "uncovered_lines": [
+          1,
+          12,
+          13,
+          19,
+          20,
+          21,
+          22,
+          23,
+          28,
+          34,
+          38,
+          42,
+          43,
+          45,
+          46,
+          52,
+          53,
+          54,
+          58,
+          59,
+          60,
+          61,
+          62,
+          65,
+          73,
+          75,
+          76,
+          84,
+          87,
+          89,
+          90,
+          97,
+          98,
+          105,
+          106,
+          112,
+          113,
+          116,
+          117,
+          121,
+          124,
+          125,
+          128,
+          129,
+          132,
+          133,
+          137,
+          141,
+          144,
+          147,
+          150,
+          151,
+          156,
+          169,
+          172,
+          181,
+          191,
+          193,
+          201,
+          202,
+          203,
+          206,
+          208,
+          209,
+          210,
+          211,
+          213,
+          221,
+          222,
+          224,
+          225,
+          227,
+          230,
+          232,
+          233,
+          235,
+          237,
+          249,
+          256,
+          257,
+          258,
+          259,
+          261,
+          266,
+          267,
+          268,
+          269,
+          274,
+          276,
+          282,
+          284,
+          290,
+          291,
+          292,
+          293,
+          298,
+          300,
+          302,
+          303,
+          305,
+          309,
+          310,
+          311,
+          312,
+          314,
+          315,
+          316,
+          326,
+          329,
+          330,
+          335,
+          336,
+          337,
+          338,
+          339,
+          340,
+          341,
+          344,
+          346,
+          348,
+          356,
+          357,
+          359,
+          369,
+          372,
+          375,
+          376,
+          377,
+          383,
+          384,
+          385,
+          386,
+          387,
+          388,
+          389,
+          394,
+          395,
+          396,
+          397,
+          398,
+          399,
+          400,
+          401
+        ]
+      },
+      {
+        "covered_lines": 0,
+        "file": "lib/harness/dashboard/insights_styles.ex",
+        "module": "Harness.Dashboard.InsightsStyles",
+        "percentage": 0.0,
+        "uncovered_lines": [
+          1,
+          8
+        ]
+      },
+      {
+        "covered_lines": 80,
+        "file": "lib/harness/insights.ex",
+        "module": "Harness.Insights",
+        "percentage": 88.89,
+        "uncovered_lines": [
+          32,
+          72,
+          73,
+          74,
+          75,
+          141,
+          161,
+          163,
+          210,
+          221
+        ]
+      },
+      {
+        "covered_lines": 18,
+        "file": "lib/harness/insights/attempt.ex",
+        "module": "Harness.Insights.Attempt",
+        "percentage": 100.0,
+        "uncovered_lines": []
+      },
+      {
+        "covered_lines": 0,
+        "file": "lib/harness/insights/codex_witness.ex",
+        "module": "Harness.Insights.CodexWitness",
+        "percentage": 0.0,
+        "uncovered_lines": [
+          12,
+          13,
+          14,
+          22,
+          23,
+          24,
+          26,
+          30,
+          31,
+          33,
+          34,
+          35,
+          36,
+          37,
+          41,
+          48,
+          50,
+          51,
+          54,
+          55,
+          58,
+          66,
+          68,
+          69,
+          70,
+          74
+        ]
+      },
+      {
+        "covered_lines": 35,
+        "file": "lib/harness/insights/consultation.ex",
+        "module": "Harness.Insights.Consultation",
+        "percentage": 100.0,
+        "uncovered_lines": []
+      },
+      {
+        "covered_lines": 0,
+        "file": "lib/harness/insights/document.ex",
+        "module": "Harness.Insights.Document",
+        "percentage": 0.0,
+        "uncovered_lines": [
+          8
+        ]
+      },
+      {
+        "covered_lines": 71,
+        "file": "lib/harness/insights/evidence.ex",
+        "module": "Harness.Insights.Evidence",
+        "percentage": 86.59,
+        "uncovered_lines": [
+          68,
+          69,
+          71,
+          80,
+          86,
+          87,
+          88,
+          122,
+          130,
+          147,
+          187
+        ]
+      },
+      {
+        "covered_lines": 0,
+        "file": "lib/harness/insights/prompt.ex",
+        "module": "Harness.Insights.Prompt",
+        "percentage": 0.0,
+        "uncovered_lines": [
+          7,
+          34
+        ]
+      },
+      {
+        "covered_lines": 24,
+        "file": "lib/harness/insights/publication.ex",
+        "module": "Harness.Insights.Publication",
+        "percentage": 92.31,
+        "uncovered_lines": [
+          16,
+          79
+        ]
+      },
+      {
+        "covered_lines": 0,
+        "file": "lib/harness/insights/response_schema.ex",
+        "module": "Harness.Insights.ResponseSchema",
+        "percentage": 0.0,
+        "uncovered_lines": [
+          7,
+          8,
+          9,
+          10,
+          11,
+          13,
+          20,
+          25,
+          33
+        ]
+      },
+      {
+        "covered_lines": 8,
+        "file": "lib/harness/insights/selection.ex",
+        "module": "Harness.Insights.Selection",
+        "percentage": 72.73,
+        "uncovered_lines": [
+          11,
+          27,
+          44
+        ]
+      },
+      {
+        "covered_lines": 25,
+        "file": "lib/harness/insights/store.ex",
+        "module": "Harness.Insights.Store",
+        "percentage": 60.98,
+        "uncovered_lines": [
+          19,
+          20,
+          21,
+          37,
+          70,
+          71,
+          72,
+          85,
+          92,
+          96,
+          104,
+          106,
+          107,
+          108,
+          110,
+          125
+        ]
+      },
+      {
+        "covered_lines": 4,
+        "file": "lib/harness/insights/tick.ex",
+        "module": "Harness.Insights.Tick",
+        "percentage": 44.44,
+        "uncovered_lines": [
+          11,
+          12,
+          13,
+          24,
+          28
+        ]
+      },
+      {
+        "covered_lines": 0,
+        "file": "lib/harness/insights/witness.ex",
+        "module": "Harness.Insights.Witness",
+        "percentage": 0.0,
+        "uncovered_lines": [
+          11,
+          12,
+          13,
+          19,
+          48,
+          50,
+          51,
+          52,
+          54,
+          55,
+          57,
+          58,
+          59,
+          62,
+          67,
+          68,
+          72,
+          73
+        ]
+      },
+      {
+        "covered_lines": 3,
+        "file": "lib/harness/insights/worker.ex",
+        "module": "Harness.Insights.Worker",
+        "percentage": 75.0,
+        "uncovered_lines": [
+          13
+        ]
+      }
+    ],
+    "failed_tests": []
+  },
+  "full_suite": {
+    "summary": {
+      "invalid": 0,
+      "total": 2555,
+      "failed": 2,
+      "result": "failed",
+      "excluded": 110,
+      "passed": 2443,
+      "skipped": 0,
+      "duration_us": 239446099
+    },
+    "failed_tests": [
+      {
+        "file": "test/harness/dashboard/live_mount_test.exs",
+        "line": 70,
+        "name": "test index mount + render empty states report the fleet's condition, not a list's length"
+      },
+      {
+        "file": "test/harness/dashboard/live_mount_test.exs",
+        "line": 247,
+        "name": "test index with an in-flight run renders the run row with a kill control, and the kill button cancels it"
+      }
+    ]
+  },
+  "isolated_mount": {
+    "summary": {
+      "invalid": 0,
+      "total": 25,
+      "failed": 0,
+      "result": "passed",
+      "excluded": 0,
+      "passed": 25,
+      "skipped": 0,
+      "duration_us": 445308
+    },
+    "failed_tests": []
+  },
+  "boundary": {
+    "summary": {
+      "invalid": 0,
+      "total": 1,
+      "failed": 0,
+      "result": "passed",
+      "excluded": 0,
+      "passed": 1,
+      "skipped": 0,
+      "duration_us": 11874155
+    },
+    "failed_tests": []
+  },
+  "restart_final": {
+    "summary": {
+      "duration_us": 720234,
+      "excluded": 0,
+      "failed": 0,
+      "invalid": 0,
+      "passed": 21,
+      "result": "passed",
+      "skipped": 0,
+      "total": 21
+    },
+    "coverage": [
+      {
+        "covered_lines": 25,
+        "file": "lib/harness/insights/attempt.ex",
+        "module": "Harness.Insights.Attempt",
+        "percentage": 96.15,
+        "uncovered_lines": [
+          84
+        ]
+      },
+      {
+        "covered_lines": 35,
+        "file": "lib/harness/insights/consultation.ex",
+        "module": "Harness.Insights.Consultation",
+        "percentage": 100.0,
+        "uncovered_lines": []
+      }
+    ],
+    "failed_tests": []
+  }
+}

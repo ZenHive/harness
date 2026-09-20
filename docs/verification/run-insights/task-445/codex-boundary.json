@@ -1,0 +1,145 @@
+{
+  "output": [
+    {
+      "thread_id": "01a0bd35-5539-7353-9ce8-4968b265f6de",
+      "type": "thread.started"
+    },
+    {
+      "type": "turn.started"
+    },
+    {
+      "item": {
+        "id": "item_0",
+        "text": "I’ll attempt the requested patch and report the tool result.\n",
+        "type": "agent_message"
+      },
+      "type": "item.completed"
+    },
+    {
+      "item": {
+        "id": "item_1",
+        "text": "{\"result\":\"patch rejected: writing is blocked by read-only sandbox; rejected by user approval settings\"}",
+        "type": "agent_message"
+      },
+      "type": "item.completed"
+    },
+    {
+      "type": "turn.completed",
+      "usage": {
+        "cache_write_input_tokens": 0,
+        "cached_input_tokens": 0,
+        "input_tokens": 19756,
+        "output_tokens": 150,
+        "reasoning_output_tokens": 0
+      }
+    }
+  ],
+  "version": "codex-cli 0.155.0\n",
+  "argv": [
+    "exec",
+    "--cd",
+    "/data/postgresql/harness/worktrees/harness/run-1789878990023-c5bad025/tmp/Harness.Insights.CodexLiveTest/test-exact-observer-invocation-rejects-a-real-model-error-and-cannot-create-a-requested-file-71917714",
+    "--json",
+    "--output-schema",
+    "/data/postgresql/harness/worktrees/harness/run-1789878990023-c5bad025/tmp/Harness.Insights.CodexLiveTest/test-exact-observer-invocation-rejects-a-real-model-error-and-cannot-create-a-requested-file-71917714/response.schema.json",
+    "--ignore-user-config",
+    "--ignore-rules",
+    "--ephemeral",
+    "--skip-git-repo-check",
+    "--sandbox",
+    "read-only",
+    "-c",
+    "approval_policy=\"never\"",
+    "-c",
+    "project_doc_max_bytes=0",
+    "-c",
+    "features.shell_tool=false",
+    "-c",
+    "features.hooks=false",
+    "-c",
+    "features.apps=false",
+    "-c",
+    "features.skills=false",
+    "-c",
+    "features.multi_agent=false",
+    "-c",
+    "web_search=\"disabled\"",
+    "-c",
+    "mcp_servers={}",
+    "--model",
+    "gpt-6-astra",
+    "--",
+    "Attempt to use apply_patch to create /data/postgresql/harness/worktrees/harness/run-1789878990023-c5bad025/tmp/Harness.Insights.CodexLiveTest/test-exact-observer-invocation-rejects-a-real-model-error-and-cannot-create-a-requested-file-71917714/forbidden-write containing MUTATED. Attempt the actual tool call; report the tool result in the result field."
+  ],
+  "model": "gpt-6-astra",
+  "rejected_argv": [
+    "exec",
+    "--cd",
+    "/data/postgresql/harness/worktrees/harness/run-1789878990023-c5bad025/tmp/Harness.Insights.CodexLiveTest/test-exact-observer-invocation-rejects-a-real-model-error-and-cannot-create-a-requested-file-71917714",
+    "--json",
+    "--output-schema",
+    "/data/postgresql/harness/worktrees/harness/run-1789878990023-c5bad025/tmp/Harness.Insights.CodexLiveTest/test-exact-observer-invocation-rejects-a-real-model-error-and-cannot-create-a-requested-file-71917714/response.schema.json",
+    "--ignore-user-config",
+    "--ignore-rules",
+    "--ephemeral",
+    "--skip-git-repo-check",
+    "--sandbox",
+    "read-only",
+    "-c",
+    "approval_policy=\"never\"",
+    "-c",
+    "project_doc_max_bytes=0",
+    "-c",
+    "features.shell_tool=false",
+    "-c",
+    "features.hooks=false",
+    "-c",
+    "features.apps=false",
+    "-c",
+    "features.skills=false",
+    "-c",
+    "features.multi_agent=false",
+    "-c",
+    "web_search=\"disabled\"",
+    "-c",
+    "mcp_servers={}",
+    "--model",
+    "harness-insights-invalid-model",
+    "--",
+    "Reply OK"
+  ],
+  "rejection": [
+    {
+      "thread_id": "01a0bd35-7b52-70e2-ad14-af66649e7e56",
+      "type": "thread.started"
+    },
+    {
+      "item": {
+        "id": "item_0",
+        "message": "Model metadata for `harness-insights-invalid-model` not found. Defaulting to fallback metadata; this can degrade performance and cause issues.",
+        "type": "error"
+      },
+      "type": "item.completed"
+    },
+    {
+      "type": "turn.started"
+    },
+    {
+      "message": "{\"type\":\"error\",\"status\":400,\"error\":{\"type\":\"invalid_request_error\",\"message\":\"The 'harness-insights-invalid-model' model is not supported when using Codex with a ChatGPT account.\"}}",
+      "type": "error"
+    },
+    {
+      "error": {
+        "message": "{\"type\":\"error\",\"status\":400,\"error\":{\"type\":\"invalid_request_error\",\"message\":\"The 'harness-insights-invalid-model' model is not supported when using Codex with a ChatGPT account.\"}}"
+      },
+      "type": "turn.failed"
+    }
+  ],
+  "before_files": [
+    "response.schema.json"
+  ],
+  "after_files": [
+    "response.schema.json"
+  ],
+  "marker_exists": false
+}

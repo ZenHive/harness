@@ -30,7 +30,8 @@ defmodule Harness.Insights.Evidence do
       active = active_page |> Enum.map(&active/1) |> Enum.filter(&included?(&1, projects))
       samples = historical ++ active
       changed = Enum.reject(samples, &(Store.get("seen/" <> &1.key) == %{"digest" => &1.digest}))
-      sources = Enum.flat_map(changed, & &1.sources)
+      snapshots = Enum.flat_map(changed, & &1.sources)
+      sources = Enum.map(snapshots, &Map.delete(&1, "content"))
       incomplete = Enum.any?(Enum.flat_map(samples, & &1.sources), &(&1["availability"] != "available"))
       cycle_incomplete = Map.get(progress, "cycle_incomplete", false) or incomplete
       pending = history_partial or active_partial
@@ -46,6 +47,7 @@ defmodule Harness.Insights.Evidence do
       {:ok,
        %{
          sources: sources,
+         snapshots: snapshots,
          next: next,
          changed: length(changed),
          partial: pending or cycle_incomplete,
@@ -72,24 +74,7 @@ defmodule Harness.Insights.Evidence do
             where: r.project_name in ^projects and r.updated_at >= ^date and r.run_id > ^cursor,
             order_by: r.run_id,
             limit: ^(@batch + 1),
-            select: %{
-              run_id: r.run_id,
-              project_name: r.project_name,
-              state: r.state,
-              verdict: r.verdict,
-              reviewer_diff_size: r.reviewer_diff_size,
-              review_report: fragment("substring(? from 1 for 8000)", r.review_report),
-              recovery_repaired: fragment("substring(? from 1 for 8000)", r.recovery_repaired),
-              recovery_attempts: r.recovery_attempts,
-              recovery_outcome: r.recovery_outcome,
-              landed_sha: r.landed_sha,
-              cold_check: r.cold_check,
-              approved_then_found_red: r.approved_then_found_red,
-              agent_output_hash: fragment("md5(?)", r.agent_output),
-              reviewer_output_hash: fragment("md5(?)", r.reviewer_output),
-              agent_output: fragment("substring(? from 1 for 8001)", r.agent_output),
-              reviewer_output: fragment("substring(? from 1 for 8001)", r.reviewer_output)
-            }
+            select: r
         )
 
       {:ok, Enum.take(rows, @batch), length(rows) > @batch}
@@ -113,26 +98,18 @@ defmodule Harness.Insights.Evidence do
 
   @spec historical(map()) :: map()
   defp historical(record) do
-    facts =
-      Map.take(record, [
-        :state,
-        :verdict,
-        :reviewer_diff_size,
-        :review_report,
-        :recovery_attempts,
-        :recovery_outcome,
-        :recovery_repaired,
-        :landed_sha,
-        :cold_check,
-        :approved_then_found_red,
-        :agent_output_hash,
-        :reviewer_output_hash
-      ])
+    facts = Map.drop(record, [:__struct__, :__meta__, :agent_output, :reviewer_output])
 
     sources = [
-      source(record.run_id, record.project_name, "record", inspect(facts, limit: :infinity), false),
-      source(record.run_id, record.project_name, "agent_output", record.agent_output, false),
-      source(record.run_id, record.project_name, "reviewer_output", record.reviewer_output, false)
+      snapshot_source(
+        record.run_id,
+        record.project_name,
+        "record",
+        inspect(facts, limit: :infinity, printable_limit: :infinity),
+        false
+      ),
+      snapshot_source(record.run_id, record.project_name, "agent_output", record.agent_output, false),
+      snapshot_source(record.run_id, record.project_name, "reviewer_output", record.reviewer_output, false)
     ]
 
     sample("record/" <> record.run_id, record.project_name, sources)
@@ -154,15 +131,26 @@ defmodule Harness.Insights.Evidence do
           end
 
         sources = [
-          source(id, status.project_name, "status", inspect(status, limit: :infinity), provisional),
-          source(id, status.project_name, "transcript", transcript, provisional)
+          snapshot_source(
+            id,
+            status.project_name,
+            "status",
+            inspect(status, limit: :infinity, printable_limit: :infinity),
+            provisional
+          ),
+          snapshot_source(id, status.project_name, "transcript", transcript, provisional)
         ]
 
         sample("active/" <> id, status.project_name, sources)
 
       {:error, :not_found} ->
-        sample("active/" <> id, nil, [source(id, nil, "status", nil, true)])
+        sample("active/" <> id, nil, [snapshot_source(id, nil, "status", nil, true)])
     end
+  end
+
+  @spec snapshot_source(String.t(), String.t() | nil, String.t(), String.t() | nil, boolean()) :: map()
+  defp snapshot_source(id, project, field, text, provisional) do
+    Map.put(source(id, project, field, text, provisional), "content", text || "")
   end
 
   @doc "Constructs a retained excerpt with an explicit availability witness."
@@ -177,6 +165,7 @@ defmodule Harness.Insights.Evidence do
 
     content_hash = :sha256 |> :crypto.hash(text || "") |> Base.encode16()
 
+    content = text || ""
     text = excerpt(text)
 
     %{
@@ -187,13 +176,55 @@ defmodule Harness.Insights.Evidence do
       "text" => text,
       "availability" => availability,
       "provisional" => provisional,
-      "content_hash" => content_hash
+      "content_hash" => content_hash,
+      "total_bytes" => byte_size(content),
+      "offset" => 0,
+      "next_offset" => if(byte_size(text) < byte_size(content), do: byte_size(text))
     }
   end
 
   @spec excerpt(String.t() | nil) :: String.t()
   defp excerpt(nil), do: ""
-  defp excerpt(text), do: text |> binary_part(0, min(byte_size(text), @excerpt)) |> String.replace_invalid()
+  defp excerpt(text), do: valid_prefix(text, min(byte_size(text), @excerpt))
+
+  @spec valid_prefix(String.t(), non_neg_integer()) :: String.t()
+  defp valid_prefix(text, length) do
+    prefix = binary_part(text, 0, length)
+    if String.valid?(prefix), do: prefix, else: valid_prefix(text, length - 1)
+  end
+
+  @doc "Reads a bounded continuation from this pass's immutable source snapshot."
+  @spec read(map(), String.t(), non_neg_integer()) :: {:ok, map()} | {:error, atom()}
+  def read(batch, id, offset) when is_integer(offset) and offset >= 0 do
+    case Enum.find(batch.snapshots, &(&1["source_id"] == id)) do
+      %{"content" => content} = source when offset < byte_size(content) ->
+        remainder = binary_part(content, offset, byte_size(content) - offset)
+
+        if String.valid?(remainder) do
+          text = excerpt(remainder)
+          next = offset + byte_size(text)
+
+          {:ok,
+           source
+           |> Map.delete("content")
+           |> Map.merge(%{
+             "source_id" => id <> "@" <> to_string(offset),
+             "text" => text,
+             "offset" => offset,
+             "next_offset" => if(next < byte_size(content), do: next),
+             "root_source_id" => id,
+             "availability" => if(next < byte_size(content), do: "truncated", else: "available")
+           })}
+        else
+          {:error, :invalid_source_offset}
+        end
+
+      _ ->
+        {:error, :unknown_source_or_offset}
+    end
+  end
+
+  def read(_, _, _), do: {:error, :invalid_source_offset}
 
   @spec sample(String.t(), String.t() | nil, [map()]) :: map()
   defp sample(key, project, sources) do

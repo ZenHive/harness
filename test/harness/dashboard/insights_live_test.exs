@@ -1,15 +1,26 @@
 defmodule Harness.Dashboard.InsightsLiveTest do
   use Harness.Dashboard.ConnCase, async: false
 
+  alias Harness.Agent.Settings
   alias Harness.Insights
   alias Harness.Insights.Evidence
   alias Harness.Insights.Publication
   alias Harness.Insights.Store
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
+  alias Harness.SettingsStore
   alias Harness.Test.InsightsWitness
 
   setup do
+    old_models = Application.get_env(:harness, :agent_model)
+    Application.put_env(:harness, :agent_model, codex: "gpt-6-astra")
+
+    on_exit(fn ->
+      if old_models,
+        do: Application.put_env(:harness, :agent_model, old_models),
+        else: Application.delete_env(:harness, :agent_model)
+    end)
+
     Store.get("settings")
     :ets.delete_all_objects(Store)
     ProjectRegistry.reset()
@@ -36,8 +47,8 @@ defmodule Harness.Dashboard.InsightsLiveTest do
     |> form("#insights-settings", %{
       "enabled" => "true",
       "cadence_minutes" => "15",
-      "agent" => "claude",
-      "model" => "sonnet"
+      "agent" => "codex",
+      "model" => "gpt-6-astra"
     })
     |> render_submit()
 
@@ -52,7 +63,10 @@ defmodule Harness.Dashboard.InsightsLiveTest do
     finding = InsightsWitness.finding(source)
 
     {:ok, documents} =
-      Publication.prepare(%{"findings" => [finding]}, [source], [], "ui-pass", %{"agent" => "claude", "model" => "sonnet"})
+      Publication.prepare(%{"findings" => [finding]}, [source], [], "ui-pass", %{
+        "agent" => "codex",
+        "model" => "gpt-6-astra"
+      })
 
     :ok = Store.put_many(documents)
     [stored] = Insights.findings()["items"]
@@ -101,5 +115,33 @@ defmodule Harness.Dashboard.InsightsLiveTest do
       send(view.pid, :insights_updated)
       assert render(view) =~ text
     end
+  end
+
+  test "failed selections preserve settings and render useful errors", %{conn: conn} do
+    {:ok, view, _} = live(conn, "/harness/insights/settings")
+    prior = Insights.settings()
+    params = %{"enabled" => "true", "cadence_minutes" => "60", "agent" => "codex", "model" => "unavailable-model"}
+    assert render_submit(view, "save", params) =~ "selected model is unavailable"
+    assert Insights.settings() == prior
+    assert has_element?(view, "#insights-model option[selected]", "unavailable-model — unavailable")
+    assert render_submit(view, "save", Map.put(params, "cadence_minutes", "invalid")) =~ "cadence fields"
+    assert render_submit(view, "save", Map.put(params, "agent", "cursor")) =~ "Choose Codex or Claude"
+  end
+
+  test "agent changes require a model choice and disabled observers cannot enqueue", %{conn: conn} do
+    saved = SettingsStore.fetch_map(:agent)
+    on_exit(fn -> SettingsStore.put(:agent, saved) end)
+    :ok = Settings.set_enabled(:claude, true, "test")
+    {:ok, view, _} = live(conn, "/harness/insights/settings")
+    params = %{"enabled" => "false", "cadence_minutes" => "60", "agent" => "claude", "model" => "gpt-6-astra"}
+    render_change(view, "change_settings", params)
+    assert has_element?(view, "#insights-model option[value=''][selected]")
+    assert has_element?(view, "#insights-model option", "claude-")
+    assert render_submit(view, "save", Map.put(params, "model", "")) =~ "Select an available model"
+    {:ok, overview, _} = live(conn, "/harness/insights")
+    assert render_click(overview, "observe") =~ "Observation unavailable: disabled"
+    {:ok, filtered, html} = live(conn, "/harness/insights?run_id=missing")
+    assert html =~ "No findings match this view"
+    assert has_element?(filtered, "a", "Clear filters")
   end
 end

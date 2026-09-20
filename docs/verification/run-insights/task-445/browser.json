@@ -1,0 +1,66 @@
+{
+  "observations": [
+    {
+      "name": "desktop-paused",
+      "width": 1440,
+      "contentWidth": 1440
+    },
+    {
+      "name": "desktop-settings",
+      "width": 1440,
+      "contentWidth": 1440
+    },
+    {
+      "name": "desktop-filtered-empty",
+      "width": 1440,
+      "contentWidth": 1440
+    },
+    {
+      "name": "mobile-paused",
+      "width": 390,
+      "contentWidth": 390
+    },
+    {
+      "name": "mobile-settings",
+      "width": 390,
+      "contentWidth": 390
+    },
+    {
+      "name": "mobile-filtered-empty",
+      "width": 390,
+      "contentWidth": 390
+    },
+    {
+      "name": "desktop-populated",
+      "width": 1440,
+      "contentWidth": 1440
+    },
+    {
+      "name": "desktop-history",
+      "width": 1440,
+      "contentWidth": 1440
+    },
+    {
+      "name": "mobile-populated",
+      "width": 390,
+      "contentWidth": 390
+    },
+    {
+      "name": "mobile-history",
+      "width": 390,
+      "contentWidth": 390
+    },
+    {
+      "name": "desktop-error",
+      "width": 1440,
+      "contentWidth": 1440
+    },
+    {
+      "name": "mobile-error",
+      "width": 390,
+      "contentWidth": 390
+    }
+  ],
+  "errors": [],
+  "keyboard": "settings tab order and excerpt Enter toggle passed"
+}

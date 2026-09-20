@@ -2,14 +2,16 @@ defmodule Harness.Insights do
   @moduledoc "Independent, disabled-by-default AI observations across runs."
   use Descripex, namespace: "/insights"
 
+  alias Harness.Insights.Attempt
+  alias Harness.Insights.Consultation
   alias Harness.Insights.Evidence
   alias Harness.Insights.Publication
+  alias Harness.Insights.Selection
   alias Harness.Insights.Store
-  alias Harness.Insights.Witness
   alias Harness.Insights.Worker
 
   @topic "harness:insights"
-  @defaults %{"enabled" => false, "cadence_minutes" => 60, "agent" => "claude", "model" => "sonnet"}
+  @defaults %{"enabled" => false, "cadence_minutes" => 60, "agent" => "codex", "model" => nil}
 
   api(:status, "Bounded observation settings, last pass and durable progress; independent of dispatch autonomy.",
     returns: %{type: :map, description: "Observer status and persistence mode."}
@@ -17,12 +19,18 @@ defmodule Harness.Insights do
 
   @spec status() :: map()
   def status do
+    Attempt.reconcile()
     settings = settings()
     progress = Store.get("progress") || %{}
     last = List.first(Store.list("pass", 0, 1))
 
     %{
       "settings" => settings,
+      "selection_error" =>
+        case Selection.validate(settings) do
+          :ok -> nil
+          {:error, reason} -> to_string(reason)
+        end,
       "progress" => progress,
       "last_pass" => last,
       "last_success" => progress["last_success"],
@@ -32,17 +40,18 @@ defmodule Harness.Insights do
     }
   end
 
-  @doc "Returns independently persisted observer settings."
+  @doc false
   @spec settings() :: map()
-  def settings, do: Map.merge(@defaults, Store.get("settings") || %{})
+  def settings, do: Map.merge(Map.merge(@defaults, Selection.default()), Store.get("settings") || %{})
 
-  @doc "Sets explicit witness configuration without changing dispatch settings."
+  @doc false
   @spec configure(map()) :: :ok | {:error, term()}
-  def configure(%{"enabled" => enabled, "cadence_minutes" => cadence, "agent" => "claude", "model" => model} = settings)
-      when is_boolean(enabled) and cadence in [15, 60, 360, 1440] and is_binary(model) and byte_size(model) in 1..120 do
-    result = Store.put_many([{"settings", "settings", Map.take(settings, Map.keys(@defaults))}])
-    broadcast()
-    result
+  def configure(%{"enabled" => enabled, "cadence_minutes" => cadence} = settings)
+      when is_boolean(enabled) and cadence in [15, 60, 360, 1440] do
+    with :ok <- Selection.validate(settings),
+         :ok <- Store.put_many([{"settings", "settings", Map.take(settings, Map.keys(@defaults))}]) do
+      broadcast()
+    end
   end
 
   def configure(_), do: {:error, :invalid_settings}
@@ -105,15 +114,21 @@ defmodule Harness.Insights do
     }
   end
 
-  @doc "Executes one idempotent pass; successful results and progress commit together."
+  @doc false
   @spec observe(String.t()) :: :ok | {:error, term()}
   def observe(pass_id) when is_binary(pass_id) do
     result =
       Store.serialized(fn ->
         cond do
-          not settings()["enabled"] -> {:error, :disabled}
-          match?(%{"committed" => true}, Store.get("pass/" <> pass_id)) -> :ok
-          true -> run_pass(pass_id)
+          not settings()["enabled"] ->
+            {:error, :disabled}
+
+          match?(%{"committed" => true}, Store.get("pass/" <> pass_id)) ->
+            :ok
+
+          true ->
+            Attempt.reconcile()
+            run_pass(pass_id)
         end
       end)
 
@@ -121,7 +136,7 @@ defmodule Harness.Insights do
     result
   end
 
-  @doc "Subscribes a dashboard process to observation updates."
+  @doc false
   @spec subscribe() :: :ok | {:error, term()}
   def subscribe, do: Phoenix.PubSub.subscribe(Harness.PubSub, @topic)
 
@@ -130,24 +145,53 @@ defmodule Harness.Insights do
     config = settings()
     observer = Map.take(config, ["agent", "model"])
     started = DateTime.to_iso8601(DateTime.utc_now())
-    pass = %{"id" => id, "observer" => observer, "at" => started, "state" => "observing", "committed" => false}
+
+    pass = %{
+      "id" => id,
+      "observer" => observer,
+      "at" => started,
+      "state" => "observing",
+      "committed" => false,
+      "owner" => Attempt.owner()
+    }
+
+    try do
+      execute_pass(pass, config)
+    rescue
+      error -> fail_pass(pass, {:exception, Exception.message(error)})
+    catch
+      kind, reason -> fail_pass(pass, {kind, reason})
+    end
+  end
+
+  @spec execute_pass(map(), map()) :: :ok | {:error, term()}
+  defp execute_pass(pass, config) do
+    id = pass["id"]
+    started = pass["at"]
+    observer = pass["observer"]
+
     anchor = Store.get("bootstrap") || %{"at" => DateTime.utc_now() |> DateTime.shift(week: -1) |> DateTime.to_iso8601()}
-    :ok = Store.put_many([{"pass/" <> id, "pass", pass}, {"bootstrap", "bootstrap", anchor}])
+
+    :ok =
+      Store.put_many([
+        {"pass/" <> id, "pass", pass},
+        {"bootstrap", "bootstrap", anchor},
+        {"attempt", "attempt", %{"at" => started}}
+      ])
+
     broadcast()
     progress = Map.put_new(Store.get("progress") || %{}, "bootstrap", anchor["at"])
-    previous = Store.list("finding", Map.get(progress, "finding_offset", 0), 10)
 
-    with {:ok, batch} <- Evidence.batch(progress),
-         {:ok, response} <- ask(batch, previous, config),
-         {:ok, documents} <- Publication.prepare(response, batch.sources, previous, id, observer) do
+    with :ok <- Selection.validate(config),
+         {:ok, batch} <- Evidence.batch(progress),
+         {:ok, response, sources, previous} <- Consultation.run(batch, config),
+         {:ok, documents} <- Publication.prepare(response, sources, previous, id, observer) do
       state = pass_state(batch, documents)
 
       next =
         Map.merge(batch.next, %{
           "last_success" => started,
-          "pending" => batch.pending,
-          "finding_offset" =>
-            if(Enum.count_until(previous, 10) == 10, do: Map.get(progress, "finding_offset", 0) + 10, else: 0)
+          "pending" => batch.pending
         })
 
       pass =
@@ -155,19 +199,26 @@ defmodule Harness.Insights do
           "state" => state,
           "committed" => true,
           "changed_runs" => batch.changed,
-          "sources" => batch.sources,
+          "sources" => sources,
           "partial" => batch.partial,
           "pending" => batch.pending,
           "finding_context_count" => length(previous)
         })
 
-      Store.put_many(documents ++ batch.seen ++ [{"progress", "progress", next}, {"pass/" <> id, "pass", pass}])
+      case Store.put_many(documents ++ batch.seen ++ [{"progress", "progress", next}, {"pass/" <> id, "pass", pass}]) do
+        :ok -> :ok
+        {:error, reason} -> fail_pass(pass, {:publication_failed, reason})
+      end
     else
-      {:error, reason} ->
-        :ok =
-          Store.put_many([{"pass/" <> id, "pass", Map.merge(pass, %{"state" => "failed", "error" => inspect(reason)})}])
+      {:error, reason} -> fail_pass(pass, reason)
+    end
+  end
 
-        {:error, reason}
+  @spec fail_pass(map(), term()) :: {:error, term()}
+  defp fail_pass(pass, reason) do
+    case Attempt.fail(pass, reason) do
+      :ok -> {:error, reason}
+      {:error, failure} -> {:error, {:failure_publication_failed, reason, failure}}
     end
   end
 
@@ -177,54 +228,27 @@ defmodule Harness.Insights do
   defp pass_state(_batch, []), do: "no_findings"
   defp pass_state(_batch, _documents), do: "successful"
 
-  @spec ask(map(), [map()], map()) :: {:ok, map()} | {:error, term()}
-  defp ask(%{changed: 0}, _previous, _settings), do: {:ok, %{"findings" => []}}
-
-  defp ask(batch, previous, settings) do
-    witness = Application.get_env(:harness, :insights_witness, Witness)
-
-    witness.observe(
-      %{
-        "sources" => batch.sources,
-        "previous_findings" => Enum.map(previous, &context_finding/1),
-        "finding_context" => "Bounded page; prose is limited to 1000 characters per field, citations to two excerpts.",
-        "partial_evidence" => batch.partial,
-        "history_pending" => batch.pending,
-        "scope" => "Bounded evidence page; active observations are provisional."
-      },
-      settings["model"]
-    )
-  end
-
-  @spec context_finding(map()) :: map()
-  defp context_finding(finding) do
-    finding
-    |> Map.new(fn {key, value} -> {key, if(is_binary(value), do: String.slice(value, 0, 1000), else: value)} end)
-    |> Map.update("citations", [], fn citations ->
-      citations
-      |> List.wrap()
-      |> Enum.take(2)
-      |> Enum.map(fn
-        %{"excerpt" => text} = citation when is_binary(text) ->
-          Map.put(citation, "excerpt", String.slice(text, 0, 500))
-
-        citation ->
-          citation
-      end)
-    end)
-  end
-
   @spec next_pass(map(), map()) :: String.t() | nil
   defp next_pass(%{"enabled" => false}, _), do: nil
 
-  defp next_pass(_settings, %{"pending" => true}), do: DateTime.to_iso8601(DateTime.utc_now())
+  defp next_pass(settings, progress) do
+    attempt = Store.get("attempt") || %{}
+    last = List.first(Store.list("pass", 0, 1)) || %{}
+    time = attempt["at"] || progress["last_success"]
 
-  defp next_pass(settings, %{"last_success" => time}) do
-    {:ok, date, _} = DateTime.from_iso8601(time)
-    date |> DateTime.shift(minute: settings["cadence_minutes"]) |> DateTime.to_iso8601()
+    if progress["pending"] == true and last["committed"] == true do
+      DateTime.to_iso8601(DateTime.utc_now())
+    else
+      case time do
+        nil ->
+          DateTime.to_iso8601(DateTime.utc_now())
+
+        time ->
+          {:ok, date, _} = DateTime.from_iso8601(time)
+          date |> DateTime.shift(minute: settings["cadence_minutes"]) |> DateTime.to_iso8601()
+      end
+    end
   end
-
-  defp next_pass(_, _), do: DateTime.to_iso8601(DateTime.utc_now())
 
   @spec broadcast() :: :ok
   defp broadcast, do: Phoenix.PubSub.broadcast(Harness.PubSub, @topic, :insights_updated)

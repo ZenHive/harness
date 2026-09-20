@@ -1,5 +1,8 @@
 # Run Insights verification — Task 443
 
+Historical delivery record. [Task 445 corrections and verification](task-445/README.md)
+describe current agent support, retrieval, lifecycle behavior and rendered UI.
+
 The feature is disabled by default. No operator server, production database,
 installed skill or production observer configuration was changed.
 

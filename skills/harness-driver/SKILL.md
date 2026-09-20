@@ -705,7 +705,7 @@ The driving orchestrator owns runtime activation and installed-skill propagation
 ### Run Insights — advisory witness
 
 `insights-status` reports independent enablement (disabled by default), explicit
-Claude/model selection, hourly default cadence, last successful pass, next pass,
+Codex or Claude selection, hourly default cadence, last successful pass, next pass,
 durable scan progress and persistence mode. Configure at
 `/harness/insights/settings`; dispatch autonomy does not enable the witness.
 
@@ -718,19 +718,33 @@ durable scan progress and persistence mode. Configure at
 - Elixir equivalents: `Harness.Insights.status/0`, `observe_now/0`,
   `findings/3`, `history/2`, `configure/1` (string-keyed settings map).
 
-The observer has no MCP tools, shell, file tools, hooks, skills or lifecycle
-capabilities. Only Claude's tested tool-free invocation is selectable. Its
-output is validated as advisory finding data; it cannot dispatch, recover,
-steer, edit repositories or write roadmaps. Source excerpts are untrusted text.
+An unconfigured observer uses the enabled Codex standing model. An explicit
+saved selection is preserved; unavailable agents or models require visible
+reconfiguration. Choices respect enabled agents, selected catalogs and runtime
+availability. There is no provider or model fallback.
+
+Codex uses the owning adapter package's explicit read-only observation command
+in an isolated temporary directory, with user/project configuration, shell,
+hooks, web search and MCP disabled. It is sandboxed, not described as tool-free.
+Claude is an explicit choice using its tool-free invocation. Neither observer
+receives lifecycle tools. Provider output is advisory finding data or a bounded
+read request; source excerpts remain untrusted text.
 
 Bootstrap covers seven days of changed records, then cycles through bounded
 pages with persisted fingerprints, including later landing/audit updates and
 active snapshots. Partial/missing/truncated evidence is explicit; a pass is not
 proof that all history was reviewed. Active conclusions are provisional. A
 merge alone does not resolve a finding; later outcome evidence must support it.
-Existing findings are fed back in bounded pages for AI revision and deduplication.
+The AI can request older finding pages (20 per read) and immutable source
+continuations (8,000 bytes per read) before publication. Full source hashes
+observe changes beyond excerpts, including structured reviewer checks, concerns
+and run reasons. At most 32 retrievals fit within a 180-second consultation;
+exhaustion fails without consuming evidence. Retrieval performs no semantic
+ranking or relevance filtering.
 Repeated publication of the same pass id is idempotent. Failure preserves the
-last successful checkpoint. Postgres retains passes, excerpts and revisions;
+last successful checkpoint; attempt scheduling is separate, so exhausted retries
+respect the selected cadence. Status reconciliation marks dead-worker and
+previous-VM passes interrupted, under the observation lock. Postgres retains passes, excerpts and revisions;
 `repo_enabled: false` is visibly ephemeral and has no persistent Oban scheduler.
 
 Independent reviewers must check each claim against retained citations, including

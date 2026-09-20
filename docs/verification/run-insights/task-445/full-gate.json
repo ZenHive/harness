@@ -1,0 +1,14 @@
+{
+  "summary": {
+    "duration_us": 231869920,
+    "excluded": 110,
+    "failed": 2,
+    "invalid": 0,
+    "passed": 2443,
+    "result": "failed",
+    "skipped": 0,
+    "total": 2555
+  },
+  "coverage_total": 84.16,
+  "coverage_threshold_met": true
+}
