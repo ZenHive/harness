@@ -53,6 +53,7 @@ defmodule Harness.Maintenance.Pass do
         Worktree.remove(tree)
       end
     else
+      {:error, reason} when is_atom(reason) -> fail(pass, reason)
       _ -> fail(pass, :source_unavailable)
     end
   rescue

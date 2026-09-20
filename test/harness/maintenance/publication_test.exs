@@ -160,4 +160,17 @@ defmodule Harness.Maintenance.PublicationTest do
                "rationale" => ""
              })
   end
+
+  test "retained findings beyond one dashboard page do not freeze publication", %{project: project} do
+    documents =
+      Enum.map(1..51, fn n ->
+        id = "retained-#{n}"
+        {"finding/" <> id, "finding/" <> project.name, %{"id" => id, "project" => project.name}}
+      end)
+
+    assert :ok = Store.put_many(documents)
+    Application.put_env(:harness, :maintenance_test_mode, :empty)
+    assert :ok = Maintenance.sweep(project.name, Ecto.UUID.generate())
+    assert Maintenance.status(project.name)["state"] == "partial_evidence"
+  end
 end

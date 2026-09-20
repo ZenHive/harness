@@ -433,7 +433,10 @@ defmodule Harness.Oban do
 
   @spec enable_maintenance_queue(keyword()) :: keyword()
   defp enable_maintenance_queue(opts) do
-    Keyword.update(opts, :queues, [maintenance: 1], &Keyword.put(&1, :maintenance, 1))
+    Keyword.update(opts, :queues, [maintenance: 1], fn
+      queues when is_list(queues) -> Keyword.put(queues, :maintenance, 1)
+      _other -> [maintenance: 1]
+    end)
   end
 
   @spec enable_insights_queue(keyword()) :: keyword()

@@ -21,18 +21,36 @@ defmodule Harness.Maintenance.Recovery do
     current = Store.get("progress/" <> project) || %{}
 
     if abandoned?(current) do
-      pass = Store.get("pass/" <> current["id"])
+      case Store.get("pass/" <> (current["id"] || "")) do
+        %{"committed" => true} = pass ->
+          persist(project, pass)
 
-      pass =
-        if pass["committed"],
-          do: pass,
-          else: Map.merge(pass, %{"state" => "failed", "error" => "interrupted", "committed" => false})
+        %{} = pass ->
+          persist(
+            project,
+            Map.merge(pass, %{"state" => "failed", "error" => "interrupted", "committed" => false})
+          )
 
-      with :ok <- Store.put_many([{"pass/" <> pass["id"], "pass", pass}]),
-           do: Maintenance.progress(project, Map.delete(pass, "findings"))
+        _ ->
+          persist(
+            project,
+            Map.merge(current, %{"state" => "failed", "error" => "interrupted", "committed" => false})
+          )
+      end
     else
       :ok
     end
+  end
+
+  @spec persist(String.t(), map()) :: :ok | {:error, term()}
+  defp persist(project, pass) do
+    documents =
+      if is_binary(pass["id"]),
+        do: [{"pass/" <> pass["id"], "pass", pass}],
+        else: []
+
+    with :ok <- Store.put_many(documents),
+         do: Maintenance.progress(project, Map.delete(pass, "findings"))
   end
 
   @doc "Returns the incomplete discovery id so a new trigger recovers it before discovering more work."
@@ -59,6 +77,12 @@ defmodule Harness.Maintenance.Recovery do
 
   defp abandoned?(_), do: false
 
-  @spec alive?(String.t()) :: boolean()
-  defp alive?(pid), do: pid |> String.to_charlist() |> :erlang.list_to_pid() |> Process.alive?()
+  @spec alive?(term()) :: boolean()
+  defp alive?(pid) when is_binary(pid) do
+    pid |> String.to_charlist() |> :erlang.list_to_pid() |> Process.alive?()
+  rescue
+    ArgumentError -> false
+  end
+
+  defp alive?(_), do: false
 end

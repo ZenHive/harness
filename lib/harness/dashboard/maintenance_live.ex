@@ -38,6 +38,8 @@ defmodule Harness.Dashboard.MaintenanceLive do
   def handle_info({event, _}, socket) when event in [:harness_run_update, :harness_run_settled],
     do: {:noreply, refresh(socket)}
 
+  def handle_info(_message, socket), do: {:noreply, socket}
+
   @impl Phoenix.LiveView
   @spec handle_event(String.t(), map(), Socket.t()) :: {:noreply, Socket.t()}
   def handle_event("save", params, socket) do

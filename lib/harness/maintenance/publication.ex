@@ -143,10 +143,9 @@ defmodule Harness.Maintenance.Publication do
 
   @spec history_known([map()], [map()]) :: :ok | {:error, atom()}
   defp history_known(tasks, findings) do
-    if Enum.count_until(findings, 51) <= 50 and
-         Enum.all?(findings, fn f -> is_nil(f["task_id"]) or Enum.any?(tasks, &(&1["id"] == f["task_id"])) end),
-       do: :ok,
-       else: {:error, :publication_history_unknown}
+    if Enum.all?(findings, fn f -> is_nil(f["task_id"]) or Enum.any?(tasks, &(&1["id"] == f["task_id"])) end),
+      do: :ok,
+      else: {:error, :publication_history_unknown}
   end
 
   @spec selected(map(), map(), [map()], integer()) :: {:ok, [map()]} | {:error, atom()}

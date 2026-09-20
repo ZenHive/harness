@@ -5,20 +5,28 @@ defmodule Harness.Maintenance.Tick do
   @impl Oban.Worker
   @spec perform(Oban.Job.t()) :: Oban.Worker.result()
   def perform(%Oban.Job{}) do
-    Enum.reduce_while(Harness.ProjectRegistry.list(), :ok, &schedule/2)
+    Enum.each(Harness.ProjectRegistry.list(), &schedule/1)
+    :ok
   end
 
-  @spec schedule(Harness.Project.t(), :ok) :: {:cont, :ok} | {:halt, term()}
-  defp schedule(project, :ok) do
+  @spec schedule(Harness.Project.t()) :: :ok
+  defp schedule(project) do
     status = Harness.Maintenance.status(project.name)
 
-    if status["settings"]["enabled"] and status["next_sweep"] <= DateTime.to_iso8601(DateTime.utc_now()) do
-      case Harness.Maintenance.sweep_now(project.name) do
-        {:ok, _} -> {:cont, :ok}
-        error -> {:halt, error}
-      end
-    else
-      {:cont, :ok}
+    if status["settings"]["enabled"] and due?(status["next_sweep"]) do
+      _ = Harness.Maintenance.sweep_now(project.name)
+    end
+
+    :ok
+  end
+
+  @spec due?(term()) :: boolean()
+  defp due?(next) when is_binary(next) do
+    case DateTime.from_iso8601(next) do
+      {:ok, date, _} -> DateTime.compare(date, DateTime.utc_now()) != :gt
+      _ -> false
     end
   end
+
+  defp due?(_), do: false
 end

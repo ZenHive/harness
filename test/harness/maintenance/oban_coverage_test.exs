@@ -39,6 +39,7 @@ defmodule Harness.Maintenance.ObanCoverageTest do
       Application.put_env(:harness, Oban, options)
       config = HarnessOban.oban_opts()
       assert config[:queues][:insights] == 1
+      assert config[:queues][:maintenance] == 1
       assert Keyword.has_key?(config[:plugins], Oban.Cron)
     end
 

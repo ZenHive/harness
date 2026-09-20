@@ -28,8 +28,14 @@ defmodule Harness.Maintenance.Queue do
         end
       end)
 
-    Phoenix.PubSub.broadcast(Harness.PubSub, "harness:maintenance", :maintenance_updated)
-    result
+    case result do
+      {:ok, _} = ok ->
+        Phoenix.PubSub.broadcast(Harness.PubSub, "harness:maintenance", :maintenance_updated)
+        ok
+
+      other ->
+        other
+    end
   end
 
   @spec insert(String.t()) :: integer()

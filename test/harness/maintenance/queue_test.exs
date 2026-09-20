@@ -123,4 +123,20 @@ defmodule Harness.Maintenance.QueueTest do
     assert Store.get("pass/" <> id)["committed"]
     refute Store.get("progress/" <> name)["error"]
   end
+
+  test "abandoned running progress without a pass document is marked interrupted", %{name: name} do
+    owner = fn -> Attempt.owner() end |> Task.async() |> Task.await()
+
+    progress = %{
+      "id" => Ecto.UUID.generate(),
+      "project" => name,
+      "state" => "running",
+      "owner" => owner,
+      "expires_at" => "2099-01-01T00:00:00Z"
+    }
+
+    :ok = Store.put_many([{"progress/" <> name, "progress", progress}])
+    assert Maintenance.status(name)["state"] == "failed"
+    assert Maintenance.status(name)["progress"]["error"] == "interrupted"
+  end
 end

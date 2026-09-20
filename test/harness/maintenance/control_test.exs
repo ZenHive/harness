@@ -42,10 +42,15 @@ defmodule Harness.Maintenance.ControlTest do
     assert Maintenance.history("missing")["finding"] == nil
   end
 
-  test "scheduler leaves disabled repositories alone and reports unavailable durable scheduling", %{name: name} do
+  test "scheduler leaves disabled repositories alone and does not halt the fleet tick", %{name: name} do
+    other = "maintenance-#{Ecto.UUID.generate()}"
+    :ok = ProjectRegistry.register(ProjectFixture.from_repo("/tmp/maintenance-other", name: other))
+    on_exit(fn -> ProjectRegistry.unregister(other) end)
     assert :ok = Tick.perform(%Oban.Job{})
     :ok = Maintenance.configure(name, true, 60, "codex", "gpt-6-astra", 60)
-    assert {:error, :ephemeral_scheduler_unavailable} = Tick.perform(%Oban.Job{})
+    :ok = Maintenance.configure(other, true, 60, "codex", "gpt-6-astra", 60)
+    assert :ok = Tick.perform(%Oban.Job{})
+    assert {:error, :ephemeral_scheduler_unavailable} = Maintenance.sweep_now(name)
     :ok = Maintenance.configure(name, false, 60, "codex", "gpt-6-astra", 60)
     assert :ok = Worker.perform(%Oban.Job{args: %{"project" => name, "pass_id" => "disabled-worker"}})
   end
