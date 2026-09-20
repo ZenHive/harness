@@ -226,7 +226,8 @@ defmodule Harness.Cron.Orchestrator do
   def prompt(context) when is_map(context) do
     """
     You are the dispatch orchestrator for the harness project "#{context.project}".
-    Cron has woken you for a batch or a task with prior attempts. Decide
+    Cron has woken you for this tick's ready set. Some tasks may be first attempts
+    with verified empty history; others may have prior attempts. Decide
     which tasks to dispatch in THIS wave, on which agent, and which to hold back —
     then write the plan as JSON to `#{@artifact_path}` (relative to your working
     directory) and exit. Writing that file is the whole job; you change no code.

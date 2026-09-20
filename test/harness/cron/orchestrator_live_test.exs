@@ -110,6 +110,7 @@ defmodule Harness.Cron.OrchestratorLiveTest do
     assert Enum.all?(plan.skip, &(&1.disposition == "defer" and &1.reason != ""))
   end
 
+  @spec live_plan(map(), String.t()) :: Orchestrator.t()
   defp live_plan(ctx, scenario) do
     root = System.get_env("PLANNER_TEST_EVIDENCE_ROOT") || ".harness/planner-live"
     evidence = Path.expand(Path.join(root, scenario <> "-#{System.os_time(:nanosecond)}"))
@@ -122,6 +123,10 @@ defmodule Harness.Cron.OrchestratorLiveTest do
     assert Path.basename(invocation["cwd"]) =~ "harness-cron-planner-live-"
     refute File.exists?(invocation["cwd"])
     assert File.read!(Path.join(evidence, "exit-status.txt")) == "0"
+    prompt = File.read!(Path.join(evidence, "prompt.txt"))
+    assert prompt =~ "this tick's ready set"
+    assert prompt =~ "disposable non-Git scratch directory"
+    assert prompt =~ "means verified empty history"
     plan
   end
 end
