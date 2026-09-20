@@ -13923,7 +13923,7 @@ shipped_in = "d05dfbb5a4fec873daad1fe7f47891f50b0f9206"
 id = "448"
 phase = 24
 bundle = "audit-agent"
-status = "in_progress"
+status = "pending"
 title = "Roll out focused dispatch checks and full audit QA across all registered projects"
 scores = { d = 6, b = 8, u = 7 }
 depends_on = [447]
