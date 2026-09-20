@@ -396,7 +396,7 @@
 | Task | Status | Notes |
 |------|--------|-------|
 | Task 387 `[P]` | ✅ | 🎁 **operator-cockpit** · 🚀 **v0_18** · Build a fleet task Kanban from rmap and Harness lifecycle facts [D:5/B:8/U:7 → Eff:1.5?] 🚀 |
-| Task 388 | 🔄 | 🎁 **operator-cockpit** · 🚀 **v0_18** · Add an operator Action Inbox over existing recovery and approval contracts [D:5/B:8/U:7 → Eff:1.5] 🚀 |
+| Task 388 | ✅ | 🎁 **operator-cockpit** · 🚀 **v0_18** · Add an operator Action Inbox over existing recovery and approval contracts [D:5/B:8/U:7 → Eff:1.5] 🚀 |
 | Task 406 `[P]` | ✅ | 🎁 **witness-legibility** · Run-detail becomes where a failure is diagnosed and acted on [D:3/B:8/U:6 → Eff:2.33] 🎯 |
 | Task 407 `[P]` | ✅ | 🎁 **witness-legibility** · 🐛 Split the run-state bucket vocabulary and recompose the index around it [D:3/B:7/U:6 → Eff:2.17] 🎯 |
 | Task 408 `[P]` | ✅ | 🎁 **witness-legibility** · Responsive strategy for the dashboard [D:3/B:6/U:5 → Eff:1.83] 🚀 |

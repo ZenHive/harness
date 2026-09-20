@@ -11808,7 +11808,7 @@ id = "388"
 phase = 24
 bundle = "operator-cockpit"
 milestone = "v0_18"
-status = "in_progress"
+status = "done"
 title = "Add an operator Action Inbox over existing recovery and approval contracts"
 scores = { d = 5, b = 8, u = 7 }
 depends_on = []
@@ -11822,9 +11822,16 @@ Deliver a current-action Inbox over existing Harness operations, independently o
 
 2026-09-20 scope refinement: Score rationale: Current recovery/approval actions have direct operator value; separating Activity removes historical-query implementation from this scope.
 '''
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1789891659920-6eadeb83, 32dbcfbbf098109c77ddc8f1ebe966f9afc0c1e2)."
+delivered_by = "codex"
+verified = true
+verified_by = "cursor"
+verification_ref = "harness-run:run-1789891659920-6eadeb83"
 created_at = "2026-08-15"
 started_at = "2026-09-20"
 scored_at = "2026-09-20"
+done_at = "2026-09-20"
+shipped_in = "32dbcfbbf098109c77ddc8f1ebe966f9afc0c1e2"
 
 [[task]]
 id = "389"
