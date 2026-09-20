@@ -9,11 +9,11 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (24 of 30 done · 0 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (24 of 30 done · 1 in progress)
 
 **Last shipped:** Task 359 — Separate Dispatch concerns behind the existing public facade on 2026-09-20
 
-**Up next:** Task 362 — Diagnose and eliminate the AgentRegistry empty-registry test flake [D:4/B:6/U:5 → Eff:1.38] 📋
+**Up next:** Task 360 — Enforce consumer-to-core dependency boundaries and remove accidental reverse edges [D:7/B:6/U:4 → Eff:0.71] ⚠️
 <!-- FOCUS:END -->
 
 ---
@@ -360,7 +360,7 @@
 | Task 359 | ✅ | 🎁 **audit-architecture** · 🚀 **v0_16** · Separate Dispatch concerns behind the existing public facade [D:5/B:5/U:4 → Eff:0.9?] ⚠️ |
 | Task 360 | ⬜ | 🎁 **audit-architecture** · 🚀 **v0_16** · Enforce consumer-to-core dependency boundaries and remove accidental reverse edges [D:7/B:6/U:4 → Eff:0.71] ⚠️ |
 | Task 361 | ✅ | 🎁 **audit-tests** · 🚀 **v0_16** · Add direct coverage for Harness.Store.EtsScope create/lookup and owner-exit table ownership [D:2/B:5/U:4 → Eff:2.25?] 🎯 |
-| Task 362 | ⬜ | 🎁 **audit-tests** · 🚀 **v0_16** · 🐛 Diagnose and eliminate the AgentRegistry empty-registry test flake [D:4/B:6/U:5 → Eff:1.38?] 📋 |
+| Task 362 | 🔄 | 🎁 **audit-tests** · 🚀 **v0_16** · 🐛 Diagnose and eliminate the AgentRegistry empty-registry test flake [D:4/B:6/U:5 → Eff:1.38?] 📋 |
 | Task 363 | ✅ | 🎁 **audit-hygiene** · 🚀 **v0_16** · 📝 🔒 Document the mountable-consumer auth boundary for the dashboard / Oban Web / MCP router [D:1/B:5/U:4 → Eff:4.5?] 🎯 |
 | Task 364 | ⬜ | 🎁 **audit-hygiene** · Decision: resolve the anubis_mcp LGPL-3.0 runtime-dependency licensing exposure on the public repo [D:2/B:5/U:4 → Eff:2.25?] 🎯 |
 | Task 365 | ✅ | 🎁 **run-history** · 🐛 ResultStore.Postgres list/aggregate path fails whole query on atom decode — tolerant row decode like the File store [D:3/B:7/U:7 → Eff:2.33?] 🎯 |
