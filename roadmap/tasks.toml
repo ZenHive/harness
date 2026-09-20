@@ -13820,7 +13820,7 @@ scored_at = "2026-09-20"
 id = "446"
 phase = 25
 bundle = "core-loop"
-status = "pending"
+status = "in_progress"
 title = "Cron planner distinguishes verified empty history from missing recovery evidence"
 scores = { d = 2, b = 8, u = 8 }
 markers = ["bug"]
@@ -13830,5 +13830,6 @@ assignee = "codex"
 model = "gpt-6-astra"
 body = "Production incident 2026-09-20 04:34:42 UTC: Dispatch now found ready tasks but planner deferred every candidate because attempts was empty and scratch was not a Git repository. Attempts.attach uses strict_history; Orchestrator.build_invocation intentionally uses scratch cwd. Prompt rule 4 unconditionally requires branch/origin evidence and describes every fresh action as discarding work. Clarify first-attempt versus recovery semantics, preserving safeguards. Reproduce using a real planner in disposable workspace, then add regressions. Runtime-control bug needs independent review. No production restart/recompile, autonomy changes or unrelated dispatch by implementer/reviewer; root owns activation through autodeploy. User authorized fixing this incident."
 created_at = "2026-09-20"
+started_at = "2026-09-20"
 scored_at = "2026-09-20"
 
