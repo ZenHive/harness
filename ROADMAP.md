@@ -403,7 +403,7 @@
 | Task 409 `[P]` | ✅ | 🎁 **witness-legibility** · Surface the reviewer's testimony on the run row and detail [D:4/B:7/U:5 → Eff:1.5] 🚀 |
 | Task 441 | ⬜ | 🎁 **operator-cockpit** · 🚀 **v0_18** · Expose bounded durable lifecycle Activity in the operator dashboard [D:4/B:6/U:6 → Eff:1.5] 🚀 |
 | Task 443 | ✅ | 🎁 **operator-cockpit** · Add Run Insights to observe runs and track recurring problems [D:8/B:8/U:5 → Eff:0.81] ⚠️ |
-| Task 444 | 🔄 | 🎁 **repo-maintenance** · Add autonomous maintenance sweeps across opted-in repositories [D:8/B:9/U:6 → Eff:0.94] ⚠️ |
+| Task 444 | ⬜ | 🎁 **repo-maintenance** · Add autonomous maintenance sweeps across opted-in repositories [D:8/B:9/U:6 → Eff:0.94] ⚠️ |
 | Task 445 | ✅ | 🎁 **operator-cockpit** · Correct Run Insights evidence and finding memory, support Codex, and finish its dashboard UX [D:8/B:9/U:8 → Eff:1.06] 📋 |
 | Task 447 | 🔄 | 🎁 **audit-agent** · Extend post-merge audit into durable full-project QA independent of dispatch checks [D:7/B:9/U:8 → Eff:1.21] 📋 |
 | Task 448 | ⬜ | 🎁 **audit-agent** · Roll out focused dispatch checks and full audit QA across all registered projects [D:6/B:8/U:7 → Eff:1.25] 📋 |
