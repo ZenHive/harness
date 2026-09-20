@@ -13971,7 +13971,7 @@ shipped_in = "fafcfd3d3f67a6711bc07e37340cd4de51a7757a"
 id = "450"
 phase = 22
 bundle = "audit-hygiene"
-status = "pending"
+status = "in_progress"
 title = "Clear the 10 ex_dna clones that fail mix precommit.full"
 scores = { d = 5, b = 7, u = 6 }
 acceptance_criteria = ["mix ex_dna --max-clones 0 exits 0 on the landed base with the clone budget still 0", "The Insights/Maintenance store, tick, and response_schema duplication is gone without changing persistence or scheduler behaviour", "The Dispatch await/register_project clones between dispatch.ex, observation.ex and admin.ex are gone without changing public signatures", "landable_project_names lives in one place (TaskBoard or a shared helper); Dashboard.Live does not keep a copy", "Focused tests cover the extracted helpers; mix check.dispatch plus mix ex_dna --max-clones 0 are recorded"]
@@ -13992,4 +13992,5 @@ Task 401 already cleared a different clone (Run.Worker enqueue) and is done. No 
 Observed 2026-09-20, audit worktree run-1789907903600-82913e20, log /tmp/harness-audit-precommit-rest.VMEZDU.log.
 """
 created_at = "2026-09-20"
+started_at = "2026-09-20"
 scored_at = "2026-09-20"

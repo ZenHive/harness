@@ -21054,7 +21054,7 @@
       "id": "450",
       "phase": 22,
       "bundle": "audit-hygiene",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Clear the 10 ex_dna clones that fail mix precommit.full",
       "scores": {
         "d": 5,
@@ -21096,6 +21096,7 @@
       ],
       "body": "Post-merge audit of 58893e2 ran mix precommit.full on a cold tree. ex_dna --max-clones 0 failed with 10 clones (~470 duplicated lines), none introduced by the Task 449/448-rescue range:\n\n- 7 clones, 767 nodes: lib/harness/insights/{store,tick,response_schema}.ex duplicated in lib/harness/maintenance/ (Task 443/444 sibling stores).\n- 2 clones: Dispatch.await/5 between dispatch.ex:169 and observation.ex:34; register_project/… between admin.ex:51 and dispatch.ex:678.\n- 1 renamed clone: landable_project_names/1 in dashboard/task_board.ex:172 and dashboard/live.ex:1843.\n\nTask 401 already cleared a different clone (Run.Worker enqueue) and is done. No pending task owns this set. Do not raise the budget. Extract shared store/tick/schema helpers and one landable_project_names definition; keep public Dispatch signatures.\n\nObserved 2026-09-20, audit worktree run-1789907903600-82913e20, log /tmp/harness-audit-precommit-rest.VMEZDU.log.\n",
       "created_at": "2026-09-20",
+      "started_at": "2026-09-20",
       "scored_at": "2026-09-20",
       "cross_repo": []
     }
