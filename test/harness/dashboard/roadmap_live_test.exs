@@ -1,31 +1,37 @@
 defmodule Harness.Dashboard.RoadmapLiveTest do
   @moduledoc """
-  `Phoenix.LiveViewTest` coverage for `Harness.Dashboard.RoadmapLive` — the
-  per-project roadmap rollup extracted from the runs dashboard onto its own
-  `/harness/roadmap` page.
+  `Phoenix.LiveViewTest` coverage for the `/harness/roadmap` fleet task board.
 
-  `async: false` — reads the singleton `ProjectRegistry`, so a registered
-  fixture project would leak across parallel tests.
+  `async: false` — reads the singleton `ProjectRegistry` and application-env
+  seams, so fixture projects would leak across parallel tests.
   """
 
-  # async: false because tests read singleton ProjectRegistry state.
   use Harness.Dashboard.ConnCase, async: false
 
   alias Harness.GitFixture
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
+  alias Harness.Run.LogRecord
+  alias Harness.Run.Status
+  alias Harness.TokenUsage
 
   setup do
     for project <- ProjectRegistry.list(), do: ProjectRegistry.unregister(project.name)
 
-    prev_list = Application.get_env(:harness, :roadmap_list)
-    prev_next_bundle = Application.get_env(:harness, :roadmap_next_bundle)
-    prev_ready = Application.get_env(:harness, :roadmap_ready)
+    prev = %{
+      list: Application.get_env(:harness, :roadmap_list),
+      ready: Application.get_env(:harness, :roadmap_ready),
+      live: Application.get_env(:harness, :task_board_live_runs),
+      records: Application.get_env(:harness, :task_board_records),
+      action: Application.get_env(:harness, :task_board_action)
+    }
 
     on_exit(fn ->
-      restore(:roadmap_list, prev_list)
-      restore(:roadmap_next_bundle, prev_next_bundle)
-      restore(:roadmap_ready, prev_ready)
+      restore(:roadmap_list, prev.list)
+      restore(:roadmap_ready, prev.ready)
+      restore(:task_board_live_runs, prev.live)
+      restore(:task_board_records, prev.records)
+      restore(:task_board_action, prev.action)
 
       for project <- ProjectRegistry.list(), do: ProjectRegistry.unregister(project.name)
     end)
@@ -33,7 +39,7 @@ defmodule Harness.Dashboard.RoadmapLiveTest do
     :ok
   end
 
-  describe "mount + render" do
+  describe "mount + empty states" do
     test "renders the no-projects state when the registry is empty", %{conn: conn} do
       {:ok, _view, html} = live(conn, "/harness/roadmap")
 
@@ -41,94 +47,345 @@ defmodule Harness.Dashboard.RoadmapLiveTest do
       assert html =~ "No projects registered."
     end
 
-    test "renders a per-project rollup row for a registered project", %{conn: conn} do
-      project = ProjectFixture.from_repo("/tmp/harness-roadmaplive-demo", name: "roadmaplive-demo")
-      :ok = ProjectRegistry.register(project)
-      on_exit(fn -> ProjectRegistry.unregister(project.name) end)
+    test "renders every lane empty for a registered project with no tasks", %{conn: conn} do
+      register("board-empty")
+      stub_roadmap([], [])
+      stub_execution("board-empty", [], [])
 
       {:ok, _view, html} = live(conn, "/harness/roadmap")
 
-      assert html =~ "roadmaplive-demo"
-      # The four rollup columns render (a /tmp path with no roadmap summarizes to
-      # zeros, but the row + headers must be present).
-      assert html =~ "Open"
+      assert html =~ "board-empty"
+      assert html =~ "Pending"
+      assert html =~ "Implementing"
+      assert html =~ "Reviewing"
+      assert html =~ "Landing"
+      assert html =~ "Blocked"
       assert html =~ "Done"
-      assert html =~ "Total"
-      assert html =~ "Landed"
-      assert html =~ "1 projects"
-    end
-
-    test "expands an empty project with explicit empty planning states", %{conn: conn} do
-      project = ProjectFixture.from_repo("/tmp/harness-roadmaplive-empty", name: "roadmaplive-empty")
-      :ok = ProjectRegistry.register(project)
-
-      Application.put_env(:harness, :roadmap_list, fn _project -> {:ok, []} end)
-      Application.put_env(:harness, :roadmap_next_bundle, fn _project -> {:ok, %{bundle: nil, tasks: []}} end)
-      Application.put_env(:harness, :roadmap_ready, fn _project -> {:ok, []} end)
-
-      {:ok, view, _html} = live(conn, "/harness/roadmap")
-
-      html = view |> element("button", "roadmaplive-empty") |> render_click()
-
-      assert html =~ "No next pending task."
+      assert html =~ "No pending tasks."
+      assert html =~ "No implementing tasks."
+      assert html =~ "No reviewing tasks."
+      assert html =~ "No landing tasks."
       assert html =~ "No blocked tasks."
-      assert html =~ "No dispatchable tasks."
+      assert html =~ "No recent done tasks."
+      refute html =~ "urgency"
+      refute html =~ "stuck"
+    end
+  end
+
+  describe "lanes, dependencies, filter, and bounds" do
+    test "renders every lane and dependency-ready vs waiting pending cards", %{conn: conn} do
+      register("board-lanes", target_branch: "main")
+
+      stub_roadmap(
+        [
+          task("1", "pending", "Ready wire"),
+          task("2", "pending", "Waiting on 1"),
+          task("3", "in_progress", "Implementer running"),
+          task("4", "in_progress", "Reviewer running"),
+          task("5", "in_progress", "Approved unlanded"),
+          task("6", "blocked", "Land cap"),
+          task("7", "done", "Already shipped")
+        ],
+        ["1"]
+      )
+
+      stub_execution(
+        "board-lanes",
+        [
+          status("run-impl", "3", :running, agent: :cursor, model: "composer"),
+          status("run-rev", "4", :reviewing)
+        ],
+        [
+          record("run-land", "5", :done, verdict: :approve, token_usage: %TokenUsage{total: 42, input: 40, output: 2}),
+          record("run-block", "6", :done, verdict: :approve),
+          record("run-done", "7", :done, verdict: :approve, landed_sha: "abc1234")
+        ]
+      )
+
+      {:ok, _view, html} = live(conn, "/harness/roadmap")
+
+      assert card(html, "1", "pending") =~ "Ready wire"
+      assert card(html, "1", "pending") =~ "Dependencies ready"
+      assert card(html, "1", "pending") =~ "Dispatch"
+      assert card(html, "2", "pending") =~ "Waiting on dependencies"
+      refute card(html, "2", "pending") =~ "Dispatch"
+
+      assert card(html, "3", "implementing") =~ "Implementer running"
+      assert card(html, "3", "implementing") =~ "running"
+      assert card(html, "3", "implementing") =~ "cursor"
+      assert card(html, "3", "implementing") =~ "Hold"
+
+      assert card(html, "4", "reviewing") =~ "Reviewer running"
+      assert card(html, "4", "reviewing") =~ "reviewing"
+
+      assert card(html, "5", "landing") =~ "Approved unlanded"
+      assert card(html, "5", "landing") =~ "Land"
+      assert card(html, "5", "landing") =~ "42"
+      assert card(html, "5", "landing") =~ "Cost"
+      assert card(html, "5", "landing") =~ "—"
+
+      assert card(html, "6", "blocked") =~ "Land cap"
+      assert card(html, "6", "blocked") =~ "Re-land"
+
+      assert card(html, "7", "done") =~ "Already shipped"
+      refute card(html, "7", "done") =~ "Dispatch"
     end
 
-    test "expands a project with next task, blocked reasons, and dispatch waves", %{conn: conn} do
-      project = ProjectFixture.from_repo("/tmp/harness-roadmaplive-planning", name: "roadmaplive-planning")
-      :ok = ProjectRegistry.register(project)
+    test "project filter hides the other project's cards", %{conn: conn} do
+      register("alpha")
+      register("beta")
 
-      Application.put_env(:harness, :roadmap_list, fn _project ->
-        {:ok,
-         [
-           %{"id" => "10", "status" => "pending", "title" => "Wire explicit refresh", "eff" => 1.25},
-           %{
-             "id" => "11",
-             "status" => "blocked",
-             "title" => "Repair branch drift",
-             "blocked_reason" => "waiting on target branch"
-           },
-           %{
-             "id" => "12",
-             "status" => "blocked",
-             "title" => "Unstick reviewer",
-             "blocked_reason" => "reviewer unavailable"
-           },
-           %{"id" => "13", "status" => "done", "title" => "Already landed", "shipped_in" => "abc123"}
-         ]}
+      Application.put_env(:harness, :roadmap_list, fn
+        %{name: "alpha"} -> {:ok, [task("1", "pending", "Alpha only")]}
+        %{name: "beta"} -> {:ok, [task("2", "pending", "Beta only")]}
       end)
 
-      Application.put_env(:harness, :roadmap_next_bundle, fn _project ->
-        {:ok, %{bundle: %{"name" => "dashboard"}, tasks: [%{"id" => "10", "title" => "Wire explicit refresh"}]}}
+      Application.put_env(:harness, :roadmap_ready, fn _project -> {:ok, []} end)
+      stub_execution("alpha", [], [])
+
+      {:ok, view, html} = live(conn, "/harness/roadmap")
+      assert html =~ "Alpha only"
+      assert html =~ "Beta only"
+
+      filtered = render_patch(view, "/harness/roadmap?project=alpha")
+      assert filtered =~ "Alpha only"
+      refute filtered =~ "Beta only"
+
+      all =
+        view
+        |> form("#roadmap-project-filter", %{project: ""})
+        |> render_change()
+
+      assert all =~ "Alpha only"
+      assert all =~ "Beta only"
+    end
+
+    test "Done history is bounded per project", %{conn: conn} do
+      register("board-done")
+
+      tasks = for i <- 1..25, do: task(Integer.to_string(i), "done", "Done #{i}")
+      stub_roadmap(tasks, [])
+      stub_execution("board-done", [], [])
+
+      {:ok, _view, html} = live(conn, "/harness/roadmap")
+
+      {:ok, document} = Floki.parse_document(html)
+
+      card_ids =
+        document
+        |> Floki.find("[data-task-card][data-lane=done]")
+        |> Enum.map(fn node -> node |> Floki.attribute("data-task-id") |> List.first() end)
+
+      assert Enum.count_until(card_ids, 21) == 20
+      refute "1" in card_ids
+    end
+
+    test "renders held and failed as badges without a health score", %{conn: conn} do
+      register("board-badges")
+
+      stub_roadmap(
+        [task("8", "in_progress", "Held impl"), task("9", "in_progress", "Failed impl")],
+        []
+      )
+
+      stub_execution(
+        "board-badges",
+        [status("run-held", "8", :held, held?: true)],
+        [record("run-failed", "9", :failed)]
+      )
+
+      {:ok, _view, html} = live(conn, "/harness/roadmap")
+
+      held = card(html, "8", "implementing")
+      assert held =~ "data-badge=\"held\""
+      assert held =~ "Resume"
+      refute held =~ "priority"
+      refute held =~ "urgency"
+
+      failed = card(html, "9", "implementing")
+      assert failed =~ "data-badge=\"failed\""
+      assert failed =~ "Resume failed"
+      assert failed =~ "Re-review"
+      assert failed =~ "attempt run-failed"
+    end
+
+    test "an older approved attempt does not render a pending task as Done", %{conn: conn} do
+      register("board-stale")
+      stub_roadmap([task("24", "pending", "Still pending")], [])
+      stub_execution("board-stale", [], [record("run-old-approve", "24", :done, verdict: :approve)])
+
+      {:ok, _view, html} = live(conn, "/harness/roadmap")
+
+      assert card(html, "24", "pending") =~ "Still pending"
+      assert card(html, "24", "pending") =~ "attempt run-old-approve"
+      refute html =~ ~s(data-task-id="24") <> ~s( data-lane="done")
+      refute html =~ ~s(data-lane="done" data-task-id="24")
+    end
+
+    test "a live-run update moves a pending card into Implementing without changing rmap status", %{conn: conn} do
+      register("board-live")
+      stub_roadmap([task("22", "pending", "Claimed late")], [])
+      stub_execution("board-live", [], [])
+
+      {:ok, view, html} = live(conn, "/harness/roadmap")
+      assert card(html, "22", "pending") =~ "Claimed late"
+
+      stub_execution("board-live", [status("run-live-p", "22", :running)], [])
+      send(view.pid, {:harness_run_update, %{}})
+      updated = render(view)
+
+      assert card(updated, "22", "implementing") =~ "pending"
+      assert card(updated, "22", "implementing") =~ "attempt run-live-p"
+    end
+  end
+
+  describe "actions" do
+    test "a successful dispatch refreshes the board and shows the existing ok notice", %{conn: conn} do
+      register("board-actions")
+      stub_roadmap([task("10", "pending", "Dispatch me")], ["10"])
+      stub_execution("board-actions", [], [])
+
+      parent = self()
+
+      Application.put_env(:harness, :task_board_action, fn name, project, task_id, run_id ->
+        send(parent, {:action, name, project, task_id, run_id})
+        Application.put_env(:harness, :roadmap_list, fn _ -> {:ok, [task("10", "in_progress", "Dispatch me")]} end)
+        Application.put_env(:harness, :roadmap_ready, fn _ -> {:ok, []} end)
+        {:ok, "Dispatched task 10."}
       end)
 
-      Application.put_env(:harness, :roadmap_ready, fn _project ->
-        {:ok,
-         [
-           %{"id" => "10", "title" => "Wire explicit refresh", "dep_layer" => 0, "eff" => 1.25},
-           %{"id" => "14", "title" => "Polish empty state", "dep_layer" => 0, "eff" => 0.83},
-           %{"id" => "15", "title" => "Follow-up wave", "dep_layer" => 1, "eff" => 1.5}
-         ]}
+      {:ok, view, html} = live(conn, "/harness/roadmap")
+      assert html =~ "Dispatch"
+
+      clicked =
+        view
+        |> element(~s(button[phx-click="dispatch_task"][phx-value-task_id="10"]))
+        |> render_click()
+
+      assert_received {:action, :dispatch, "board-actions", "10", nil}
+      assert clicked =~ "Dispatched task 10."
+      assert card(clicked, "10", "implementing") =~ "Dispatch me"
+    end
+
+    test "hold and land reuse the existing Dispatch seam and refresh on success", %{conn: conn} do
+      register("board-run-actions", target_branch: "main")
+
+      stub_roadmap(
+        [task("3", "in_progress", "Hold me"), task("5", "in_progress", "Land me")],
+        []
+      )
+
+      stub_execution(
+        "board-run-actions",
+        [status("run-impl", "3", :running)],
+        [record("run-land", "5", :done, verdict: :approve)]
+      )
+
+      parent = self()
+
+      Application.put_env(:harness, :task_board_action, fn name, project, task_id, run_id ->
+        send(parent, {:action, name, project, task_id, run_id})
+        {:ok, "#{name} ok"}
       end)
 
       {:ok, view, _html} = live(conn, "/harness/roadmap")
 
-      html = view |> element("button", "roadmaplive-planning") |> render_click()
+      held =
+        view
+        |> element(~s(button[phx-click="hold_run"][phx-value-run_id="run-impl"]))
+        |> render_click()
 
-      assert html =~ "Next pending"
-      assert html =~ "#10"
-      assert html =~ "Wire explicit refresh"
-      assert html =~ "Blocked (2)"
-      assert html =~ "waiting on target branch"
-      assert html =~ "reviewer unavailable"
-      assert html =~ "Wave 0"
-      assert html =~ "Polish empty state"
-      assert html =~ "Wave 1"
-      assert html =~ "Follow-up wave"
-      assert html =~ "Eff 1.25"
+      assert_received {:action, :hold, nil, nil, "run-impl"}
+      assert held =~ "hold ok"
+
+      landed =
+        view
+        |> element(~s(button[phx-click="land_run"][phx-value-run_id="run-land"]))
+        |> render_click()
+
+      assert_received {:action, :land, nil, nil, "run-land"}
+      assert landed =~ "land ok"
     end
 
+    test "resume, resume-failed, re-review, and re-land reuse the existing Dispatch seam", %{conn: conn} do
+      register("board-recovery", target_branch: "main")
+
+      stub_roadmap(
+        [
+          task("8", "in_progress", "Held"),
+          task("9", "in_progress", "Failed"),
+          task("6", "blocked", "Blocked")
+        ],
+        []
+      )
+
+      stub_execution(
+        "board-recovery",
+        [status("run-held", "8", :held, held?: true)],
+        [
+          record("run-failed", "9", :failed),
+          record("run-block", "6", :done, verdict: :approve)
+        ]
+      )
+
+      parent = self()
+
+      Application.put_env(:harness, :task_board_action, fn name, project, task_id, run_id ->
+        send(parent, {:action, name, project, task_id, run_id})
+        {:ok, "#{name} ok"}
+      end)
+
+      {:ok, view, _html} = live(conn, "/harness/roadmap")
+
+      view
+      |> element(~s(button[phx-click="resume_held"][phx-value-run_id="run-held"]))
+      |> render_click()
+
+      assert_received {:action, :resume, nil, nil, "run-held"}
+
+      view
+      |> element(~s(button[phx-click="resume_failed"][phx-value-run_id="run-failed"]))
+      |> render_click()
+
+      assert_received {:action, :resume_failed, nil, nil, "run-failed"}
+
+      view
+      |> element(~s(button[phx-click="rereview_run"][phx-value-run_id="run-failed"]))
+      |> render_click()
+
+      assert_received {:action, :rereview, nil, nil, "run-failed"}
+
+      relanded =
+        view
+        |> element(~s(button[phx-click="land_run"][phx-value-run_id="run-block"]))
+        |> render_click()
+
+      assert_received {:action, :land, nil, nil, "run-block"}
+      assert relanded =~ "land ok"
+    end
+
+    test "a rejected action shows the error and does not move the card", %{conn: conn} do
+      register("board-reject")
+      stub_roadmap([task("11", "pending", "Stay pending")], ["11"])
+      stub_execution("board-reject", [], [])
+
+      Application.put_env(:harness, :task_board_action, fn _name, _project, _task_id, _run_id ->
+        {:error, "Dispatch failed: :unavailable"}
+      end)
+
+      {:ok, view, _html} = live(conn, "/harness/roadmap")
+
+      clicked =
+        view
+        |> element(~s(button[phx-click="dispatch_task"][phx-value-task_id="11"]))
+        |> render_click()
+
+      assert clicked =~ "Dispatch failed: :unavailable"
+      assert card(clicked, "11", "pending") =~ "Stay pending"
+    end
+  end
+
+  describe "rmap display reads" do
     test "a roadmap tick with an unreachable origin never fetches and stays inside the drilldown timeout", %{
       conn: conn
     } do
@@ -136,7 +393,7 @@ defmodule Harness.Dashboard.RoadmapLiveTest do
         flunk("""
         rmap CLI not found on PATH.
 
-        Harness.Dashboard.RoadmapLive shells out to `rmap` for drilldowns. Install
+        Harness.Dashboard.RoadmapLive shells out to `rmap` for board facts. Install
         it and ensure it is on PATH before running this suite.
         """)
       end
@@ -175,11 +432,14 @@ defmodule Harness.Dashboard.RoadmapLiveTest do
         )
 
       :ok = ProjectRegistry.register(project)
+      stub_execution("roadmaplive-nosync", [], [])
 
       {elapsed_us, {:ok, view, html}} = :timer.tc(fn -> live(conn, "/harness/roadmap") end)
 
       assert elapsed_us < 5_000_000
       assert html =~ "roadmaplive-nosync"
+      assert html =~ "#2"
+      assert html =~ "The next pending fixture task"
 
       {tick_us, _tick_html} =
         :timer.tc(fn ->
@@ -189,16 +449,75 @@ defmodule Harness.Dashboard.RoadmapLiveTest do
 
       assert tick_us < 5_000_000
       refute_received :origin_fetch_attempted
-
-      # The no-fetch assertion is only meaningful if the drilldown actually ran
-      # the real (unseamed) `next_bundle` / `ready` path — an empty drilldown
-      # would satisfy `refute_received` for the wrong reason.
-      expanded = view |> element("button", "roadmaplive-nosync") |> render_click()
-
-      assert expanded =~ "#2"
-      assert expanded =~ "The next pending fixture task"
-      refute_received :origin_fetch_attempted
     end
+  end
+
+  defp register(name, opts \\ []) do
+    project = ProjectFixture.from_repo("/tmp/harness-#{name}", Keyword.merge([name: name], opts))
+    :ok = ProjectRegistry.register(project)
+    project
+  end
+
+  defp stub_roadmap(tasks, ready_ids) do
+    Application.put_env(:harness, :roadmap_list, fn _project -> {:ok, tasks} end)
+
+    ready = Enum.map(ready_ids, fn id -> %{"id" => id} end)
+    Application.put_env(:harness, :roadmap_ready, fn _project -> {:ok, ready} end)
+  end
+
+  defp stub_execution(project_name, live_runs, records) when is_binary(project_name) do
+    live = Enum.map(live_runs, fn status -> %{status | project_name: project_name} end)
+    recs = Enum.map(records, fn record -> %{record | project_name: project_name} end)
+    Application.put_env(:harness, :task_board_live_runs, fn -> live end)
+    Application.put_env(:harness, :task_board_records, fn -> recs end)
+  end
+
+  defp task(id, status, title) do
+    %{"id" => id, "status" => status, "title" => title}
+  end
+
+  defp status(run_id, task_id, state, opts \\ []) do
+    struct!(
+      %Status{
+        run_id: run_id,
+        task_id: task_id,
+        state: state,
+        project_name: Keyword.get(opts, :project_name, current_project_name(opts))
+      },
+      Keyword.delete(opts, :project_name)
+    )
+  end
+
+  defp current_project_name(opts), do: Keyword.get(opts, :project_name, "board-lanes")
+
+  defp record(run_id, task_id, state, opts \\ []) do
+    %LogRecord{
+      batch_id: "batch-#{run_id}",
+      run_id: run_id,
+      task_id: task_id,
+      project_name: Keyword.get(opts, :project_name, "board-lanes"),
+      adapter: FakeAdapter,
+      state: state,
+      reason: Keyword.get(opts, :reason, :approved),
+      verdict: Keyword.get(opts, :verdict),
+      duration_ms: 1_000,
+      landed_sha: Keyword.get(opts, :landed_sha),
+      token_usage: Keyword.get(opts, :token_usage, TokenUsage.empty())
+    }
+  end
+
+  defp card(html, task_id, lane) do
+    {:ok, document} = Floki.parse_document(html)
+
+    match =
+      document
+      |> Floki.find("[data-task-card]")
+      |> Enum.find(fn node ->
+        Floki.attribute(node, "data-task-id") == [task_id] and Floki.attribute(node, "data-lane") == [lane]
+      end)
+
+    assert match, "expected card task #{task_id} in #{lane} lane"
+    Floki.raw_html(match)
   end
 
   defp restore(key, nil), do: Application.delete_env(:harness, key)

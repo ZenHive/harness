@@ -1,81 +1,135 @@
 defmodule Harness.Dashboard.RoadmapLive do
   @moduledoc """
-  Per-project roadmap planning LiveView (`/harness/roadmap`).
+  Fleet task board LiveView (`/harness/roadmap`).
 
-  Extracted from the runs dashboard (`Harness.Dashboard.Live`) so the *planning*
-  surface has its own navbar destination instead of sharing scroll with the
-  operational run tables. It shows the rollup plus a read-only drill-down for
-  "what's next / what's blocked / what's dispatchable in parallel?".
+  Turns the former per-project planning rollup into a project-spanning board
+  with factual lanes: Pending, Implementing, Reviewing, Landing, Blocked, and
+  Done. rmap is authoritative for durable status; live runs and persisted
+  results supply execution and landing context. Placement rules live in
+  `Harness.Dashboard.TaskBoard` — this view loads those facts, filters by
+  project, and invokes existing `Harness.Dispatch` recovery/dispatch contracts.
 
-  ## Cold-path, ticked
+  ## Cold-path rmap, event-driven runs
 
-  The rollup and drill-down facts have no PubSub source — landing is
-  minutes-paced — so a slow `:roadmap_tick` re-reads them. Registered projects
-  (`ProjectRegistry.list/0`) are in-memory and refreshed on the same tick. Row
-  expansion only toggles already-loaded facts; it never shells out from a click.
+  Roadmap reads have no PubSub source, so a slow `:roadmap_tick` re-reads them
+  with `sync_checkout: false`. Live run and settle broadcasts (`RunFeed`)
+  recompose only the execution facts so an in-flight stage change does not wait
+  on the tick. Display reads never fetch origin.
 
-  The runs dashboard still computes its own `@roadmap` assign: the summaries are
-  load-bearing there for the run tables' landed/blocked logic. This view renders
-  the same data on its own page; it does not remove it from the index.
-
-  This view counts and displays roadmap facts from `rmap`'s structured output. It
-  does not compute agent recommendations or bespoke priority scores. Display
-  reads pass `sync_checkout: false` so a 30s tick never fetches origin or
-  fast-forwards a checkout.
+  Actions reuse `Harness.Dispatch` (`task`, `hold`, `resume`, `resume_failed`,
+  `rereview`, `reland`). A successful action reloads the board; an error is
+  shown and rmap status is left unchanged. Failed and held attempts are badges
+  and action state — this view does not compute urgency, health, or priority.
   """
 
   use Phoenix.LiveView, layout: {Harness.Dashboard.Layouts, :app}
 
-  alias Harness.Dashboard.RoadmapSummary
+  alias Harness.Dashboard.Components
+  alias Harness.Dashboard.RunFeed
+  alias Harness.Dashboard.TaskBoard
+  alias Harness.Dashboard.TaskBoard.Card
+  alias Harness.Dispatch
+  alias Harness.Project
   alias Harness.ProjectRegistry
+  alias Harness.ResultStore
   alias Harness.Roadmap
+  alias Harness.Run.LogRecord
+  alias Harness.Run.Status
+  alias Harness.StatusView
+  alias Phoenix.LiveView.Rendered
+  alias Phoenix.LiveView.Socket
 
-  # Mirrors the runs dashboard's roadmap tick — landing is minutes-paced, so a
-  # 30s re-read keeps the open/done/landed counts fresh without a PubSub source.
   @roadmap_tick_interval_ms 30_000
   @drilldown_timeout_ms 5_000
-  @ready_fields ~w(id title dep_layer eff)
-
-  @typep drilldown :: %{
-           next_task: map() | nil,
-           blocked: [map()],
-           waves: [{integer(), [map()]}]
-         }
+  @record_limit 200
+  @ready_fields ~w(id)
 
   @impl Phoenix.LiveView
   def mount(_params, _session, socket) do
-    if connected?(socket), do: schedule_roadmap_tick()
+    if connected?(socket) do
+      RunFeed.subscribe()
+      schedule_roadmap_tick()
+    end
 
     projects = ProjectRegistry.list()
-    {roadmap, drilldowns} = roadmap_snapshot(projects)
 
     {:ok,
      socket
      |> assign(:projects, projects)
-     |> assign(:roadmap, roadmap)
-     |> assign(:drilldowns, drilldowns)
-     |> assign(:expanded_projects, MapSet.new())}
+     |> assign(:selected_project, nil)
+     |> assign(:notice, nil)
+     |> assign(:now, DateTime.utc_now(:millisecond))
+     |> assign_snapshot(projects)}
+  end
+
+  @impl Phoenix.LiveView
+  def handle_params(params, _uri, socket) do
+    selected = blank_to_nil(params["project"])
+
+    {:noreply,
+     socket
+     |> assign(:selected_project, selected)
+     |> assign_lanes()}
   end
 
   @impl Phoenix.LiveView
   def handle_info(:roadmap_tick, socket) do
     schedule_roadmap_tick()
     projects = ProjectRegistry.list()
-    {roadmap, drilldowns} = roadmap_snapshot(projects)
 
     {:noreply,
      socket
      |> assign(:projects, projects)
-     |> assign(:roadmap, roadmap)
-     |> assign(:drilldowns, drilldowns)}
+     |> assign(:now, DateTime.utc_now(:millisecond))
+     |> assign_snapshot(projects)}
+  end
+
+  def handle_info({:harness_run_update, _status}, socket) do
+    {:noreply, socket |> assign(:now, DateTime.utc_now(:millisecond)) |> refresh_execution()}
+  end
+
+  def handle_info({:harness_run_settled, _status}, socket) do
+    {:noreply, socket |> assign(:now, DateTime.utc_now(:millisecond)) |> refresh_execution()}
   end
 
   def handle_info(_other, socket), do: {:noreply, socket}
 
   @impl Phoenix.LiveView
-  def handle_event("toggle_project", %{"project" => name}, socket) do
-    {:noreply, update(socket, :expanded_projects, &toggle_project(&1, name))}
+  def handle_event("select_project", %{"project" => project_name}, socket) do
+    target =
+      case project_name do
+        "" -> "/harness/roadmap"
+        name -> "/harness/roadmap?project=#{URI.encode_www_form(name)}"
+      end
+
+    {:noreply, push_patch(socket, to: target)}
   end
+
+  def handle_event("dispatch_task", %{"project" => project, "task_id" => task_id}, socket) do
+    run_board_action(socket, fn -> action(:dispatch, project, task_id, nil) end)
+  end
+
+  def handle_event("hold_run", %{"run_id" => run_id}, socket) do
+    run_board_action(socket, fn -> action(:hold, nil, nil, run_id) end)
+  end
+
+  def handle_event("resume_held", %{"run_id" => run_id}, socket) do
+    run_board_action(socket, fn -> action(:resume, nil, nil, run_id) end)
+  end
+
+  def handle_event("resume_failed", %{"run_id" => run_id}, socket) do
+    run_board_action(socket, fn -> action(:resume_failed, nil, nil, run_id) end)
+  end
+
+  def handle_event("rereview_run", %{"run_id" => run_id}, socket) do
+    run_board_action(socket, fn -> action(:rereview, nil, nil, run_id) end)
+  end
+
+  def handle_event("land_run", %{"run_id" => run_id}, socket) do
+    run_board_action(socket, fn -> action(:land, nil, nil, run_id) end)
+  end
+
+  def handle_event(_event, _params, socket), do: {:noreply, socket}
 
   @spec schedule_roadmap_tick() :: reference()
   defp schedule_roadmap_tick, do: Process.send_after(self(), :roadmap_tick, @roadmap_tick_interval_ms)
@@ -86,145 +140,272 @@ defmodule Harness.Dashboard.RoadmapLive do
     <div class="topbar">
       <strong>Roadmap</strong>
       <span class="count">{length(@projects)} projects</span>
+      <form id="roadmap-project-filter" phx-change="select_project">
+        <label>
+          Project
+          <select name="project" aria-label="Project">
+            <option value="" selected={is_nil(@selected_project)}>All projects</option>
+            <option
+              :for={project <- @projects}
+              value={project.name}
+              selected={@selected_project == project.name}
+            >
+              {project.name}
+            </option>
+          </select>
+        </label>
+      </form>
       <a href="/harness">← All runs</a>
     </div>
 
+    <Components.operator_flash notice={@notice} include_persistent={false} />
+
     <p :if={@projects == []}>No projects registered.</p>
-    <table :if={@projects != []}>
-      <thead>
-        <tr>
-          <th>Project</th>
-          <th>Open</th>
-          <th>Done</th>
-          <th>Total</th>
-          <th>Landed</th>
-        </tr>
-      </thead>
-      <tbody>
-        <%= for row <- roadmap_rows(@projects, @roadmap, @drilldowns) do %>
-          <tr>
-            <td>
-              <button type="button" phx-click="toggle_project" phx-value-project={row.name}>
-                {row.name}
-              </button>
-            </td>
-            <td>{row.open}</td>
-            <td>{row.done}</td>
-            <td>{row.total}</td>
-            <td>{row.landed}</td>
-          </tr>
-          <tr :if={expanded?(@expanded_projects, row.name)}>
-            <td colspan="5">
-              <section>
-                <h2>{row.name} planning</h2>
-
-                <div>
-                  <strong>Next pending</strong>
-                  <p :if={is_nil(row.next_task)}>No next pending task.</p>
-                  <p :if={not is_nil(row.next_task)}>
-                    {task_ref(row.next_task)} {task_title(row.next_task)}
-                    <span :if={task_eff(row.next_task)}>Eff {task_eff(row.next_task)}</span>
-                  </p>
-                </div>
-
-                <div>
-                  <strong>Blocked ({length(row.blocked)})</strong>
-                  <p :if={row.blocked == []}>No blocked tasks.</p>
-                  <ul :if={row.blocked != []}>
-                    <li :for={task <- row.blocked}>
-                      {task_ref(task)} {task_title(task)} — {blocked_reason(task)}
-                    </li>
-                  </ul>
-                </div>
-
-                <div>
-                  <strong>Dispatch waves</strong>
-                  <p :if={row.waves == []}>No dispatchable tasks.</p>
-                  <div :for={{layer, tasks} <- row.waves}>
-                    <h3>Wave {layer}</h3>
-                    <ul>
-                      <li :for={task <- tasks}>
-                        {task_ref(task)} {task_title(task)}
-                        <span :if={task_eff(task)}>Eff {task_eff(task)}</span>
-                      </li>
-                    </ul>
-                  </div>
-                </div>
-              </section>
-            </td>
-          </tr>
-        <% end %>
-      </tbody>
-    </table>
+    <div :if={@projects != []} class="task-board" aria-label="Fleet task board">
+      <section :for={lane <- TaskBoard.lanes()} class="task-lane" data-lane={lane}>
+        <h2>{TaskBoard.lane_label(lane)} <span class="count">{length(@lanes[lane])}</span></h2>
+        <p :if={@lanes[lane] == []} class="empty-state">{empty_lane_line(lane)}</p>
+        <.task_card :for={card <- @lanes[lane]} card={card} now={@now} />
+      </section>
+    </div>
     """
   end
 
-  @spec roadmap_snapshot([Harness.Project.t()]) :: {RoadmapSummary.summaries(), %{optional(String.t()) => drilldown()}}
-  defp roadmap_snapshot(projects) do
-    {RoadmapSummary.for_projects(projects), drilldowns_for_projects(projects)}
+  attr(:card, :any, required: true)
+  attr(:now, :any, required: true)
+
+  @spec task_card(map()) :: Rendered.t()
+  defp task_card(assigns) do
+    ~H"""
+    <article
+      class="task-card"
+      data-task-card
+      data-project={@card.project_name}
+      data-task-id={@card.task_id}
+      data-lane={@card.lane}
+      data-rmap-status={@card.rmap_status}
+      data-run-id={@card.run_id}
+    >
+      <p class="task-card-id">
+        <span>{@card.project_name}</span>
+        <span>#{@card.task_id}</span>
+      </p>
+      <p class="task-card-title">{@card.title || "—"}</p>
+      <dl class="task-card-facts">
+        <div>
+          <dt>Assignee / model</dt>
+          <dd>{fact(@card.assignee)} / {fact(@card.model)}</dd>
+        </div>
+        <div>
+          <dt>rmap</dt>
+          <dd>{@card.rmap_status}</dd>
+        </div>
+        <div>
+          <dt>Run stage</dt>
+          <dd>{run_stage(@card)}</dd>
+        </div>
+        <div>
+          <dt>Elapsed</dt>
+          <dd>{elapsed(@card, @now)}</dd>
+        </div>
+        <div>
+          <dt>Tokens</dt>
+          <dd>{tokens(@card)}</dd>
+        </div>
+        <div>
+          <dt>Cost</dt>
+          <dd>—</dd>
+        </div>
+      </dl>
+      <p :if={@card.dependency} class="task-card-dep" data-dependency={@card.dependency}>
+        {dependency_label(@card.dependency)}
+      </p>
+      <p :if={@card.held? or @card.failed?} class="task-card-badges">
+        <span :if={@card.held?} class="task-badge" data-badge="held">held</span>
+        <span :if={@card.failed?} class="task-badge" data-badge="failed">failed</span>
+      </p>
+      <p :if={@card.run_id} class="task-card-attempt">attempt {@card.run_id}</p>
+      <div :if={@card.actions != []} class="task-card-actions">
+        <.card_action :for={action <- @card.actions} action={action} card={@card} />
+      </div>
+    </article>
+    """
   end
 
-  @spec drilldowns_for_projects([Harness.Project.t()]) :: %{optional(String.t()) => drilldown()}
-  defp drilldowns_for_projects(projects) do
-    projects
-    |> Task.async_stream(&drilldown_for_project/1, timeout: @drilldown_timeout_ms, on_timeout: :kill_task)
-    |> Enum.zip(projects)
-    |> Map.new(fn
-      {{:ok, drilldown}, project} -> {project.name, drilldown}
-      {{:exit, _reason}, project} -> {project.name, empty_drilldown()}
-    end)
+  attr(:action, :atom, required: true)
+  attr(:card, :any, required: true)
+
+  @spec card_action(map()) :: Rendered.t()
+  defp card_action(%{action: :dispatch} = assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="dispatch_task"
+      phx-value-project={@card.project_name}
+      phx-value-task_id={@card.task_id}
+      data-confirm={"Dispatch task #{@card.task_id} on #{@card.project_name}?"}
+    >
+      Dispatch
+    </button>
+    """
   end
 
-  @spec drilldown_for_project(Harness.Project.t()) :: drilldown()
-  defp drilldown_for_project(project) do
-    %{
-      next_task: next_task(project),
-      blocked: blocked_tasks(project),
-      waves: ready_waves(project)
-    }
+  defp card_action(%{action: :hold} = assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="hold_run"
+      phx-value-run_id={@card.run_id}
+      data-confirm={"Hold run #{@card.run_id}?"}
+    >
+      Hold
+    </button>
+    """
   end
 
-  @spec next_task(Harness.Project.t()) :: map() | nil
-  defp next_task(project) do
-    case next_bundle(project) do
-      {:ok, %{tasks: [task | _rest]}} -> task
-      _other -> nil
-    end
+  defp card_action(%{action: :resume} = assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="resume_held"
+      phx-value-run_id={@card.run_id}
+      data-confirm={"Resume held run #{@card.run_id}?"}
+    >
+      Resume
+    </button>
+    """
   end
 
-  @spec blocked_tasks(Harness.Project.t()) :: [map()]
-  defp blocked_tasks(project) do
-    case list_blocked(project) do
-      {:ok, tasks} -> tasks
-      _other -> []
-    end
+  defp card_action(%{action: :resume_failed} = assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="resume_failed"
+      phx-value-run_id={@card.run_id}
+      data-confirm={"Resume failed run #{@card.run_id}?"}
+    >
+      Resume failed
+    </button>
+    """
   end
 
-  @spec ready_waves(Harness.Project.t()) :: [{integer(), [map()]}]
-  defp ready_waves(project) do
-    case ready_tasks(project) do
-      {:ok, tasks} -> group_by_wave(tasks)
-      _other -> []
-    end
+  defp card_action(%{action: :rereview} = assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="rereview_run"
+      phx-value-run_id={@card.run_id}
+      data-confirm={"Re-review run #{@card.run_id}?"}
+    >
+      Re-review
+    </button>
+    """
   end
 
-  @spec next_bundle(Harness.Project.t()) :: {:ok, %{bundle: map() | nil, tasks: [map()]}} | {:error, term()}
-  defp next_bundle(project) do
-    case Application.get_env(:harness, :roadmap_next_bundle) do
-      fun when is_function(fun, 1) -> fun.(project)
-      _other -> Roadmap.next_bundle(project.name, sync_checkout: false)
-    end
+  defp card_action(%{action: :land} = assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="land_run"
+      phx-value-run_id={@card.run_id}
+      data-confirm={"Land run #{@card.run_id}?"}
+    >
+      Land
+    </button>
+    """
   end
 
-  @spec list_blocked(Harness.Project.t()) :: {:ok, [map()]} | {:error, term()}
-  defp list_blocked(project) do
+  defp card_action(%{action: :reland} = assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="land_run"
+      phx-value-run_id={@card.run_id}
+      data-confirm={"Re-land run #{@card.run_id}?"}
+    >
+      Re-land
+    </button>
+    """
+  end
+
+  @spec assign_snapshot(Socket.t(), [Project.t()]) :: Socket.t()
+  defp assign_snapshot(socket, projects) do
+    {tasks, ready_ids} = roadmap_facts(projects)
+
+    socket
+    |> assign(:rmap_tasks, tasks)
+    |> assign(:ready_ids, ready_ids)
+    |> assign(:live_runs, live_runs())
+    |> assign(:records, records())
+    |> assign_lanes()
+  end
+
+  @spec refresh_execution(Socket.t()) :: Socket.t()
+  defp refresh_execution(socket) do
+    socket
+    |> assign(:live_runs, live_runs())
+    |> assign(:records, records())
+    |> assign_lanes()
+  end
+
+  @spec assign_lanes(Socket.t()) :: Socket.t()
+  defp assign_lanes(socket) do
+    lanes =
+      [
+        projects: socket.assigns.projects,
+        tasks: socket.assigns.rmap_tasks,
+        ready_ids: socket.assigns.ready_ids,
+        live_runs: socket.assigns.live_runs,
+        records: socket.assigns.records,
+        landable_projects: TaskBoard.landable_project_names(socket.assigns.projects)
+      ]
+      |> TaskBoard.compose()
+      |> TaskBoard.filter_project(socket.assigns.selected_project)
+
+    assign(socket, :lanes, lanes)
+  end
+
+  @spec roadmap_facts([Project.t()]) :: {%{optional(String.t()) => [map()]}, TaskBoard.ready_ids()}
+  defp roadmap_facts(projects) do
+    listed =
+      projects
+      |> Task.async_stream(&list_tasks/1, timeout: @drilldown_timeout_ms, on_timeout: :kill_task)
+      |> Enum.zip(projects)
+      |> Map.new(fn
+        {{:ok, {:ok, tasks}}, project} -> {project.name, tasks}
+        {_other, project} -> {project.name, []}
+      end)
+
+    ready =
+      projects
+      |> Task.async_stream(&ready_task_ids/1, timeout: @drilldown_timeout_ms, on_timeout: :kill_task)
+      |> Enum.zip(projects)
+      |> Enum.flat_map(fn
+        {{:ok, ids}, project} -> Enum.map(ids, &{project.name, &1})
+        {_other, _project} -> []
+      end)
+      |> MapSet.new()
+
+    {listed, ready}
+  end
+
+  @spec list_tasks(Project.t()) :: {:ok, [map()]} | {:error, term()}
+  defp list_tasks(project) do
     case Application.get_env(:harness, :roadmap_list) do
-      fun when is_function(fun, 1) -> with {:ok, tasks} <- fun.(project), do: {:ok, Enum.filter(tasks, &blocked_task?/1)}
-      _other -> Roadmap.list(project.name, "blocked")
+      fun when is_function(fun, 1) -> fun.(project)
+      _other -> Roadmap.list(project.name)
     end
   end
 
-  @spec ready_tasks(Harness.Project.t()) :: {:ok, [map()]} | {:error, term()}
+  @spec ready_task_ids(Project.t()) :: [String.t()]
+  defp ready_task_ids(project) do
+    case ready_tasks(project) do
+      {:ok, tasks} -> Enum.map(tasks, &to_string(&1["id"]))
+      _other -> []
+    end
+  end
+
+  @spec ready_tasks(Project.t()) :: {:ok, [map()]} | {:error, term()}
   defp ready_tasks(project) do
     case Application.get_env(:harness, :roadmap_ready) do
       fun when is_function(fun, 1) -> fun.(project)
@@ -232,75 +413,117 @@ defmodule Harness.Dashboard.RoadmapLive do
     end
   end
 
-  @spec group_by_wave([map()]) :: [{integer(), [map()]}]
-  defp group_by_wave(tasks) do
-    tasks
-    |> Enum.group_by(&dep_layer/1)
-    |> Enum.sort_by(fn {layer, _tasks} -> layer end)
+  @spec live_runs() :: [Status.t()]
+  defp live_runs do
+    case Application.get_env(:harness, :task_board_live_runs) do
+      fun when is_function(fun, 0) -> fun.()
+      _other -> Enum.map(StatusView.live_runs(), & &1.status)
+    end
   end
 
-  @spec dep_layer(map()) :: integer()
-  defp dep_layer(%{"dep_layer" => layer}) when is_integer(layer), do: layer
-  defp dep_layer(_task), do: 0
-
-  @spec blocked_task?(map()) :: boolean()
-  defp blocked_task?(%{"status" => "blocked"}), do: true
-  defp blocked_task?(_task), do: false
-
-  @spec empty_drilldown() :: drilldown()
-  defp empty_drilldown, do: %{next_task: nil, blocked: [], waves: []}
-
-  @spec toggle_project(MapSet.t(String.t()), String.t()) :: MapSet.t(String.t())
-  defp toggle_project(projects, name) do
-    if MapSet.member?(projects, name), do: MapSet.delete(projects, name), else: MapSet.put(projects, name)
+  @spec records() :: [LogRecord.t()]
+  defp records do
+    case Application.get_env(:harness, :task_board_records) do
+      fun when is_function(fun, 0) -> fun.()
+      _other -> stored_records()
+    end
   end
 
-  @spec expanded?(MapSet.t(String.t()), String.t()) :: boolean()
-  defp expanded?(projects, name), do: MapSet.member?(projects, name)
-
-  # Flattens the projects + summaries assigns into render-ready rows so the
-  # template reads one precomputed value per cell instead of re-resolving the
-  # summary four times. (Moved from `Harness.Dashboard.Live`.)
-  @spec roadmap_rows([map()], RoadmapSummary.summaries(), %{optional(String.t()) => drilldown()}) :: [map()]
-  defp roadmap_rows(projects, summaries, drilldowns) do
-    Enum.map(projects, fn project ->
-      summary = RoadmapSummary.summary_for(summaries, project.name)
-      drilldown = Map.get(drilldowns, project.name, empty_drilldown())
-
-      %{
-        name: project.name,
-        open: summary.open,
-        done: summary.done,
-        total: summary.total,
-        landed: map_size(summary.landed),
-        next_task: drilldown.next_task,
-        blocked: drilldown.blocked,
-        waves: drilldown.waves
-      }
-    end)
+  @spec stored_records() :: [LogRecord.t()]
+  defp stored_records do
+    case ResultStore.list_run_records(limit: @record_limit) do
+      {:ok, records} -> records
+      {:error, _reason} -> []
+    end
   end
 
-  @spec task_ref(map()) :: String.t()
-  defp task_ref(%{"id" => id}), do: "##{id}"
-  defp task_ref(_task), do: "#?"
+  @spec run_board_action(Socket.t(), (-> {:ok, String.t()} | {:error, String.t()})) :: {:noreply, Socket.t()}
+  defp run_board_action(socket, fun) do
+    case fun.() do
+      {:ok, message} ->
+        {:noreply,
+         socket
+         |> assign(:notice, {:ok, message})
+         |> assign(:now, DateTime.utc_now(:millisecond))
+         |> assign_snapshot(socket.assigns.projects)}
 
-  @spec task_title(map()) :: String.t()
-  defp task_title(%{"title" => title}) when is_binary(title), do: title
-  defp task_title(_task), do: "Untitled task"
-
-  @spec blocked_reason(map()) :: String.t()
-  defp blocked_reason(%{"blocked_reason" => reason}) when is_binary(reason) and reason != "", do: reason
-  defp blocked_reason(_task), do: "No blocked reason recorded."
-
-  @spec task_eff(map()) :: String.t() | nil
-  defp task_eff(%{"eff" => eff}) when is_float(eff) do
-    eff
-    |> :erlang.float_to_binary(decimals: 2)
-    |> String.trim_trailing("0")
-    |> String.trim_trailing(".")
+      {:error, message} ->
+        {:noreply, assign(socket, :notice, {:error, message})}
+    end
   end
 
-  defp task_eff(%{"eff" => eff}) when is_integer(eff), do: Integer.to_string(eff)
-  defp task_eff(%{"eff" => eff}) when is_binary(eff) and eff != "", do: eff
-  defp task_eff(_task), do: nil
+  @spec action(atom(), String.t() | nil, String.t() | nil, String.t() | nil) ::
+          {:ok, String.t()} | {:error, String.t()}
+  defp action(name, project, task_id, run_id) do
+    case Application.get_env(:harness, :task_board_action) do
+      fun when is_function(fun, 4) -> fun.(name, project, task_id, run_id)
+      _other -> dispatch_action(name, project, task_id, run_id)
+    end
+  end
+
+  @spec dispatch_action(atom(), String.t() | nil, String.t() | nil, String.t() | nil) ::
+          {:ok, String.t()} | {:error, String.t()}
+  defp dispatch_action(:dispatch, project, task_id, _run_id) do
+    format_result(Dispatch.task(project, task_id), "Dispatched task #{task_id}.", "Dispatch failed")
+  end
+
+  defp dispatch_action(:hold, _project, _task_id, run_id) do
+    format_result(Dispatch.hold(run_id), "Held run #{run_id}.", "Hold failed")
+  end
+
+  defp dispatch_action(:resume, _project, _task_id, run_id) do
+    format_result(Dispatch.resume(run_id), "Resumed run #{run_id}.", "Resume failed")
+  end
+
+  defp dispatch_action(:resume_failed, _project, _task_id, run_id) do
+    format_result(Dispatch.resume_failed(run_id), "Resume failed queued for #{run_id}.", "Resume failed")
+  end
+
+  defp dispatch_action(:rereview, _project, _task_id, run_id) do
+    format_result(Dispatch.rereview(run_id), "Re-review queued for #{run_id}.", "Re-review failed")
+  end
+
+  defp dispatch_action(:land, _project, _task_id, run_id) do
+    format_result(Dispatch.reland(run_id), "Landing enqueued for #{run_id}.", "Land failed")
+  end
+
+  @spec format_result(term(), String.t(), String.t()) :: {:ok, String.t()} | {:error, String.t()}
+  defp format_result({:ok, _value}, ok, _error), do: {:ok, ok}
+  defp format_result({:error, reason}, _ok, error), do: {:error, "#{error}: #{inspect(reason)}"}
+
+  @spec empty_lane_line(TaskBoard.lane()) :: String.t()
+  defp empty_lane_line(:pending), do: "No pending tasks."
+  defp empty_lane_line(:implementing), do: "No implementing tasks."
+  defp empty_lane_line(:reviewing), do: "No reviewing tasks."
+  defp empty_lane_line(:landing), do: "No landing tasks."
+  defp empty_lane_line(:blocked), do: "No blocked tasks."
+  defp empty_lane_line(:done), do: "No recent done tasks."
+
+  @spec dependency_label(:ready | :waiting) :: String.t()
+  defp dependency_label(:ready), do: "Dependencies ready"
+  defp dependency_label(:waiting), do: "Waiting on dependencies"
+
+  @spec fact(String.t() | nil) :: String.t()
+  defp fact(nil), do: "—"
+  defp fact(""), do: "—"
+  defp fact(value), do: value
+
+  @spec run_stage(Card.t()) :: String.t()
+  defp run_stage(%Card{run_state: nil}), do: "—"
+  defp run_stage(%Card{run_state: state}), do: Atom.to_string(state)
+
+  @spec elapsed(Card.t(), DateTime.t()) :: String.t()
+  defp elapsed(%Card{status: %Status{} = status}, now), do: Components.elapsed_label(status, now)
+  defp elapsed(_card, _now), do: "—"
+
+  @spec tokens(Card.t()) :: String.t()
+  defp tokens(%Card{token_total: total}) when is_integer(total) do
+    total |> Integer.to_string() |> Components.delimit()
+  end
+
+  defp tokens(_card), do: "—"
+
+  @spec blank_to_nil(String.t() | nil) :: String.t() | nil
+  defp blank_to_nil(value) when value in [nil, ""], do: nil
+  defp blank_to_nil(value), do: value
 end

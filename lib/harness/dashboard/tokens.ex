@@ -1678,6 +1678,64 @@ defmodule Harness.Dashboard.Tokens do
       .operator-notice[data-kind="error"],
       .operator-notice[data-kind="warning"] { border-color: var(--accent); background: var(--accent-soft); }
 
+      /* Fleet task board (`/harness/roadmap`) */
+      .task-board {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(14rem, 1fr));
+        gap: var(--space-3);
+        overflow-x: auto;
+        align-items: start;
+        margin-top: var(--space-4);
+      }
+      .task-lane {
+        background: var(--surface);
+        border: 1px solid var(--rule);
+        border-radius: 0.4rem;
+        padding: var(--space-3);
+        min-height: 12rem;
+      }
+      .task-lane h2 {
+        display: flex;
+        justify-content: space-between;
+        gap: var(--space-2);
+        margin: 0 0 var(--space-3);
+        font-size: var(--text-sm);
+        font-weight: 650;
+      }
+      .task-card {
+        background: var(--surface-2);
+        border: 1px solid var(--rule);
+        border-radius: 0.35rem;
+        padding: var(--space-3);
+        margin: 0 0 var(--space-2);
+      }
+      .task-card-id {
+        display: flex;
+        justify-content: space-between;
+        gap: var(--space-2);
+        margin: 0 0 var(--space-1);
+        font-family: var(--font-mono);
+        font-size: var(--text-xs);
+        color: var(--text-subtle);
+      }
+      .task-card-title { margin: 0 0 var(--space-2); font-size: var(--text-sm); }
+      .task-card-facts { display: grid; gap: var(--space-1); margin: 0 0 var(--space-2); }
+      .task-card-facts div { display: grid; grid-template-columns: 7rem 1fr; gap: var(--space-2); font-size: var(--text-xs); }
+      .task-card-facts dt { color: var(--text-muted); font-weight: 500; }
+      .task-card-facts dd { margin: 0; color: var(--text); }
+      .task-card-dep, .task-card-attempt { margin: 0 0 var(--space-2); font-size: var(--text-xs); color: var(--text-subtle); }
+      .task-card-badges { display: flex; gap: var(--space-2); margin: 0 0 var(--space-2); }
+      .task-badge {
+        display: inline-block;
+        padding: 0.1rem 0.4rem;
+        border: 1px solid var(--rule-strong);
+        border-radius: 0.25rem;
+        font-size: var(--text-xs);
+        color: var(--text);
+      }
+      .task-card-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+      .task-card-actions button { font-size: var(--text-xs); }
+
       /* Cron schedule preset picker (boot-applied; Task 111). */
       .setting-schedule { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-4); flex-wrap: wrap; }
       .setting-schedule form { display: flex; align-items: center; gap: var(--space-2); }

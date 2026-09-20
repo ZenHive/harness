@@ -23,6 +23,7 @@ Boots the OTP application, Postgres-backed Oban, and the standalone dashboard en
 | URL | What it is |
 |---|---|
 | `http://localhost:4018/harness` | LiveView dashboard — project switcher, per-bucket run counts, per-run drill-down with live transcript pane |
+| `http://localhost:4018/harness/roadmap` | Fleet task board — Pending, Implementing, Reviewing, Landing, Blocked, and Done lanes across registered projects. rmap owns durable Pending/Blocked/Done placement; live runs and persisted results place Implementing/Reviewing/Landing. Cards expose existing dispatch, hold/resume, re-review, and land/re-land actions. |
 | `http://localhost:4018/harness/oban` | Oban Web — queue / job rows / retries / scheduled work |
 | `http://localhost:4018/harness/mcp` | **Native MCP server** — flat JSON-RPC tools (`dispatch__*`, `roadmap__*`, …); the primary surface for a JSON/MCP orchestrator |
 | `http://localhost:4018/tidewave/mcp` | Tidewave MCP endpoint (dev only) — `project_eval` escape hatch for arbitrary eval + struct-surface ops |
