@@ -13401,7 +13401,7 @@ scored_at = "2026-09-13"
 id = "430"
 phase = 4
 bundle = "contract"
-status = "in_progress"
+status = "done"
 title = "Vendor the AGENTS.md generator into the repo so a dispatched agent can regenerate it instead of hand-editing a generated file"
 scores = { d = 4, b = 7, u = 7 }
 markers = ["bug"]
@@ -13417,9 +13417,16 @@ Make AGENTS.md regeneration reproducible from a clean clone and an isolated harn
 
 Score rationale: portability includes recursive inputs, not only the script; it enables reproducible reviewer rules and Task 395.
 '''
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1789945923223-6a9b2230, ad4b38a3c3f65a563efba9feaa7875dee33a7696)."
+delivered_by = "codex"
+verified = true
+verified_by = "cursor"
+verification_ref = "harness-run:run-1789945923223-6a9b2230"
 created_at = "2026-09-13"
 started_at = "2026-09-20"
 scored_at = "2026-09-20"
+done_at = "2026-09-20"
+shipped_in = "ad4b38a3c3f65a563efba9feaa7875dee33a7696"
 
 [[task]]
 id = "431"

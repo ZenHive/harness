@@ -20022,7 +20022,7 @@
       "id": "430",
       "phase": 4,
       "bundle": "contract",
-      "status": "in_progress",
+      "status": "done",
       "title": "Vendor the AGENTS.md generator into the repo so a dispatched agent can regenerate it instead of hand-editing a generated file",
       "scores": {
         "d": 4,
@@ -20070,10 +20070,17 @@
         "tooling",
         "docs"
       ],
+      "shipped_in": "ad4b38a3c3f65a563efba9feaa7875dee33a7696",
       "body": "Make AGENTS.md regeneration reproducible from a clean clone and an isolated harness worktree. The current command depends on a personal marketplace checkout and recursively imported home-directory files; historical deliveries manually mirrored generated content when those inputs were unavailable. Vendor the generator and all required transitive include sources as version-controlled snapshots with provenance, using the canonical in-repo harness-workflow source where available. Keep regeneration explicit and add a portable --check to the full gate. Missing inputs must fail clearly in negative tests, but the delivered clone must contain every required input and succeed with an empty HOME. Task 395 owns narrative relocation and budget checking, not another generator. Compare the unchanged source against the old generator using identical input snapshots, and make later snapshot refreshes explicit reviewed updates.\n\nScore rationale: portability includes recursive inputs, not only the script; it enables reproducible reviewer rules and Task 395.\n",
       "created_at": "2026-09-13",
       "started_at": "2026-09-20",
+      "done_at": "2026-09-20",
       "scored_at": "2026-09-20",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1789945923223-6a9b2230, ad4b38a3c3f65a563efba9feaa7875dee33a7696).",
+      "delivered_by": "codex",
+      "verified": true,
+      "verified_by": "cursor",
+      "verification_ref": "harness-run:run-1789945923223-6a9b2230",
       "cross_repo": []
     },
     {
