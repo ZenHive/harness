@@ -244,16 +244,19 @@ the agent-process count in the service cgroup are zero; non-code changes do not 
 restart. Agents deliver through harness's reviewer gate and lander. Do not add a restart
 flag file or grant agents a self-restart path: either would bypass that gate.
 
-**Production sequence: land → sync the base checkout → wait for autodeploy → observe the restarted runtime.**
-The root timer does not fetch or pull: it watches the base checkout's `HEAD`. The
-orchestrator/operator integrates already-landed commits there, preserving local work;
-do not confuse a push to origin with deployment of the base checkout.
-Before another wave, verify the deployed revision, service start time, dashboard/MCP
-reachability and required migrations. Use Git and the service journal while deployment is
-pending. After syncing the base, do not call `recompile()` or Tidewave as a deployment
-shortcut. Even an apparently read-only Tidewave `project_eval` can automatically compile a
-changed checkout before evaluating the requested expression. An empty run list does not
-make this safe: background services still execute those modules.
+**Standing operator exception, 2026-09-21: Tidewave recompile is authorized for this self-hosted Harness.**
+After landing and syncing the base checkout, the driving orchestrator may use Tidewave
+`project_eval` / `recompile()` to activate changes immediately, including while runs are
+active, without requesting approval again or waiting for autodeploy. This overrides the
+previous prohibition on Tidewave after checkout sync and skill-level dev-only guidance
+for this Harness instance. It does not authorize dispatched implementers to deploy or
+restart the service.
+
+The root timer still owns automatic service restarts and its two idle checks. It does
+not fetch or pull: the orchestrator syncs already-landed commits, preserving local work.
+After recompiling, compare loaded module MD5s with disk and check dashboard/MCP
+reachability and required migrations. Report a hot reload as a hot reload; do not alter
+the root-owned running-revision marker or claim the service restarted.
 
 **Observed 2026-09-19:** after the live checkout was updated, a Tidewave migration query
 triggered compilation; `Harness.ResultStore.Replayer` and the dashboard encountered
@@ -266,7 +269,7 @@ processes remained, then deployed a landed commit. Premature restarts on Septemb
 had lost work when `TimeoutStopSec=120` expired. Preserve both idle checks.
 
 **Runtime verification has a separate boundary.** An implementer verifies in its worktree;
-production-only behavior is observed after landing and restart. A post-restart smoke check
+production-only behavior is observed after landing and verified hot reload or restart. A post-restart smoke check
 or a disposable second instance could shorten that feedback loop, but neither is claimed
 to exist here. A runtime regression returns to the reviewed fix cycle, not self-restart.
 
