@@ -5,7 +5,14 @@ defmodule Harness.Store.Documents do
   alias Harness.Repo
   alias Harness.Store.EtsHeir
 
-  @type config :: %{schema: module(), table: atom(), heir: atom(), lock: integer(), timeout: pos_integer(), busy: atom()}
+  @type config :: %{
+          schema: module(),
+          table: atom(),
+          heir: atom(),
+          lock: integer(),
+          timeout: pos_integer(),
+          busy: atom()
+        }
 
   @doc "Defines a document store facade with its own schema, table, heir and advisory lock."
   @spec __using__(keyword()) :: Macro.t()
