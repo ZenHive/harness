@@ -219,7 +219,7 @@ defmodule Harness.MixProject do
         ~s|cmd sh -c "MIX_ENV=test mix test.json --quiet --cover --cover-threshold 80 --summary-only --exclude integration --exclude live_agent"|,
         "sobelow --exit --skip"
       ],
-      # Mergeable bar — the full gate before a reviewer handoff / PR. Adds the
+      # Post-merge audit QA — full-project checks. Adds the
       # heavyweight steps deliberately kept out of the fast inner loops:
       #   * dialyzer.json — cold-PLT cost; would blow precommit's 180s hook.
       #   * ex_dna --max-clones 0 — zero-tolerance AST clone gate (vibe_kit baseline).

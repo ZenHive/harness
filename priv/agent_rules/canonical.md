@@ -42,8 +42,11 @@ You are being driven by **harness**, an OTP-native orchestrator that dispatched 
 <!-- @section verification_gates -->
 # Check expectations (reviewer-graded — not agent-honor)
 
-The reviewer runs the target project's own checks after you finish and judges the output. You do not need to memorize or self-enforce numeric gates — but work that fails them costs the reviewer fix time and lowers your ratings.
+The reviewer runs the target project's own **dispatch-scale** checks after you finish and judges the output. You do not need to memorize or self-enforce numeric gates — but work that fails them costs the reviewer fix time and lowers your ratings.
 
-- Coverage thresholds (80% standard / 95% critical modules)
-- `mix credo --strict`, `mix dialyzer`, `mix doctor`, `mix sobelow`
-- Format and compile-with-warnings-as-errors gates
+After the project has activated the audit-QA split, dispatch (implementer/reviewer/recovery): format, compile, focused tests for touched behavior, and risk-relevant security/live verification. Do not run full suites, Dialyzer, Reach, Sobelow, Credo, Doctor or clone detection as a mandatory dispatch gate.
+
+Projects awaiting rollout retain their configured legacy check_command until replacement QA is evidenced.
+
+- Coverage thresholds (80% standard / 95% critical modules) belong to audit QA
+- Audit QA (post-merge, when `qa_command` is set): full suite, `mix credo --strict`, `mix dialyzer`, `mix doctor`, `mix sobelow`, Reach, clone detection — where the project applies them

@@ -20942,7 +20942,7 @@
       "id": "448",
       "phase": 24,
       "bundle": "audit-agent",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Roll out focused dispatch checks and full audit QA across all registered projects",
       "scores": {
         "d": 6,
@@ -20952,12 +20952,12 @@
       "eff": 1.25,
       "dep_layer": 1,
       "unlocks": 0,
-      "markers": [],
+      "markers": [
+        "handbuild"
+      ],
       "depends_on": [
         447
       ],
-      "assignee": "cursor",
-      "model": "cursor-grok-4.6-high",
       "acceptance_criteria": [
         "Inventory actual aliases, hooks, agent instructions and persisted settings for all 16 registered projects, including Rust rmap, TypeScript ccxt-distill and all onchain_stack packages; record exact before/after command mappings.",
         "Implementer/reviewer retain formatting, compilation, focused behavior tests and risk-relevant security/live verification. Full suites, coverage, Dialyzer, Reach, Sobelow, Credo, Doctor and clone checks belong in audit QA where applicable. Preserve assertions, thresholds and required live integration evidence.",
@@ -20966,7 +20966,7 @@
         "Deliver explicit operator-invoked idempotent rollout tooling/contracts with prior-settings capture and per-project readback. Switch dispatch requirements only after deployed QA support and an evidenced complete QA pass for that project; failed activation visibly retains prior checks.",
         "Consumer changes use each repo normal independent review/landing; no sibling live-checkout mutation from this harness run. The orchestrator coordinates fleet deliveries and persisted settings after tooling lands. Preserve landing/deployment policies, concurrency, models and Task 444 hold.",
         "Tests verify command separation, project-specific requirements, idempotency, rollback/retention on failure and readback. Report unavailable projects honestly; update write sets before any consumer dispatch.",
-        "Inventory and change actual active plugin/hook configurations, including inherited user, project, adapter and installed marketplace settings, not just prompts. Disable automatically enforced full gates for implementer/reviewer seats and retain complete audit QA checks. Verify real spawned runs cannot silently re-enable the old gates; provide durable installation/update propagation and preserve unrelated safety hooks."
+        "Operator revision 2026-09-20: remove ZenHive plugins and their enabled references completely; do not rebuild seat wrappers or plugin installation/update machinery. Preserve unrelated safety hooks. Inventory configured external hook scripts and inherited instruction imports, exposing unresolved shell/scope interpretation honestly. Canonical includes and generated AGENTS carry focused verification policy. The orchestrator verifies deployed plugin removal and owns consumer adoption and QA activation."
       ],
       "out_of_scope": [
         "Reimplementing Task 447 audit QA lifecycle",

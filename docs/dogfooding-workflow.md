@@ -454,14 +454,11 @@ while another is in flight. Re-dispatch is fine; concurrent BEAMs are not.
 **Integration order.** Deliverable branches `harness/<run-id>` come back onto
 `main` one at a time. Bring in the smallest / most-isolated diff first,
 let the rest rebase against it, resolve any same-file merges by hand. Run the
-project's own full check (`mix precommit.full`) on `main` after the
-last merge — if it goes red post-merge that's an integration failure, not a
-per-run failure. Per-dispatch reviewer checks should use the cheaper
-`mix check.dispatch` hint plus focused tests for touched behavior. Run the full
-landed-base Architect/QA pass before dispatching the next wave. Capture
-verbose dispatch-check output to a unique `mktemp` log on the first run so
-parallel agents do not collide and nobody re-runs just to recover truncated
-output.
+post-merge audit QA asynchronously on the landed base. Focused dispatch uses
+explicit format/compile commands and tests for touched behavior. Existing aliases
+are not reduced by the rollout. Full Credo/Doctor/Sobelow/coverage/Dialyzer/Reach/
+clone checks belong to `qa_command`; their results are recorded without blocking
+the next wave. Capture each check once in a unique log.
 
 **Autonomous landing (Task 100, opt-in).** A project that sets both
 `landing_policy: :auto` and `target_branch` skips the manual merge above: an
@@ -621,3 +618,32 @@ Run records and status/verdict responses expose `dispatch_decision`; durable
 `task_ids` preserves coalesced membership. Deploy migration
 `20260918230000_add_dispatch_decision_to_run_records` before activating this code.
 The driving orchestrator owns runtime activation and installed-skill propagation.
+
+### Task 448 rescue inventory — 2026-09-20
+
+The fleet catalog proposes explicit focused dispatch commands; it does not rewrite
+existing aliases. Activation captures the current persisted commands, tracked
+alias/instruction sources (including every onchain package and shared Mix helper),
+and installed plugin/hook configuration before writing settings. A matching QA
+pass must name the current revision, branch and proposed QA command.
+
+Inspection on blockwatch-harness found these full-QA alias gaps:
+
+| Project | QA mapping |
+|---|---|
+| blockwatch | `mix precommit.full` plus `mix test.json --cover` |
+| bourse_trading | `mix check.dispatch` already includes full coverage, Doctor, Sobelow, Dialyzer, clones and Reach; its `mix ci` omits several of these |
+| delta_calc | `mix ci` plus Doctor, Sobelow and coverage |
+| trading_dashboard | `mix ci` plus Doctor and coverage |
+| ccxt-distill | `npm run check` includes Vitest coverage |
+| rmap | Native fmt, clippy and full cargo test |
+| onchain_stack | Root `mix ci` serially invokes all eight package gates |
+| aave_sim, bourse, harness, harness_agent_adapter, mpp, starconiq, tapakly, zen_quant, zen_websocket | Catalog uses the inspected full alias; existing exclusions and thresholds remain authoritative |
+
+ZenHive is uninstalled on the server. Stale project enablement references were
+removed and pushed in bourse, harness_agent_adapter, mpp, onchain-stack, tapakly,
+zen_quant and zen_websocket. Cached script files are not active hooks. Rollout
+inventory is read-only: it neither reinstalls plugins nor installs skip wrappers.
+Unrelated safety hooks are preserved. Consumer propagation and per-project QA
+activation remain explicit orchestrator operations; tooling delivery alone is not
+proof that every project has switched.
