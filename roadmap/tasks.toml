@@ -12154,7 +12154,7 @@ shipped_in = "f407fa3a5e4d93818ffc532a72b169d258ac5ad4"
 id = "399"
 phase = 22
 bundle = "core-loop"
-status = "in_progress"
+status = "done"
 title = "Agent-initiated question channel — implementer parks the run with .harness/question.json, orchestrator answers via steer/resume"
 scores = { d = 5, b = 6, u = 5 }
 acceptance_criteria = ["An implementer run whose worktree contains .harness/question.json (documented schema: at minimum a question string, optionally context) at the agent-invocation boundary does NOT proceed to commit/review: it parks in :held (or an equivalent observable held state) and emits a witness notification event carrying the question verbatim to configured sinks — a test observes the FileSink JSONL line", "The harness-injected agent rules document the protocol: file path, schema, and that it is for genuinely ambiguous acceptance criteria only — so a dispatched agent knows the channel exists without any consumer-repo setup", "The answer path reuses existing primitives, not new ones: dispatch-steer with the answer text + dispatch-resume re-enters the run in the same worktree, and a test proves the question and answer both reach the re-invoked agent's prompt/context", "Harness reads question.json mechanically only — no classifier, regex, or branching on question content anywhere in harness code (the mantra: count facts, never judge them). A malformed or empty question.json is ignored-and-logged, never a crash", "Timeout semantics are explicit and tested: what happens to lifetime_timeout while a run is parked on an unanswered question is a documented, deliberate choice, not an accident", "skills/harness-driver/SKILL.md and priv/includes/harness-workflow.md document the channel (anti-staleness contract), propagated via scripts/sync-harness-skills.sh; mix check.dispatch green plus focused tests for the run-lifecycle and notification paths", "Each question is fenced to its run/invocation and has a stable identity. Resume consumes or archives only the answered question; a stale file cannot park the next invocation again, and a later genuine question can park normally.", "Question, answer and pending/answered state survive the supported process/node recovery path without cross-run leakage or duplicate notifications; document the recovery boundary and test it.", "Choose and document the unanswered-hold lifetime policy before dispatch: held time remains inside the existing lifetime budget, expiry records a recoverable timeout, and resume requires an answer for question-held runs. No unbounded wait or ambient timeout change."]
@@ -12173,9 +12173,16 @@ Dispatch trigger: harness runtime / run-lifecycle change (gen_statem states, not
 
 2026-09-20 scope refinement: The chosen timeout policy keeps the existing lifetime budget inclusive of question-held time; it bounds resource retention and preserves recoverable expiry. This task must make question consumption/idempotency explicit, not rely on deleting a file by convention.
 '''
+implemented = "Landed by cursor via merge-train; reviewer-approved (run run-1789891661292-8f23be2e, 66a53b937890cd52c0fa1e0b07148a0a73896c32)."
+delivered_by = "cursor"
+verified = true
+verified_by = "codex"
+verification_ref = "harness-run:run-1789891661292-8f23be2e"
 created_at = "2026-08-24"
 started_at = "2026-09-20"
 scored_at = "2026-08-24"
+done_at = "2026-09-20"
+shipped_in = "66a53b937890cd52c0fa1e0b07148a0a73896c32"
 
 [[task]]
 id = "400"
