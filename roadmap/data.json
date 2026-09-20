@@ -20715,7 +20715,7 @@
       "id": "444",
       "phase": 24,
       "bundle": "repo-maintenance",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Add autonomous maintenance sweeps across opted-in repositories",
       "scores": {
         "d": 8,
