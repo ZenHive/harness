@@ -10755,7 +10755,7 @@ id = "359"
 phase = 23
 bundle = "audit-architecture"
 milestone = "v0_16"
-status = "in_progress"
+status = "done"
 title = "Separate Dispatch concerns behind the existing public facade"
 scores = { d = 5, b = 5, u = 4 }
 acceptance_criteria = ["Harness.Dispatch's public function/arity set and its MCP tool names are unchanged (Manifest + generated tool list identical)", "Dispatch delegates to per-concern modules; no single module carries all five concern groups", "Presentation/formatting helpers no longer sit inline with orchestration control flow", "mix check.dispatch green (Credo module-length/complexity included) + full dispatch/chat/manifest test files pass"]
@@ -10792,9 +10792,16 @@ byte-for-byte preserved.
 
 2026-09-20 scope refinement: At review on 2026-09-20 dispatch.ex has 1,962 lines. This is context, not the success metric: preserve function/arity and MCP contracts while separating orchestration concerns from presentation. Choose module boundaries from the current call paths, not the historical example names.
 '''
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1789891658465-42611ef5, fee051c0984097aaaa464fe38b682b0d9f97afe9)."
+delivered_by = "codex"
+verified = true
+verified_by = "cursor"
+verification_ref = "harness-run:run-1789891658465-42611ef5"
 created_at = "2026-07-12"
 started_at = "2026-09-20"
 scored_at = "2026-07-12"
+done_at = "2026-09-20"
+shipped_in = "fee051c0984097aaaa464fe38b682b0d9f97afe9"
 
 [[task]]
 id = "360"
