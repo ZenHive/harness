@@ -110,7 +110,7 @@ defmodule Harness.Audit do
       `audit(...)` commit).
     * `:no_changes` — the agent ran but committed nothing.
     * `{:push_rejected, output}` — the target advanced under us; the audit work
-      is dropped (the next land's audit covers the range again).
+      is retained at `audit/recovery/<sha>` for operator recovery.
     * `{:skipped, reason}` — the project can't be audited (GitHub source, no
       target branch, no third-family agent available).
     * `{:error, reason}` — a mechanical step failed; the worker may retry.

@@ -64,7 +64,10 @@ defmodule Harness.Projects.DispatchQA.Catalog do
         aave_sim(),
         elixir("blockwatch", "mix precommit.full && mix test.json --cover"),
         elixir("bourse", "mix ci"),
-        elixir("bourse_trading", "mix check.dispatch"),
+        elixir(
+          "bourse_trading",
+          "mix precommit.full && mix ex_dna --max-clones 0 && mix reach.check --arch --dead-code --smells"
+        ),
         ccxt_distill(),
         elixir("delta_calc", "mix ci && mix doctor --raise && mix sobelow --skip --exit Low && mix test.json --cover"),
         elixir("harness", "mix precommit.full"),

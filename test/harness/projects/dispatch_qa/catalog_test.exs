@@ -29,6 +29,14 @@ defmodule Harness.Projects.DispatchQA.CatalogTest do
     assert Enum.all?(entries, &(&1.write_set != []))
   end
 
+  test "bourse_trading QA does not depend on the alias being slimmed" do
+    entry = Catalog.entry("bourse_trading")
+    refute entry.qa =~ "check.dispatch"
+    assert entry.qa =~ "precommit.full"
+    assert entry.qa =~ "ex_dna --max-clones 0"
+    assert entry.qa =~ "reach.check --arch --dead-code --smells"
+  end
+
   test "aave_sim drops mandatory Dialyzer from dispatch and keeps it in QA" do
     entry = Catalog.entry("aave_sim")
 
