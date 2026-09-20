@@ -94,7 +94,7 @@ defmodule Harness.ProjectRegistry do
         kind: :exchange_data,
         source: "Harness.Dispatch.register_project/9 (the JSON-native scalar entry point)",
         description:
-          "%Harness.Project{} the caller constructs (name, source, check_command, languages, roadmap_path, roadmap_target_branch, concurrency_cap, pollution_allowlist, warm_paths)."
+          "%Harness.Project{} the caller constructs (name, source, check_command, qa_command, languages, roadmap_path, roadmap_target_branch, concurrency_cap, pollution_allowlist, warm_paths)."
       ]
     ],
     returns: %{
@@ -127,7 +127,7 @@ defmodule Harness.ProjectRegistry do
         kind: :exchange_data,
         source: "Harness.ProjectRegistry.upsert/1 attrs map or Harness.Dispatch scalar tools",
         description:
-          "%Harness.Project{} or attrs (name, source, roadmap_path, roadmap_target_branch, check_command, languages, concurrency_cap, pollution_allowlist, warm_paths)."
+          "%Harness.Project{} or attrs (name, source, roadmap_path, roadmap_target_branch, check_command, qa_command, languages, concurrency_cap, pollution_allowlist, warm_paths)."
       ]
     ],
     returns: %{

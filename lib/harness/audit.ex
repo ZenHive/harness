@@ -26,12 +26,15 @@ defmodule Harness.Audit do
   the same worktree before the audit push. Thus both filing channels become
   reachable on the target branch through the audit's existing merge train.
 
-  The audit worktree is **not** warmed (`Worktree.warm/2` is skipped). The audit
-  agent runs the project's `check_command` in that cold tree and reports
-  `cold_check` in `.harness/audit.json`. Harness persists that fact on the run
-  record; a reported red files a blocked follow-up task and notifies — never a
-  revert, unmerge, or gate. Harness never shells out the build or reads an exit
-  code.
+  The audit worktree is **not** warmed. With `qa_command` configured, the same
+  agent performs hygiene review and full-project QA at the integrated revision.
+  `Harness.Audit.QA` retains attempts, covered commits and evidence independently
+  of audit commits. Only complete, revision-matched agent reports advance QA
+  progress. Oban retains queued work; failed and interrupted attempts retain the
+  pending range. Neither QA nor hygiene blocks landing or deployment.
+
+  Projects without `qa_command` retain the legacy `check_command` cold-build
+  witness and audit watermark behavior until explicitly migrated.
 
   Clean audits (`:no_changes`) intentionally do not write empty `audit(...)`
   marker commits to the shared branch. Instead, harness records the audited tip
@@ -53,6 +56,7 @@ defmodule Harness.Audit do
   alias Harness.AgentRegistry
   alias Harness.AgentRules
   alias Harness.Artifact
+  alias Harness.Audit.QA
   alias Harness.Config
   alias Harness.Dashboard.OpsFeed
   alias Harness.Dashboard.OpsFeed.Op
@@ -93,7 +97,9 @@ defmodule Harness.Audit do
           optional(:reviewer) => String.t() | nil,
           optional(:auditor) => module() | nil,
           optional(:auditor_opts) => keyword(),
-          optional(:result_store) => ResultStore.store()
+          optional(:result_store) => ResultStore.store(),
+          optional(:job_id) => pos_integer() | nil,
+          optional(:attempt) => pos_integer() | nil
         }
 
   @typedoc """
@@ -120,11 +126,30 @@ defmodule Harness.Audit do
   @doc """
   Audits the unaudited range on `request`'s project target branch.
 
-  See the module doc for the procedure. Idempotent: re-running against an
-  already-audited tip is a `:noop`.
+  Legacy audits return `:noop` at an already-audited tip. Configured QA records
+  each attempt independently; duplicate Oban job/attempt identities cannot
+  overwrite prior evidence.
   """
   @spec run(request()) :: outcome()
-  def run(%{project: %Project{} = project, base_sha: base_sha} = request) when is_binary(base_sha) do
+  def run(%{project: %Project{qa_command: nil}, base_sha: base_sha} = request) when is_binary(base_sha),
+    do: do_run(request)
+
+  def run(%{project: %Project{}, base_sha: base_sha} = request) when is_binary(base_sha) do
+    with {:ok, attempt} <- QA.start(request) do
+      outcome = do_run(Map.put(request, :qa_attempt, attempt))
+      settle_early_qa(attempt, outcome)
+      outcome
+    end
+  end
+
+  @spec settle_early_qa(QA.attempt(), outcome()) :: term()
+  defp settle_early_qa(attempt, {:error, _} = outcome), do: QA.incomplete(attempt, outcome)
+  defp settle_early_qa(attempt, {:skipped, _} = outcome), do: QA.incomplete(attempt, outcome)
+  defp settle_early_qa(attempt, :noop), do: QA.incomplete(attempt, :noop)
+  defp settle_early_qa(_attempt, _outcome), do: :ok
+
+  @spec do_run(request()) :: outcome()
+  defp do_run(%{project: project} = request) do
     # Thread the chosen auditor + its transcript out alongside the outcome (in
     # `meta`) so the dashboard ops feed (task 243) can relay both — the audit is
     # a real third-family agent run. Pre-worktree short-circuits carry empty meta.
@@ -150,20 +175,25 @@ defmodule Harness.Audit do
 
   @spec audit_in_worktree(Worktree.t(), String.t(), String.t(), Project.t(), request()) :: {outcome(), audit_meta()}
   defp audit_in_worktree(%Worktree{} = worktree, repo, target, project, request) do
-    result =
-      case unaudited_range(worktree.path, request.base_sha, project, target) do
-        {:ok, :empty} ->
-          {:noop, %{}}
-
-        {:ok, range} ->
-          run_auditor(worktree, repo, target, project, request, range)
-
-        {:error, reason} ->
-          {{:error, reason}, %{}}
+    range_result =
+      if request[:qa_attempt] do
+        describe_range(worktree.path, QA.base(request.qa_attempt))
+      else
+        unaudited_range(worktree.path, request.base_sha, project, target)
       end
 
+    case range_result do
+      {:ok, :empty} ->
+        {:noop, %{}}
+
+      {:ok, range} ->
+        run_auditor(worktree, repo, target, project, request, range)
+
+      {:error, reason} ->
+        {{:error, reason}, %{}}
+    end
+  after
     cleanup(worktree)
-    result
   end
 
   # The range is mechanical: the newest reachable audit watermark (an audit(...)
@@ -284,16 +314,16 @@ defmodule Harness.Audit do
   @spec finalize_audit(Worktree.t(), String.t(), String.t(), Project.t(), request(), map(), module(), String.t()) ::
           {outcome(), audit_meta()}
   defp finalize_audit(worktree, repo, target, project, request, range, auditor, agent) do
-    case AgentDriver.run(
-           auditor,
-           invocation(worktree, repo, target, project, request, range, auditor_model(auditor)),
-           []
-         ) do
-      {:ok, %Outcome{output: output}} ->
-        finalize_after_run(worktree, repo, target, project, request, range, agent, output)
-
-      {:error, reason} ->
-        {{:error, reason}, %{agent: agent, range: range.log}}
+    with {:ok, request} <- pin_qa(request, worktree, range, auditor, agent),
+         {:ok, %Outcome{output: output, kind: kind}} <-
+           AgentDriver.run(
+             auditor,
+             invocation(worktree, repo, target, project, request, range, auditor_model(auditor)),
+             []
+           ) do
+      finalize_after_run(worktree, repo, target, project, Map.put(request, :termination, kind), range, agent, output)
+    else
+      {:error, reason} -> {{:error, reason}, %{agent: agent, range: range.log}}
     end
   end
 
@@ -303,9 +333,12 @@ defmodule Harness.Audit do
     meta = %{agent: agent, range: range.log, transcript: output}
     report = audit_report(worktree.path)
     log_audit_report(report)
-    witness_cold_check(report, project, request_store(request), worktree.base_sha, worktree.path, repo)
 
-    with :ok <- commit_cold_check_discovery(worktree.path, range.short_sha),
+    if is_nil(project.qa_command),
+      do: witness_cold_check(report, project, request_store(request), worktree.base_sha, worktree.path, repo)
+
+    with :ok <- finish_qa(request, report, output),
+         :ok <- commit_cold_check_discovery(worktree.path, range.short_sha),
          {:ok, final_head} <- head_sha(worktree.path) do
       outcome = push_if_advanced(repo, worktree, target, final_head)
       record_watermark(project, target, final_head, outcome)
@@ -492,6 +525,13 @@ defmodule Harness.Audit do
     rejection — note it in your `.audit/#{range.short_sha}.md` report.
     #{rejections}
 
+    #{check_instructions(project, range, worktree_path)}
+    """
+  end
+
+  @spec check_instructions(Project.t(), map(), String.t()) :: String.t()
+  defp check_instructions(%Project{qa_command: nil} = project, _range, _path) do
+    """
     Project check hint (run yourself if needed; judge the output):
     #{project.check_command || "(none provided)"}
 
@@ -503,6 +543,101 @@ defmodule Harness.Audit do
     an exit code; it only persists the fact you write.
     """
   end
+
+  defp check_instructions(project, range, path) do
+    {:ok, revision} = head_sha(path)
+
+    """
+    FULL-PROJECT QA — required alongside hygiene; landing and deployment never wait.
+    Before editing files, run EVERY configured full-project check at integrated revision #{revision},
+    covering #{range.base}..#{revision}. The configured command is:
+    #{project.qa_command}
+    Include full suites, coverage, Dialyzer, Reach, Sobelow, Credo, Doctor and clone checks where
+    applicable. Continue collecting independent check outcomes after a failure; never silently skip.
+    Judge the actual output. Harness records facts and does not grade tool exit codes.
+    The tree is cold. Missing credentials or prerequisites and interrupted checks mean incomplete,
+    never passed. Do not use an operator database/server, deploy, restart, revert, or block landing.
+    Write a qa object in #{@audit_report_path}, even for a clean audit:
+    {"revision": #{Jason.encode!(revision)}, "command": #{Jason.encode!(project.qa_command)},
+     "status": "passed|failed|incomplete", "evidence": "commands actually executed and their output/outcomes",
+     "report": "hygiene review and explanation of the QA judgment"}.
+    Copy the command JSON value EXACTLY (no shell wrapper). Passed requires every configured check
+    completed successfully. Keep full evidence in the report; it is persisted before worktree cleanup.
+    Record the original integrated revision, not a later hygiene commit.
+    For failed or incomplete checks, own repair: inspect existing roadmap tasks and prior QA evidence,
+    semantically deduplicate the cause, and file or update a concrete repair task. Substantial changes
+    require normal implementation and independent review; do not perform them in this audit.
+    Never put undisclosed vulnerability details in public tasks, reports or commits: use a private
+    draft security advisory and only a generic reference in the roadmap. Keep ordinary repair task
+    references in the QA report. The focused reviewer hint is separate from these complete checks.
+    Recent QA evidence for semantic repair deduplication (private context; do not copy sensitive details into git):
+    #{recent_qa_evidence(project.name)}
+    """
+  end
+
+  @spec recent_qa_evidence(String.t()) :: String.t()
+  defp recent_qa_evidence(project_name) do
+    case QA.list(project_name, 5) do
+      {:ok, %{attempts: attempts}} ->
+        attempts
+        |> Enum.reject(&(&1.status == "running"))
+        |> Enum.map_join("\n", &qa_evidence_line/1)
+
+      {:error, _} ->
+        "QA history unavailable; inspect the roadmap for existing repairs."
+    end
+  end
+
+  @spec qa_evidence_line(map()) :: String.t()
+  defp qa_evidence_line(attempt) do
+    case QA.evidence(attempt.id, 0, 4000) do
+      {:ok, %{evidence: evidence}} -> "#{attempt.id} #{attempt.status}: #{evidence}"
+      {:error, _} -> "#{attempt.id}: evidence unavailable"
+    end
+  end
+
+  @spec pin_qa(map(), Worktree.t(), map(), module(), String.t()) :: {:ok, map()} | {:error, term()}
+  defp pin_qa(%{qa_attempt: attempt} = request, worktree, range, auditor, agent) do
+    with {:ok, commits} <- Git.run(["rev-list", "--reverse", range.base <> "..HEAD"], worktree.path),
+         {:ok, pinned} <-
+           QA.pin(attempt, %{
+             revision: worktree.base_sha,
+             base_sha: range.base,
+             landing_shas: String.split(commits, "\n", trim: true),
+             agent: agent,
+             model: auditor_model(auditor)
+           }) do
+      {:ok, %{request | qa_attempt: pinned}}
+    end
+  end
+
+  defp pin_qa(request, _worktree, _range, _auditor, _agent), do: {:ok, request}
+
+  @spec finish_qa(map(), map(), binary()) :: :ok | {:error, term()}
+  defp finish_qa(%{qa_attempt: attempt, termination: termination}, report, output) do
+    case QA.finish(attempt, report, termination, output) do
+      {:ok, %{status: "incomplete", id: id}} ->
+        {:error, {:qa_incomplete, id}}
+
+      {:ok, %{status: "failed"}} ->
+        Notification.notify(%Event{
+          type: :blocked,
+          project: attempt.project_name,
+          task_id: "qa-#{attempt.id}",
+          outcome: "Post-merge QA failed; audit evidence #{attempt.id}"
+        })
+
+        :ok
+
+      {:ok, _record} ->
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp finish_qa(_request, _report, _output), do: :ok
 
   # The live `assignee` → standing model + catalog facts the audit agent files
   # against. Read from the node, never from the agent's training: agents' model

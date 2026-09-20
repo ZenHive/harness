@@ -774,3 +774,27 @@ previous-VM passes interrupted, under the observation lock. Postgres retains pas
 Independent reviewers must check each claim against retained citations, including
 contradictions and recurrence, rather than accepting the observer's self-report.
 Installed-skill propagation and production enablement belong to the orchestrator.
+
+## Integrated post-merge QA
+
+`Project.qa_command` is an optional full-project check command, independent of
+`check_command` (focused reviewer checks). Configure it explicitly through
+project registration/upsert or Settings; `nil` keeps legacy audit behavior.
+`dispatch-register_project` appends `qa_command` after `roadmap_target_branch`,
+retaining all existing positional arguments.
+
+The audit worker performs hygiene and full QA after landing, asynchronously.
+`dispatch-qa_status(project_name, limit=20)` returns up to 100 recent attempts and
+100 pending audit jobs; `dispatch-qa_evidence(id, offset=0, limit=8000)` returns up
+to 32000 characters of durable report/transcript per call. Elixir equivalents
+are `Harness.Dispatch.qa_status/2` and `qa_evidence/3`. Evidence includes clean
+passes and failed/incomplete attempts, with exact revisions and commands.
+Database unavailability is an explicit error, never a passing result.
+
+Full suites, coverage, Dialyzer, Reach, Sobelow, Credo, Doctor and clone checks
+belong here where applicable, including aave_sim. The independent reviewer keeps
+focused tests and risk-relevant security/live checks. Never wait for QA to land
+or deploy, and never revert or restart production for a QA result. The audit AI
+owns repair and semantic deduplication; substantial changes go through ordinary
+implementation/review. Keep undisclosed security details in private advisories.
+The orchestrator owns production migration and propagation of this skill.

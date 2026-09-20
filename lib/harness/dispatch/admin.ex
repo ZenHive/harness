@@ -41,6 +41,7 @@ defmodule Harness.Dispatch.Admin do
           String.t() | nil,
           pos_integer() | nil,
           [String.t()],
+          String.t() | nil,
           String.t() | nil
         ) ::
           {:ok, %{name: String.t()}} | {:error, term()}
@@ -56,7 +57,8 @@ defmodule Harness.Dispatch.Admin do
         check_command \\ nil,
         concurrency_cap \\ nil,
         warm_paths \\ [],
-        roadmap_target_branch \\ nil
+        roadmap_target_branch \\ nil,
+        qa_command \\ nil
       )
       when is_binary(name) and is_binary(source_type) and is_binary(source_location) and is_binary(roadmap_path) do
     with {:ok, source} <- build_source(source_type, source_location),
@@ -65,6 +67,7 @@ defmodule Harness.Dispatch.Admin do
            source: source,
            roadmap_path: roadmap_path,
            check_command: check_command,
+           qa_command: qa_command,
            concurrency_cap: concurrency_cap,
            languages: languages,
            warm_paths: warm_paths,

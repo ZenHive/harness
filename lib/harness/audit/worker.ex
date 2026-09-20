@@ -10,8 +10,10 @@ defmodule Harness.Audit.Worker do
   since the last `audit(...)` commit anyway.
 
   The worker stays thin: build the request, audit, route. Every outcome except a
-  mechanical `{:error, _}` resolves `:ok` — the audit is best-effort by design
-  and must never park the queue on a range it can't improve.
+  mechanical `{:error, _}` resolves `:ok`. Missing/incomplete QA reports also
+  earn a bounded retry. Durable QA attempts retain unresolved ranges after retry
+  exhaustion; a subsequent land includes them without advancing successful QA
+  progress. QA remains asynchronous and never gates landing or deployment.
   """
 
   use Oban.Worker, queue: :audit, max_attempts: 2
@@ -39,7 +41,7 @@ defmodule Harness.Audit.Worker do
 
   @impl Oban.Worker
   @spec perform(Oban.Job.t()) :: Oban.Worker.result()
-  def perform(%Oban.Job{args: args}) do
+  def perform(%Oban.Job{args: args} = job) do
     with {:ok, project_name} <- fetch_arg(args, "project_name"),
          {:ok, base_sha} <- fetch_arg(args, "base_sha"),
          {:ok, project} <- ProjectRegistry.lookup(project_name) do
@@ -47,7 +49,9 @@ defmodule Harness.Audit.Worker do
         project: project,
         base_sha: base_sha,
         implementer: args["implementer"],
-        reviewer: args["reviewer"]
+        reviewer: args["reviewer"],
+        job_id: job.id,
+        attempt: job.attempt
       }
       |> Audit.run()
       |> route(args)

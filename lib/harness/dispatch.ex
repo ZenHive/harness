@@ -50,6 +50,7 @@ defmodule Harness.Dispatch do
   import Harness.Dispatch.Presentation, only: [summarize_transcript: 1, summarize_transcript_events: 1]
   import Harness.Dispatch.RunTool
 
+  alias Harness.Audit.QA
   alias Harness.Batch
   alias Harness.Batch.AgentEvaluation.Comparison
   alias Harness.DependencyBump
@@ -565,22 +566,33 @@ defmodule Harness.Dispatch do
   @spec approve(String.t()) :: {:ok, map()} | {:error, :not_found | term()}
   def approve(pending_id) when is_binary(pending_id), do: approve(pending_id, nil)
 
-  @doc "Approves the exact parked generation displayed to an operator."
+  # Native DateTime overload for dashboard generation fencing; not a JSON API.
+  @doc false
   @spec approve(String.t(), DateTime.t() | nil) :: {:ok, map()} | {:error, term()}
   def approve(pending_id, parked_at) when is_binary(pending_id), do: Admin.approve(pending_id, parked_at)
 
-  # --- Project registration over JSON ---
-  #
-  # Harness.ProjectRegistry.register/1 takes a %Harness.Project{} struct
-  # (:exchange_data — off the JSON surface). This is the flat scalar entry point:
-  # it assembles the struct through the registry's validated builder so a runtime
-  # registration behaves identically to a config :harness, :projects entry. The
-  # rarer struct fields (landing_policy, target_branch, pollution_allowlist) are
-  # intentionally NOT exposed here — register those via config or the project_eval
-  # struct path (see docs/orchestrator-surface-inventory.md § Omissions).
-  # `roadmap_target_branch` IS exposed: split-repo registrations cannot set it
-  # any other JSON-native way, and omitting it keeps the same-repo derivation
-  # from `target_branch`.
+  api(:qa_status, "Read durable post-merge QA attempts and pending audit jobs; never a deployment gate.",
+    params: [
+      project_name: [kind: :value, description: "Registered project name."],
+      limit: [kind: :value, default: 20, description: "Maximum rows per collection, 1 to 100."]
+    ],
+    returns: %{type: :tuple, description: "{:ok, %{attempts: [...], pending: [...]}} or {:error, reason}."}
+  )
+
+  @spec qa_status(String.t(), pos_integer()) :: {:ok, map()} | {:error, term()}
+  def qa_status(project_name, limit \\ 20), do: QA.list(project_name, limit)
+
+  api(:qa_evidence, "Read a bounded slice of a durable audit QA report and transcript.",
+    params: [
+      id: [kind: :value, description: "Attempt UUID from qa_status."],
+      offset: [kind: :value, default: 0, description: "Character offset, nonnegative."],
+      limit: [kind: :value, default: 8000, description: "Character limit, 1 to 32000."]
+    ],
+    returns: %{type: :tuple, description: "{:ok, %{id, evidence, offset, total}} or {:error, reason}."}
+  )
+
+  @spec qa_evidence(String.t(), non_neg_integer(), pos_integer()) :: {:ok, map()} | {:error, term()}
+  def qa_evidence(id, offset \\ 0, limit \\ 8000), do: QA.evidence(id, offset, limit)
 
   api(
     :register_project,
@@ -633,6 +645,12 @@ defmodule Harness.Dispatch do
         default: nil,
         description:
           "Optional git branch for durable roadmap commits. Required when roadmap_path and source are different repositories. Omit/blank for same-repo registrations, which derive the durable branch from target_branch. Invalid names return {:error, {:invalid_project, {:invalid_roadmap_target_branch, value}}}."
+      ],
+      qa_command: [
+        kind: :value,
+        default: nil,
+        description:
+          "Optional full-project checks performed by the post-merge audit AI. nil preserves legacy audit behavior."
       ]
     ],
     returns: %{
@@ -651,6 +669,7 @@ defmodule Harness.Dispatch do
           String.t() | nil,
           pos_integer() | nil,
           [String.t()],
+          String.t() | nil,
           String.t() | nil
         ) ::
           {:ok, %{name: String.t()}} | {:error, term()}
@@ -665,7 +684,8 @@ defmodule Harness.Dispatch do
         check_command \\ nil,
         concurrency_cap \\ nil,
         warm_paths \\ [],
-        roadmap_target_branch \\ nil
+        roadmap_target_branch \\ nil,
+        qa_command \\ nil
       )
       when is_binary(name) and is_binary(source_type) and is_binary(source_location) and is_binary(roadmap_path),
       do:
@@ -678,7 +698,8 @@ defmodule Harness.Dispatch do
           check_command,
           concurrency_cap,
           warm_paths,
-          roadmap_target_branch
+          roadmap_target_branch,
+          qa_command
         )
 
   api(

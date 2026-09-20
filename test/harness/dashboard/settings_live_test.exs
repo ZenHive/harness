@@ -614,6 +614,7 @@ defmodule Harness.Dashboard.SettingsLiveTest do
       view
       |> form("#project-form-new", %{
         name: "settings-new",
+        qa_command: "mix qa.complete",
         source_type: "local",
         source_location: "/tmp/harness-settings-new",
         roadmap_path: "/tmp/harness-settings-new/roadmap",
@@ -631,6 +632,8 @@ defmodule Harness.Dashboard.SettingsLiveTest do
     assert project.source == {:local, "/tmp/harness-settings-new"}
     assert project.roadmap_path == "/tmp/harness-settings-new/roadmap"
     assert project.check_command == "mix precommit"
+    assert project.qa_command == "mix qa.complete"
+    assert html =~ "QA evidence unavailable"
     assert project.target_branch == "development"
     assert project.roadmap_target_branch == nil
     assert project.concurrency_cap == 3

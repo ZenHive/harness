@@ -29,6 +29,7 @@ defmodule Harness.Dashboard.SettingsLive do
 
   alias Harness.Agent.Settings, as: AgentSettings
   alias Harness.AgentRegistry
+  alias Harness.Audit.QA
   alias Harness.Config
   alias Harness.Cron.RoadmapPoller
   alias Harness.Cron.Settings
@@ -618,6 +619,8 @@ defmodule Harness.Dashboard.SettingsLive do
         source_location: source_location,
         roadmap_path: project.roadmap_path,
         check_command: project.check_command || "",
+        qa_command: project.qa_command || "",
+        qa: qa_state(project),
         target_branch: project.target_branch || "",
         roadmap_target_branch: project.roadmap_target_branch || "",
         concurrency_cap: cap,
@@ -626,6 +629,32 @@ defmodule Harness.Dashboard.SettingsLive do
         languages: Enum.map_join(project.languages, ", ", &Atom.to_string/1)
       }
     end)
+  end
+
+  @spec qa_state(Project.t()) :: map()
+  defp qa_state(%Project{qa_command: nil}), do: %{attempts: [], pending: [], error: nil}
+
+  defp qa_state(project) do
+    case QA.list(project.name, 5) do
+      {:ok, facts} ->
+        attempts = Enum.map(facts.attempts, &qa_attempt_evidence/1)
+
+        facts |> Map.put(:attempts, attempts) |> Map.put(:error, nil)
+
+      {:error, _reason} ->
+        %{attempts: [], pending: [], error: "QA evidence unavailable"}
+    end
+  end
+
+  @spec qa_attempt_evidence(map()) :: map()
+  defp qa_attempt_evidence(attempt) do
+    evidence =
+      case QA.evidence(attempt.id, 0, 4000) do
+        {:ok, %{evidence: text}} -> text
+        {:error, _} -> "QA evidence unavailable"
+      end
+
+    Map.put(attempt, :evidence, evidence)
   end
 
   @spec project_source(Project.t()) :: {String.t(), String.t()}
@@ -647,6 +676,7 @@ defmodule Harness.Dashboard.SettingsLive do
          source: source,
          roadmap_path: roadmap_path,
          check_command: optional_param(params, "check_command"),
+         qa_command: optional_param(params, "qa_command"),
          languages: languages,
          target_branch: optional_param(params, "target_branch"),
          roadmap_target_branch: optional_param(params, "roadmap_target_branch"),

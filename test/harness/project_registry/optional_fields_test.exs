@@ -5,6 +5,7 @@ defmodule Harness.ProjectRegistry.OptionalFieldsTest do
   alias Harness.ProjectRegistry.OptionalFields
 
   @valid %{
+    qa_command: "mix qa.complete",
     concurrency_cap: 4,
     pollution_allowlist: ["scratch.txt"],
     warm_paths: ["priv/foo"],
@@ -22,6 +23,7 @@ defmodule Harness.ProjectRegistry.OptionalFieldsTest do
       assert {:ok, fields} = OptionalFields.fetch(%{})
 
       assert fields == %{
+               qa_command: nil,
                concurrency_cap: nil,
                pollution_allowlist: nil,
                warm_paths: [],

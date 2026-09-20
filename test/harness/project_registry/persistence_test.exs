@@ -40,6 +40,16 @@ defmodule Harness.ProjectRegistry.PersistenceTest do
   end
 
   describe "runtime registration survives BEAM restart" do
+    test "pre-QA payloads retain legacy command behavior after reload" do
+      project = ProjectFixture.from_repo("/tmp/pre-qa", name: "pre-qa", check_command: "legacy-full")
+      old = Map.delete(project, :qa_command)
+      Repo.insert!(%ProjectSchema{name: project.name, payload: :erlang.term_to_binary(old), warm_paths: []})
+      assert :ok = ProjectRegistry.reload_persisted_state()
+      assert {:ok, restored} = ProjectRegistry.lookup(project.name)
+      assert restored.check_command == "legacy-full"
+      assert restored.qa_command == nil
+    end
+
     test "register/1 is restored after clearing memory and reloading persisted state" do
       name = "persist-#{System.unique_integer([:positive])}"
       project = ProjectFixture.from_repo("/tmp/#{name}", name: name)
@@ -144,6 +154,7 @@ defmodule Harness.ProjectRegistry.PersistenceTest do
         name: name,
         source: {:github, "https://github.com/example/demo.git"},
         check_command: "mix precommit",
+        qa_command: "mix qa.complete",
         roadmap_path: "/tmp/#{name}/roadmap/tasks.toml",
         roadmap_target_branch: "roadmap-main",
         languages: [:elixir],
@@ -160,6 +171,7 @@ defmodule Harness.ProjectRegistry.PersistenceTest do
       assert {:ok, restored} = ProjectRegistry.lookup(name)
       assert restored.source == project.source
       assert restored.check_command == "mix precommit"
+      assert restored.qa_command == "mix qa.complete"
       assert restored.roadmap_target_branch == "roadmap-main"
       assert restored.concurrency_cap == 4
       assert restored.landing_policy == :auto

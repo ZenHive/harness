@@ -531,14 +531,28 @@ scheduling are out of scope (post-Phase-7).
   inline before deciding. Correct-but-not-pristine work doesn't
   fail — the reviewer fixes the nitpicks and approves (fix-and-approve is the near-absolute
   default; its fixes show up in `reviewer_diff_size`).
-- **the audit witnesses a cold build after merge.** The post-merge audit worktree is
-  intentionally un-warmed. The audit AI runs the clean-build/check itself and writes
-  `cold_check` in `.harness/audit.json`; harness persists that reported fact but never
-  runs the build or reads an exit code. Red files a blocked follow-up task and notifies;
-  it never reverts, unmerges, or gates the already-landed merge.
-- **cold dialyzer PLT.** `priv/plts` is gitignored, so a reviewer that runs dialyzer in
-  the worktree builds a PLT from cold — the slowest part of its check run. This dominates
-  review wall-clock; budget the `:lifetime_timeout` for it.
+- **the audit performs integrated QA after merge.** A project's optional
+  `qa_command` names its complete checks: full suites, coverage, Dialyzer, Reach,
+  Sobelow, Credo, Doctor and clone checks where applicable. The existing audit AI
+  performs them alongside hygiene at a pinned integrated revision in its cold
+  worktree. Landing and deployment never wait. Focused tests and risk-relevant
+  security/live verification remain with the independent reviewer; a full
+  Dialyzer run is not mandatory per implementation or review, including aave_sim.
+  Projects with no `qa_command` retain the legacy `check_command` cold witness
+  until the operator explicitly migrates them. No production setting is changed
+  by adding this capability.
+- **QA facts survive the audit tree.** `audit_qa_attempts` retains the project,
+  range, included commits, agent/model, configured command, raw report and
+  transcript. Missing artifacts, unavailable prerequisites and interruptions
+  cannot pass. Waiting audit jobs still coalesce; a land during an executing
+  audit creates subsequent work. Failed attempts do not advance the successful
+  QA revision. Repairs belong to the audit AI, which checks existing tasks and
+  recent evidence for semantic duplicates. Substantial repairs use normal
+  implementation and independent review; unpublished vulnerability details
+  belong in private advisories.
+  Settings shows bounded recent results and evidence. Use
+  `dispatch-qa_status(project_name, limit)` and
+  `dispatch-qa_evidence(id, offset, limit)` for bounded driver reads.
 - **nested claude.** The dogfood agent is `claude -p` spawned from inside a Claude Code
   session — nesting itself is fine. Auth is **not** automatically shared, though:
   `claude` checks `ANTHROPIC_API_KEY` *before* its stored OAuth credentials, so an

@@ -52,6 +52,8 @@ Reachable over MCP/chat (JSON scalars only). Grouped by orchestrator intent.
 | `dispatch-cancel` | `Harness.Run.cancel/1` (flat) | Kill an in-flight run (idempotent) |
 | `roadmap-mark_landed` / `roadmap-mark_blocked` / `roadmap-mark_in_progress` / `roadmap-mark_pending` | `Harness.Roadmap` | Write a run's outcome back to the roadmap |
 | `project_registry-unregister` | `Harness.ProjectRegistry` | Drop a runtime registration |
+| `dispatch-qa_status` | `Harness.Audit.QA` | Bounded durable audit/QA attempts and queued/running audit jobs, per project |
+| `dispatch-qa_evidence` | `Harness.Audit.QA` | Bounded slices of persisted revision, included commits, command, report and transcript |
 | `audit_review-grade_fix` | `Harness.AuditReview` | Cross-agent HIGH-tier grade of one commit |
 | `dispatch-pending` / `dispatch-approve` | `Harness.Dispatch` | List / approve parked autonomous (cron) dispatch decisions for `:manual` mode projects (Task 237) |
 
@@ -185,3 +187,9 @@ receive their rules via `Harness.AgentAdapter.attach_rules/2` and run against th
 project's own tooling — harness never injects its control MCP config into them. This task
 changed no adapter, rule-channel, or dispatch path, so that isolation is unchanged: an
 agent implementing a task still cannot cancel/steer/dispatch harness runs.
+
+`dispatch-register_project` accepts optional `qa_command` after
+`roadmap_target_branch`. It names complete post-merge checks independently of
+`check_command`; `nil` preserves legacy audit behavior. Settings exposes both
+commands and recent durable QA evidence. Production migration and activation
+remain operator/orchestrator decisions.

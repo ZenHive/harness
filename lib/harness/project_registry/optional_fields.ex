@@ -6,6 +6,7 @@ defmodule Harness.ProjectRegistry.OptionalFields do
   alias Harness.Run.TestDbTemplate
 
   @fields [
+    {:qa_command, nil},
     {:concurrency_cap, nil},
     {:pollution_allowlist, nil},
     {:warm_paths, []},
@@ -19,6 +20,7 @@ defmodule Harness.ProjectRegistry.OptionalFields do
   ]
 
   @errors %{
+    qa_command: :invalid_qa_command,
     concurrency_cap: :invalid_concurrency_cap,
     pollution_allowlist: :invalid_pollution_allowlist,
     warm_paths: :invalid_warm_paths,
@@ -56,6 +58,14 @@ defmodule Harness.ProjectRegistry.OptionalFields do
   end
 
   @spec cast(atom(), term()) :: {:ok, term()} | {:error, {:invalid_project, term()}}
+  defp cast(:qa_command, nil), do: {:ok, nil}
+
+  defp cast(:qa_command, command) when is_binary(command) do
+    if String.trim(command) == "", do: invalid(:qa_command, command), else: {:ok, command}
+  end
+
+  defp cast(:qa_command, other), do: invalid(:qa_command, other)
+
   defp cast(:concurrency_cap, nil), do: {:ok, nil}
   defp cast(:concurrency_cap, cap) when is_integer(cap) and cap > 0, do: {:ok, cap}
   defp cast(:concurrency_cap, other), do: invalid(:concurrency_cap, other)

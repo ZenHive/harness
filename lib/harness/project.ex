@@ -14,6 +14,9 @@ defmodule Harness.Project do
     (e.g. `"mix check.dispatch"`, `"cargo test"`). The reviewer runs the
     project's checks itself and judges the result; harness never executes this
     command — it is prompt text, not a verification gate.
+  - `qa_command` — optional full-project checks run by the post-merge audit AI.
+    `nil` preserves the legacy cold-check behavior; setting it explicitly separates
+    integrated QA from dispatch checks.
   - `languages` — required non-empty list of target-language atoms used to
     select injected agent rule sections and per-language project facts.
   - `roadmap_path` — root holding `roadmap/tasks.toml`. All rmap reads and
@@ -60,6 +63,7 @@ defmodule Harness.Project do
     :roadmap_target_branch,
     :languages,
     check_command: nil,
+    qa_command: nil,
     concurrency_cap: nil,
     pollution_allowlist: nil,
     warm_paths: [],
@@ -85,6 +89,7 @@ defmodule Harness.Project do
           roadmap_path: String.t(),
           roadmap_target_branch: String.t() | nil,
           check_command: String.t() | nil,
+          qa_command: String.t() | nil,
           languages: nonempty_list(atom()),
           concurrency_cap: pos_integer() | nil,
           pollution_allowlist: [String.t()] | nil,

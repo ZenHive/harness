@@ -11,6 +11,7 @@ defmodule Harness.Dispatch.ContractTest do
     __api__: 0,
     __api__: 1,
     approve: 1,
+    approve: 2,
     assess_facets: 0,
     assess_facets: 1,
     await: 2,
@@ -34,6 +35,11 @@ defmodule Harness.Dispatch.ContractTest do
     hold: 2,
     pending: 0,
     pending: 1,
+    qa_evidence: 1,
+    qa_evidence: 2,
+    qa_evidence: 3,
+    qa_status: 1,
+    qa_status: 2,
     recommend: 1,
     recommend: 2,
     recommended_adapter_for_item: 2,
@@ -43,6 +49,7 @@ defmodule Harness.Dispatch.ContractTest do
     register_project: 7,
     register_project: 8,
     register_project: 9,
+    register_project: 10,
     reland: 1,
     rereview: 1,
     rereview_opts: 3,
@@ -94,10 +101,10 @@ defmodule Harness.Dispatch.ContractTest do
   end
 
   test "preserves descripex declarations and the dispatch manifest" do
-    assert fingerprint(Dispatch.__api__()) == "6ac794a358539b590ed2edf54c6200d381c2b928aeb93ca5913d5c63bd09ad33"
+    assert fingerprint(Dispatch.__api__()) == "fa1bd13754a303fbefd0c26707628918dee27cd905cab542431d02aac7594af6"
 
     manifest = Manifest.build().modules |> Enum.find(&(&1.namespace == "/dispatch")) |> normalize_manifest()
-    assert fingerprint(manifest) == "4f25c4dd27b9a0e6d0d519fec7d733f512b6acf7067c800fe3b11b2691c2d712"
+    assert fingerprint(manifest) == "1cb442aaf412724706fc3aa90a5d818b200a55a7d8e76aefb12eb2acd63c7e49"
   end
 
   test "preserves generated MCP tools and keeps implementation modules off the driver surface" do
@@ -106,7 +113,7 @@ defmodule Harness.Dispatch.ContractTest do
       |> Enum.filter(&String.starts_with?(&1.name, "dispatch-"))
       |> Enum.map(fn tool -> update_in(tool.inputSchema.required, &Enum.sort/1) end)
 
-    assert fingerprint(tools) == "b10eabb282f695d775eada6b519963fc9997e77e5f12a45baa4ae2d9545a13df"
+    assert fingerprint(tools) == "fa3c0f99c0eecbc6b8039fa69feeeac250306f4fa6a0bc840c9be2eb3c059f71"
 
     assert Enum.filter(Manifest.modules(), &(&1 |> Module.split() |> Enum.member?("Dispatch"))) == [Dispatch]
   end

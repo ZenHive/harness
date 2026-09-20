@@ -1398,6 +1398,25 @@ defmodule Harness.Dashboard.Components do
             />
             <input
               type="text"
+              name="qa_command"
+              value={Map.get(project, :qa_command, "")}
+              placeholder="full-project QA command (post-merge)"
+              aria-label={"QA command for #{project.label}"}
+            />
+            <div :if={Map.has_key?(project, :qa)} id={"qa-status-#{project.name}"}>
+              <p :if={project.qa.error}>{project.qa.error}</p>
+              <p :for={job <- project.qa.pending}>QA {job.status} · job {job.job_id}</p>
+              <details :for={attempt <- project.qa.attempts}>
+                <summary>QA {attempt.status} · {attempt.revision || "revision pending"}</summary>
+                <p>{attempt.agent} / {attempt.model}</p>
+                <code>{attempt.command}</code>
+                <p>Range: {attempt.base_sha}..{attempt.revision}</p>
+                <p>Included commits: {attempt.included_landings} · Evidence: {attempt.id}</p>
+                <pre>{attempt.evidence}</pre>
+              </details>
+            </div>
+            <input
+              type="text"
               name="languages"
               value={project.languages}
               placeholder="languages (elixir, rust, …)"
@@ -1467,6 +1486,12 @@ defmodule Harness.Dashboard.Components do
               name="check_command"
               placeholder="check command"
               aria-label="Check command"
+            />
+            <input
+              type="text"
+              name="qa_command"
+              placeholder="full-project QA command (post-merge)"
+              aria-label="New project QA command"
             />
             <input
               type="text"
