@@ -9945,7 +9945,7 @@ id = "326"
 phase = 22
 bundle = "core-loop"
 milestone = "v0_16"
-status = "in_progress"
+status = "pending"
 title = "Stabilize residual erl_child_setup spawn flake in worktree-heavy suite (Harness.AuditTest noop)"
 scores = { d = 4, b = 4, u = 3 }
 markers = ["bug"]
