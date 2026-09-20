@@ -25,6 +25,8 @@ defmodule Harness.Cron.RoadmapPollerTest do
   alias Harness.Test.SettingsStoreMemory
   alias Oban.Cron
 
+  setup {Harness.Test.AgentRegistryIsolation, :isolate}
+
   setup do
     prior_cron_polling = Application.get_env(:harness, :cron_polling)
     prior_sinks = Application.get_env(:harness, :notification_sinks)

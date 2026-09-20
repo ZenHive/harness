@@ -16,6 +16,8 @@ defmodule Harness.ModelAvailabilityTest do
   alias Harness.Test.CaptureSink
   alias Harness.Test.SettingsStoreMemory
 
+  setup {Harness.Test.AgentRegistryIsolation, :isolate}
+
   @sample Path.expand("../fixtures/sample_roadmap", __DIR__)
   @future_block_seconds 3_600
 

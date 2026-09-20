@@ -20,6 +20,8 @@ defmodule Harness.Batch.AgentEvaluationTest do
   alias Harness.Run.LogRecord
   alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
 
+  setup {Harness.Test.AgentRegistryIsolation, :isolate}
+
   @run_timeout_ms 30_000
   @terminal_linger_ms 100
 

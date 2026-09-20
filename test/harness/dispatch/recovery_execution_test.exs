@@ -21,6 +21,8 @@ defmodule Harness.Dispatch.RecoveryExecutionTest do
   alias Harness.Run.Worker
   alias Harness.Test.IdentityFakeAdapter
 
+  setup {Harness.Test.AgentRegistryIsolation, :isolate}
+
   defmodule WitnessAdapter do
     @moduledoc false
     use Harness.AgentAdapter

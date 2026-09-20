@@ -19,6 +19,8 @@ defmodule Harness.BatchTest do
   alias Harness.Run.Worker, as: RunWorker
   alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
 
+  setup {Harness.Test.AgentRegistryIsolation, :isolate}
+
   @eventually_tries 150
   @eventually_delay_ms 20
   @run_timeout_ms 30_000

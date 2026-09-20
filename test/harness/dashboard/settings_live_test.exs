@@ -51,6 +51,8 @@ defmodule Harness.Dashboard.SettingsLiveTest do
   alias Harness.SettingsStore
   alias Harness.Test.SettingsStoreMemory
 
+  setup {Harness.Test.AgentRegistryIsolation, :isolate}
+
   @hours_per_day 24
   @default_transcript_retention_days 30
   @default_transcript_retention_ms to_timeout(hour: @hours_per_day) * @default_transcript_retention_days

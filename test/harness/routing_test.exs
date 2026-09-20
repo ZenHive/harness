@@ -20,6 +20,8 @@ defmodule Harness.RoutingTest do
   alias Harness.SettingsStore
   alias Harness.Test.SettingsStoreMemory
 
+  setup {Harness.Test.AgentRegistryIsolation, :isolate}
+
   setup do
     scope = :"routing_#{System.unique_integer([:positive])}"
     store = {MemoryStore, scope: scope}

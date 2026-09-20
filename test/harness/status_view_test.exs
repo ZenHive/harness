@@ -14,6 +14,8 @@ defmodule Harness.StatusViewTest do
   alias Harness.StatusView
   alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
 
+  setup {Harness.Test.AgentRegistryIsolation, :isolate}
+
   setup do
     AgentRegistry.reset()
     :ok

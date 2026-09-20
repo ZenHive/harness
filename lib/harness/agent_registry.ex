@@ -244,6 +244,8 @@ defmodule Harness.AgentRegistry do
   end
 
   @doc false
+  # Test helper. Clears GenServer unavailable/installed maps only. ModelAvailability
+  # blocks persisted by mark_unavailable/2 live in SettingsStore and are not undone.
   @spec reset() :: :ok
   def reset do
     GenServer.call(__MODULE__, :reset)

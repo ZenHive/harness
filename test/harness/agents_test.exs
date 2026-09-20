@@ -14,6 +14,8 @@ defmodule Harness.AgentsTest do
   alias Harness.Config
   alias Harness.Test.SettingsStoreMemory
 
+  setup {Harness.Test.AgentRegistryIsolation, :isolate}
+
   @scope :test_default
 
   setup do

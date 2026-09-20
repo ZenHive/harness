@@ -1,9 +1,10 @@
 defmodule Harness.Run.ReviewerSelectionTest do
-  # async: false — several tests mutate the global Harness.AgentRegistry
-  # singleton (:sys.replace_state / mark_unavailable), which leaks the mutated
-  # installed/availability map into concurrently running files (observed as
-  # order-dependent full-suite failures, 2026-07-07).
+  # async: false — tests mutate the global AgentRegistry singleton. Isolation
+  # also clears SettingsStore model blocks/catalogs that mark_unavailable/2
+  # persists outside the GenServer (Task 362).
   use Harness.RunCase, async: false
+
+  setup {Harness.Test.AgentRegistryIsolation, :isolate}
 
   describe "reviewer selection" do
     test "no installed cross-family reviewer settles failed without silently approving" do

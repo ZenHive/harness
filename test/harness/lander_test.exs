@@ -139,6 +139,8 @@ defmodule Harness.LanderTest do
   alias Harness.Run.LogRecord
   alias Harness.Worktree
 
+  setup {Harness.Test.AgentRegistryIsolation, :isolate}
+
   @moduletag :tmp_dir
   @additive_changelog_wave_runs 3
   @executable_file_mode 0o755

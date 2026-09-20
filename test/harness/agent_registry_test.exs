@@ -11,7 +11,10 @@ defmodule Harness.AgentRegistryTest do
   alias Harness.AgentAdapter.Grok
   alias Harness.AgentAdapter.Pi
   alias Harness.AgentRegistry
+  alias Harness.ModelAvailability
   alias Harness.Test.SettingsStoreMemory
+
+  setup {Harness.Test.AgentRegistryIsolation, :isolate}
 
   defmodule NoResumeAdapter do
     @moduledoc false
@@ -96,6 +99,15 @@ defmodule Harness.AgentRegistryTest do
     assert :ok = AgentRegistry.mark_available(ResumeAdapter)
     assert AgentRegistry.available?(ResumeAdapter)
     assert [] = AgentRegistry.list_unavailable()
+  end
+
+  test "reset/0 does not clear ModelAvailability blocks persisted by mark_unavailable/2" do
+    signal = %{"status" => 429, "retry_after_seconds" => 90, "model" => "composer-2.5"}
+    :ok = AgentRegistry.mark_unavailable(Cursor, {:structured_quota, signal})
+    AgentRegistry.reset()
+
+    assert AgentRegistry.available?(Cursor)
+    refute ModelAvailability.available?(:cursor, "composer-2.5")
   end
 
   test "select/2 surfaces :no_available_agent when every capable adapter is unavailable" do

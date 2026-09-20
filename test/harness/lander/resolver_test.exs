@@ -8,9 +8,10 @@ defmodule Harness.Lander.ResolverTest do
   `Harness.LanderTest`'s injected-resolver tests, which never spawn a CLI.
   """
 
-  # async: false — set_installed/2 mutates the global Harness.AgentRegistry
-  # singleton via :sys.replace_state, which leaks into concurrently running
-  # files (same class as ReviewerSelectionTest; observed 2026-07-07).
+  # async: false — tests mutate the global AgentRegistry singleton. Isolation
+  # also clears SettingsStore model blocks/catalogs: mark_unavailable/2 persists
+  # those outside the GenServer, and AgentRegistry.reset/0 does not undo them
+  # (Task 362; observed as available: [] on select_resolver_candidate/2).
   use ExUnit.Case, async: false
 
   alias Harness.Agent.Settings
@@ -20,8 +21,12 @@ defmodule Harness.Lander.ResolverTest do
   alias Harness.AgentRegistry
   alias Harness.GitFixture
   alias Harness.Lander.Resolver
+  alias Harness.ModelAvailability
   alias Harness.SettingsStore
+  alias Harness.Test.AgentRegistryIsolation
   alias Harness.Worktree
+
+  setup {AgentRegistryIsolation, :isolate}
 
   @long_conflict_payload_chars 4_100
 
@@ -43,31 +48,42 @@ defmodule Harness.Lander.ResolverTest do
     end
 
     test "returns :no_resolver when no cross-family resolver is installed" do
-      AgentRegistry.reset()
       mark_all_installed(false)
-      on_exit(fn -> AgentRegistry.reset() end)
 
       assert Resolver.select_resolver(nil, nil) == {:error, :no_resolver}
     end
 
-    test "skips a model-less preferred reviewer and rotates to the next configured candidate" do
+    test "a mark_unavailable/2 model block that survives AgentRegistry.reset/0 does not poison selection" do
+      signal = %{"status" => 429, "retry_after_seconds" => 90, "model" => "composer-2.5"}
+      :ok = AgentRegistry.mark_unavailable(Cursor, {:structured_quota, signal})
       AgentRegistry.reset()
+      refute ModelAvailability.available?(:cursor, "composer-2.5")
+
+      AgentRegistryIsolation.reset_dispatch_state()
+
       mark_all_installed(false)
       mark_installed(Codex, true)
       mark_installed(Cursor, true)
       put_model_env(agent_model: [cursor: "composer-2.5"], reviewer_model: [])
-      on_exit(fn -> AgentRegistry.reset() end)
+
+      assert {:ok, %{agent: :cursor, module: Cursor, model: "composer-2.5"}} =
+               Resolver.select_resolver_candidate(:claude, :codex)
+    end
+
+    test "skips a model-less preferred reviewer and rotates to the next configured candidate" do
+      mark_all_installed(false)
+      mark_installed(Codex, true)
+      mark_installed(Cursor, true)
+      put_model_env(agent_model: [cursor: "composer-2.5"], reviewer_model: [])
 
       assert {:ok, %{agent: :cursor, module: Cursor, model: "composer-2.5"}} =
                Resolver.select_resolver_candidate(:claude, :codex)
     end
 
     test "reports every eligible candidate as model-less when none has a configured model" do
-      AgentRegistry.reset()
       mark_all_installed(false)
       mark_installed(Codex, true)
       put_model_env(agent_model: [], reviewer_model: [])
-      on_exit(fn -> AgentRegistry.reset() end)
 
       assert {:error, {:no_resolver_model, [codex: {:model_required, :codex}]}} =
                Resolver.select_resolver_candidate(:claude, :codex)
@@ -77,17 +93,13 @@ defmodule Harness.Lander.ResolverTest do
       # Regression: dispatchable?/2 AND-ed the implementer-level enabled? flag
       # with reviewer_eligible?, so a claude disabled as implementer but trusted
       # as reviewer could never resolve a codex↔cursor land conflict.
-      AgentRegistry.reset()
       mark_all_installed(false)
       mark_installed(Claude, true)
       put_model_env(agent_model: [claude: "claude-opus-5"], reviewer_model: [])
 
       previous = SettingsStore.fetch_map(:agent)
 
-      on_exit(fn ->
-        SettingsStore.put(:agent, previous)
-        AgentRegistry.reset()
-      end)
+      on_exit(fn -> SettingsStore.put(:agent, previous) end)
 
       for {agent, _module} <- AgentRegistry.agents() do
         Settings.set_reviewer_eligible(agent, agent == :claude, "resolver-test")
@@ -190,11 +202,9 @@ defmodule Harness.Lander.ResolverTest do
 
   describe "resolve/2" do
     test "threads the configured reviewer model into the resolver invocation" do
-      AgentRegistry.reset()
       mark_all_installed(false)
       mark_installed(Codex, true)
       put_model_env(agent_model: [], reviewer_model: [codex: "gpt-6-astra"])
-      on_exit(fn -> AgentRegistry.reset() end)
 
       repo = conflicted_repo("resolver-spawn-model")
       worktree = %Worktree{id: "wt", path: repo, branch: "harness/wt", repo: repo, base_sha: "base"}
@@ -217,10 +227,8 @@ defmodule Harness.Lander.ResolverTest do
     end
 
     test "reports no conflicted files after selecting a resolver" do
-      AgentRegistry.reset()
       mark_installed(Codex, true)
       put_model_env(agent_model: [codex: "gpt-6-astra"], reviewer_model: [])
-      on_exit(fn -> AgentRegistry.reset() end)
 
       repo = GitFixture.init_repo(name: "resolver-no-conflict")
       worktree = %Worktree{id: "wt", path: repo, branch: "harness/wt", repo: repo, base_sha: "base"}

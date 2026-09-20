@@ -10,6 +10,8 @@ defmodule Harness.Insights.SelectionTest do
   alias Harness.ModelAvailability
   alias Harness.SettingsStore
 
+  setup {Harness.Test.AgentRegistryIsolation, :isolate}
+
   setup do
     old = Application.get_env(:harness, :agent_model)
     keys = [:agent, :model_blocks, :model_catalogs, :model_catalog_static]
