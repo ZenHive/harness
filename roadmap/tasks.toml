@@ -13501,7 +13501,7 @@ shipped_in = "f196d15e93958a78937748d5e9c29cbadb31b528"
 id = "433"
 phase = 22
 bundle = "operator-surface"
-status = "in_progress"
+status = "done"
 title = "Suite-health check leaks its test database on every successful run"
 scores = { d = 3, b = 7, u = 6 }
 markers = ["bug"]
@@ -13532,9 +13532,16 @@ harness already holds itself to this standard for the sibling resource: "A crash
 
 2026-09-20 scope refinement: The fixed suffix does not imply one shared physical database: project configuration can derive a worktree-specific base. Verify exact resolved database identity in cleanup. Keep this deterministic lifecycle fix independent of the crash sweeper.
 '''
+implemented = "Landed by cursor via merge-train; reviewer-approved (run run-1789885059305-68b4be47, cec7deacc04774f9a19ee7b8629f46e2e21b35c8)."
+delivered_by = "cursor"
+verified = true
+verified_by = "codex"
+verification_ref = "harness-run:run-1789885059305-68b4be47"
 created_at = "2026-09-18"
 started_at = "2026-09-20"
 scored_at = "2026-09-18"
+done_at = "2026-09-20"
+shipped_in = "cec7deacc04774f9a19ee7b8629f46e2e21b35c8"
 
 [[task]]
 id = "434"
