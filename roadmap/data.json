@@ -1191,13 +1191,13 @@
       "phase": 6,
       "bundle": "deferred",
       "status": "blocked",
-      "title": "ACP transport adapter",
+      "title": "Reassess ACP for a named execution capability unavailable through native adapters",
       "scores": {
-        "d": 7,
-        "b": 5,
-        "u": 3
+        "d": 3,
+        "b": 4,
+        "u": 2
       },
-      "eff": 0.57,
+      "eff": 1.0,
       "dep_layer": 0,
       "unlocks": 0,
       "markers": [],
@@ -1205,16 +1205,18 @@
       "assignee": "codex",
       "model": "gpt-6-astra",
       "acceptance_criteria": [
-        "DEFERRED — no implementation work scheduled. Revisit only when an ACP backend preserves Claude subscription OAuth (per the conditions documented in body), or when API-billing dispatches are an accepted cost for a specific workload; at revisit time, define AC then."
+        "The revisit identifies the agent, concrete missing native capability and workload, rather than treating ACP adoption itself as the goal.",
+        "Live backend behavior and current official authentication/billing documentation establish whether the selected route is usable under the operator-approved account model.",
+        "The decision records either a scoped implementation contract or why the native adapter already satisfies the requirement; no adapter is built merely to close this research record."
       ],
       "out_of_scope": [
-        "Any work until the subscription-auth blocker resolves or API billing is deliberately accepted for a specific workload",
-        "Replacing or competing with the native adapters that already preserve subscription auth"
+        "Implementation before the external authentication/billing prerequisite is satisfied.",
+        "Replacing working native adapters without an identified capability gain."
       ],
-      "body": "DEFERRED — original \"speculative, awaiting ACP adoption\" framing superseded 2026-05-27 by a sharper blocker. ACP adoption itself is no longer the issue: the ACP Registry went live 2026-01-28 with Claude Code, Codex CLI, Cursor, Gemini CLI, Copilot CLI, and Pi as registered backends; Zed 1.0 (2026-04-29) and JetBrains (late 2025) ship first-class ACP support; `openclaw/acpx` provides a headless ACP CLI client suitable as a Port target. The reason to stay deferred is **subscription auth incompatibility**.\n\nThe reference Claude ACP adapter (`@zed-industries/claude-agent-acp`) calls the Anthropic API directly and **requires `ANTHROPIC_API_KEY`** — it explicitly rejects subscription OAuth tokens (`sk-ant-oat01-...`). Anthropic's Feb 2026 Authentication & Credential Use policy further restricts subscription OAuth to \"Claude Code and claude.ai\", making routing it through a different product (acpx) a Consumer ToS violation in addition to a technical one. harness's native `claude -p` adapter today preserves subscription auth by shelling out to the real `claude` binary, which reads its own credentials — harness never touches the token. This repo's whole dogfooding economy depends on that — see the `feedback_claude_subscription_not_api.md` memory and the standing practice of scrubbing `ANTHROPIC_API_KEY` on every Claude dispatch.\n\nNet: ACP for Claude converts free subscription dispatches into metered API calls. Across a dogfood batch that is real money, not academic.\n\n**Conditions to revisit:** (a) an ACP backend exists that preserves subscription OAuth for Claude — e.g. an ACP server that internally shells out to the native `claude` binary the way harness already does, OR (b) a specific agent ships ACP support with no native CLI alternative AND its auth model is acceptable, OR (c) API-billing dispatches become a deliberate cost the user wants to pay for some workload (high-stakes grading, off-quota burst capacity). Investigate Codex/Cursor ACP auth models at revisit time — the openclaw issue confirms the Claude case only; the other backends are unknown and would change the calculus if they preserve subscription.\n\nSources: openclaw/openclaw#53456 (claude-agent-acp requires API key); Anthropic Authentication docs at https://code.claude.com/docs/en/authentication; ACP Registry launch 2026-01-28.\n",
+      "body": "Evaluate ACP only against a named agent/workload that the operator wants to execute and an identified limitation of its native adapter. The May 2026 record raised a Claude subscription-auth concern; that historical provider-specific claim is unverified against current contracts and is not evidence that every ACP backend is unsuitable. Existing native execution remains supported. The external prerequisite is a named backend with a verified acceptable authentication/billing contract, or an explicit operator decision to accept API billing for that workload. On revisit, verify the live backend and provider-owned documentation, compare the missing capability with the native route, and define implementation acceptance criteria before authorizing a build.\n\n\nScore rationale: this is a bounded backend/authentication reassessment, not a seven-point adapter build; no additional native-route capability has yet been named.\n",
       "created_at": "2026-05-20",
-      "scored_at": "2026-05-27",
-      "blocked_reason": "Deferred by subscription-auth blocker: revisit only when an ACP backend preserves Claude subscription OAuth, or API-billing dispatch is deliberately accepted for a specific workload.",
+      "scored_at": "2026-09-20",
+      "blocked_reason": "Needs a named ACP backend/workload with verified operator-acceptable authentication and billing; historical Claude-specific evidence does not establish a global ACP blocker.",
       "cross_repo": []
     },
     {
@@ -7346,38 +7348,39 @@
       "status": "pending",
       "title": "Live-agent E2E smoke test: one real headless agent CLI through the full pipeline, :integration/:live_agent tagged",
       "scores": {
-        "d": 3,
-        "b": 5,
-        "u": 4
+        "d": 4,
+        "b": 7,
+        "u": 6
       },
-      "eff": 1.5,
+      "eff": 1.63,
       "dep_layer": 2,
       "unlocks": 0,
-      "markers": [
-        "handbuild"
-      ],
+      "markers": [],
       "depends_on": [
         173
       ],
-      "assignee": "human",
+      "assignee": "codex",
+      "model": "gpt-6-astra",
       "acceptance_criteria": [
         "Tagged both :integration and :live_agent — excluded from the default suite and mix precommit; run via mix test.json --include live_agent",
         "Fails loudly with flunk + setup instructions (CLI install command, auth step, required environment variables) when either selected CLI is missing or unauthenticated — never skips silently",
-        "Drives one real headless implementer (default codex with gpt-5.5, adapter and model selectable via environment variables) through the same chain as Task 173: trivial fixture task → dispatch → worktree → real agent commit → cross-family reviewer AI gate (writes .harness/review.json) → land to a local bare origin",
+        "Drives one real headless implementer (default codex with gpt-6-astra, adapter and model selectable via environment variables) through the same chain as Task 173: trivial fixture task → dispatch → worktree → real agent commit → cross-family reviewer AI gate (writes .harness/review.json) → land to a local bare origin",
         "The selected reviewer is from a different agent family than the implementer and its adapter/model are explicit rather than inherited from an ambient CLI default",
-        "Wall-clock bounded: trivial prompt + per-test total_timeout override so a hung CLI cannot stall the run beyond ~5 minutes"
+        "Wall-clock bounded: trivial prompt + per-test total_timeout override so a hung CLI cannot stall the run beyond ~5 minutes",
+        "Assert the approved delivery commit is reachable from the isolated origin target, the run record carries the corresponding landing fact, and roadmap completion has the expected verification provenance. A reviewer artifact alone cannot pass the test.",
+        "Record the configured total timeout and return a clear failure on expiry; the test always cleans its own processes/worktrees and never contacts a production target."
       ],
       "out_of_scope": [
-        "Running in CI or the default suite",
-        "Cross-adapter matrix — one implementer/reviewer pair proves the live seam; production routing measurements remain on the existing KPI surfaces",
-        "Asserting anything about the agent's code quality — the reviewer's .harness/review.json verdict is the only assertion"
+        "Running in the default suite or unattended CI.",
+        "A cross-adapter benchmark matrix.",
+        "Grading generated code quality independently of the reviewer; pipeline mechanics still require assertions."
       ],
       "touches": [
         "test/harness/pipeline_live_agent_test.exs"
       ],
-      "body": "The deterministic pipeline E2E (Task 173) proves every harness seam with a scripted agent; this task adds the one seam it cannot prove — a real agent CLI invoked over a Port produces a commit that flows through the reviewer gate and landing. User-requested 2026-06-03 alongside Task 173.\n\nThis formalizes what daily dogfooding runs prove ad hoc into a repeatable, on-demand check: run it when upgrading an agent CLI version, changing an adapter's build_command, or validating a new host. It is hand-run by design (quota cost, host CLI + auth required), which is why it carries the handbuild marker and lives outside the default suite.\n\nReuses Task 173's fixture/wiring; the only new surface is the live-CLI invocation path and the missing-credential flunk guard (per the integration-test never-skip-silently rule). The old Claude default contradicted the standing dispatch policy: the operator session already consumes the Claude subscription. Default to Codex/gpt-5.5 and require the reviewer to be cross-family; environment variables may select another explicit adapter/model pair.\n",
+      "body": "Add an on-demand integration test for the seam Task 173 cannot prove with scripted agents: real headless implementer and reviewer CLIs complete the pipeline and land into an isolated local bare origin. The test is excluded from routine suites because it consumes authenticated agent capacity; this does not make its implementation human-only. Default to codex/gpt-6-astra with an explicitly configured cross-family reviewer, allowing environment overrides for both adapter/model pairs. Resolve supported model pins at execution rather than inheriting CLI defaults. Tests must distinguish a reviewer approval from a completed landing.\n\n2026-09-20 scope refinement: Score rationale: The live CLI-to-landing seam protects adapter upgrades and new-host setup; two authenticated agents and isolated landing make D3 too small.\n",
       "created_at": "2026-06-03",
-      "scored_at": "2026-08-07",
+      "scored_at": "2026-09-20",
       "cross_repo": []
     },
     {
@@ -14793,17 +14796,19 @@
         "bug"
       ],
       "depends_on": [],
-      "assignee": "human",
+      "assignee": "cursor",
+      "model": "cursor-grok-4.6-high",
       "acceptance_criteria": [
         "Reproduce the historical erl_child_setup EPIPE on the current pinned Elixir/OTP toolchain with a bounded repeated-run probe, or record durable non-reproduction evidence before changing production code",
         "If reproduced, identify the actual spawn-pressure/interleaving path and eliminate or bound it so `MIX_ENV=test mix test.json --quiet --cover --cover-threshold 80 --summary-only --exclude integration` is green across repeated runs",
-        "No sleeps, no @tag :skip, no retry/gate weakening, and no contract changes to the cold-check witness path"
+        "No sleeps, no @tag :skip, no retry/gate weakening, and no contract changes to the cold-check witness path",
+        "If the failure does not reproduce, record the exact revision, toolchain, commands, seeds/run count, probe bound and captured logs. Close the investigation as not reproduced at that revision without claiming a fix or changing production behavior; renewed failure evidence reopens diagnosis through a new task."
       ],
       "out_of_scope": [
         "Re-litigating task 324's AgentAdapter fix (already landed and correct)",
         "Disabling ex_unit_json retry or weakening the precommit gate to hide the flake"
       ],
-      "body": "Follow-up to task 324. During that review, `mix precommit.full` went red intermittently (2 of 4 full `--summary-only` runs). The failing test was `Harness.AuditTest` \"run/1 — unaudited-range computation the noop path removes its audit worktree\" (`test/harness/audit_test.exs`), with `erl_child_setup: failed with error 32 (EPIPE) on line 284`. That is historical evidence, not a current root-cause proof: re-run a bounded probe on the current pinned toolchain before selecting a fix.\n\nThis is a DIFFERENT spawn path than 324 fixed: 324 hardened `Harness.AgentAdapter.invoke` (the agent CLI Port), but this flake is in the System.cmd/git-fixture/worktree path. Normal `mix test.json` HEALS it via ex_unit_json auto-retry (reports `flaky: N`, exit 0); precommit's `--summary-only` disables retry, so it surfaces as a hard `failed: 1`, exit 2.\n\nIf the failure still reproduces, trace the concrete spawn/interleaving path before changing it; bounding concurrent external-process spawns is one possible outcome, not a preselected solution. Confirm any fix with the project's precommit test command (`--summary-only`, retry disabled) across repeated runs.\n",
+      "body": "Follow-up to task 324. During that review, `mix precommit.full` went red intermittently (2 of 4 full `--summary-only` runs). The failing test was `Harness.AuditTest` \"run/1 — unaudited-range computation the noop path removes its audit worktree\" (`test/harness/audit_test.exs`), with `erl_child_setup: failed with error 32 (EPIPE) on line 284`. That is historical evidence, not a current root-cause proof: re-run a bounded probe on the current pinned toolchain before selecting a fix.\n\nThis is a DIFFERENT spawn path than 324 fixed: 324 hardened `Harness.AgentAdapter.invoke` (the agent CLI Port), but this flake is in the System.cmd/git-fixture/worktree path. Normal `mix test.json` HEALS it via ex_unit_json auto-retry (reports `flaky: N`, exit 0); precommit's `--summary-only` disables retry, so it surfaces as a hard `failed: 1`, exit 2.\n\nIf the failure still reproduces, trace the concrete spawn/interleaving path before changing it; bounding concurrent external-process spawns is one possible outcome, not a preselected solution. Confirm any fix with the project's precommit test command (`--summary-only`, retry disabled) across repeated runs.\n\n2026-09-20 scope refinement: This is a dispatchable bounded diagnosis; no human-only action is required. Choose and record the probe budget before running it, and preserve historical failure evidence even if the current revision does not reproduce.\n",
       "created_at": "2026-06-21",
       "scored_at": "2026-08-07",
       "cross_repo": []
@@ -16311,7 +16316,7 @@
       "bundle": "audit-architecture",
       "milestone": "v0_16",
       "status": "pending",
-      "title": "Split the ~1900-line Harness.Dispatch god module into per-concern modules behind a thin facade",
+      "title": "Separate Dispatch concerns behind the existing public facade",
       "scores": {
         "d": 5,
         "b": 5,
@@ -16349,7 +16354,7 @@
       "domains": [
         "otp"
       ],
-      "body": "Surfaced by the 2026-07-12 project health audit (arch-review.md #2). `lib/harness/dispatch.ex`\nis ~1900 lines (1913 as of 2026-07-29, growing) and the second-highest outgoing-coupling module in the project. It is the\nMCP/driver-surface facade but does not stay thin — it houses five-plus distinct concern\ngroups at different abstraction levels and for different audiences:\n\n- run dispatch + await (task/4, await/3, await_runs/2, await_result/2)\n- lifecycle control (cancel/1, hold/2, steer/2, resume/1, resume_failed/2, rereview/1, reland/1)\n- project administration (register_project/6)\n- cron/manual-approval admin (pending/1, approve/1)\n- cross-adapter benchmarking + verdict detail (compare/3..5, verdict_detail/1)\n- capability routing (recommend/2, assess_facets/1)\n- adapter/model resolution internals + await-summary presentation helpers\n\nExtract into per-concern modules (e.g. Dispatch.Lifecycle, Dispatch.Admin, Dispatch.Compare)\nthat Dispatch delegates to, keeping Dispatch itself a thin re-export facade IF the descripex\n`api()` / MCP tool-naming convention requires one flat namespace (verify against\nHarness.Manifest's @driver_surface and the generated MCP tool list before moving anything —\nthe MCP surface names must not change). Also lift the presentation helpers (turning a\n%LogRecord{} into human-readable await/review prose) out of the orchestration path.\n\nMantra check: this is pure structure — no judgment logic is added or removed; every extracted\nfunction keeps its exact behaviour. The MCP tool surface and every public arity must be\nbyte-for-byte preserved.\n",
+      "body": "Surfaced by the 2026-07-12 project health audit (arch-review.md #2). `lib/harness/dispatch.ex`\nis ~1900 lines (1913 as of 2026-07-29, growing) and the second-highest outgoing-coupling module in the project. It is the\nMCP/driver-surface facade but does not stay thin — it houses five-plus distinct concern\ngroups at different abstraction levels and for different audiences:\n\n- run dispatch + await (task/4, await/3, await_runs/2, await_result/2)\n- lifecycle control (cancel/1, hold/2, steer/2, resume/1, resume_failed/2, rereview/1, reland/1)\n- project administration (register_project/6)\n- cron/manual-approval admin (pending/1, approve/1)\n- cross-adapter benchmarking + verdict detail (compare/3..5, verdict_detail/1)\n- capability routing (recommend/2, assess_facets/1)\n- adapter/model resolution internals + await-summary presentation helpers\n\nExtract into per-concern modules (e.g. Dispatch.Lifecycle, Dispatch.Admin, Dispatch.Compare)\nthat Dispatch delegates to, keeping Dispatch itself a thin re-export facade IF the descripex\n`api()` / MCP tool-naming convention requires one flat namespace (verify against\nHarness.Manifest's @driver_surface and the generated MCP tool list before moving anything —\nthe MCP surface names must not change). Also lift the presentation helpers (turning a\n%LogRecord{} into human-readable await/review prose) out of the orchestration path.\n\nMantra check: this is pure structure — no judgment logic is added or removed; every extracted\nfunction keeps its exact behaviour. The MCP tool surface and every public arity must be\nbyte-for-byte preserved.\n\n2026-09-20 scope refinement: At review on 2026-09-20 dispatch.ex has 1,962 lines. This is context, not the success metric: preserve function/arity and MCP contracts while separating orchestration concerns from presentation. Choose module boundaries from the current call paths, not the historical example names.\n",
       "created_at": "2026-07-12",
       "scored_at": "2026-07-12",
       "cross_repo": []
@@ -16360,13 +16365,13 @@
       "bundle": "audit-architecture",
       "milestone": "v0_16",
       "status": "pending",
-      "title": "Establish one-way core → consumer layering and break the 71-module strongly-connected cycle",
+      "title": "Enforce consumer-to-core dependency boundaries and remove accidental reverse edges",
       "scores": {
         "d": 7,
         "b": 6,
-        "u": 5
+        "u": 4
       },
-      "eff": 0.79,
+      "eff": 0.71,
       "dep_layer": 1,
       "unlocks": 0,
       "markers": [],
@@ -16376,10 +16381,11 @@
       "assignee": "codex",
       "model": "gpt-6-astra",
       "acceptance_criteria": [
-        "`mix xref graph --format cycles` no longer reports the 71-module component (idiomatic behaviour↔impl + parser dispatch cycles may remain)",
-        "Driver-surface core modules have no compile/export edge back into Manifest, Chat.*, or Dashboard.*",
-        "A `.reach.exs` architecture boundary encodes core → consumer one-way layering and `mix reach.check --arch` exits non-zero on a re-introduced reverse edge",
-        "No behaviour change: mix precommit.full (mix ci) green on the landed base"
+        "Capture the current dependency graph and identify concrete reverse edges before editing; distinguish compile/export edges from runtime calls and intentional behaviour/implementation cycles.",
+        "Driver-core execution has no dependency on dashboard/chat/manifest presentation; the allowed consumer-to-core direction is explicit in the policy and documentation.",
+        "The .reach.exs policy and tests agree with that invariant, preserve intentional hub-and-spoke relationships and fail on a deliberately introduced forbidden reverse edge.",
+        "The identified accidental cycles disappear without merely renaming modules or weakening the policy; no stale component-size target is used as proof.",
+        "Public driver and MCP contracts remain stable, and the full landed-base gate passes."
       ],
       "out_of_scope": [
         "The four behaviour↔impl store cycles and the transcript parser dispatch cycle (idiomatic, not defects)",
@@ -16396,9 +16402,9 @@
       "domains": [
         "otp"
       ],
-      "body": "Surfaced by the 2026-07-12 project health audit (arch-review.md #1). `mix xref graph --format\ncycles` reports ONE strongly-connected cycle of 71 modules (~30% of the codebase) spanning\nrun-lifecycle internals, the lander, the entire dashboard/* tree, chat/*, cron/*, MCP\nsurface, roadmap, manifest, result_store, and more. The codebase has no enforced layering:\nyou cannot compile or reason about any one of these modules independently of the rest.\n\nA chunk of the cycle traces to `Harness.Manifest`'s @driver_surface list (curated module\natoms consumed by descripex to build the MCP/chat tool manifest) creating export/compile\nedges back into Dispatch/Run/Roadmap, while dashboard LiveViews and Describe/Chat.Tools read\nManifest in the reverse direction — folding the whole app into one component instead of\n`core → manifest → {chat, mcp, dashboard}` one-way layering.\n\nDo the work in two moves:\n1. AUDIT which edges in the 71-cycle are genuine bidirectional business logic vs accidental\n   doc/alias/`@driver_surface` references pulling a cold-path module into the warm-path\n   compile graph. The driver-surface core (Run, Roadmap, Dispatch, ResultStore, Lander, …)\n   must never depend on Manifest, Chat.*, or Dashboard.* — only the reverse.\n2. Break the reverse edges and ENCODE the layering as a boundary policy in `.reach.exs`\n   (`boundaries[:public]` facade + forbidden cross-boundary calls) so `mix reach.check --arch`\n   gates it going forward — a re-introduced reverse edge becomes a CI failure, not a\n   whole-surface discovery.\n\nThis is the highest-blast-radius task in the audit set; keep behaviour identical and lean on\nthe full suite. Ignore the four idiomatic behaviour↔impl store cycles and the parser\ndispatch-table cycle (arch-review #5/#6) — those are the standard behaviour+default-impl\npattern, not the target here.\n",
+      "body": "The July audit reported a 71-module strongly connected component; that number is historical, not a current baseline. The current .reach.exs explicitly describes hub-and-spoke architecture and already forbids selected calls. Audit the current compile/export/runtime edges and reconcile that existing policy with the desired invariant: consumers may depend on the driver core, while core execution must not depend on dashboard, chat or manifest presentation. Preserve intentional behavior/implementation cycles. Task 359 simplifies the facade but is not evidence that all remaining cycles are defects. Record which edges are accidental and remove those with an architecture test that catches their return.\n\n2026-09-20 scope refinement: Score rationale: The benefit is enforceable dependency boundaries, not elimination of an old graph count; the repository-wide audit has substantial blast radius.\n",
       "created_at": "2026-07-12",
-      "scored_at": "2026-07-12",
+      "scored_at": "2026-09-20",
       "cross_repo": []
     },
     {
@@ -16479,7 +16485,8 @@
         "The implemented field names the actual interleaving, restart, reset, or ownership path that caused the observed failure; it does not repeat the unverified suite-wide async premise",
         "The demonstrated cause is removed across every affected AgentRegistry-mutating test surface, without changing AgentRegistry's production contract",
         "resolver_test and reviewer-selection coverage pass repeatedly with no sleeps, skips, or hidden retry",
-        "mix check.dispatch green + the affected focused tests pass"
+        "mix check.dispatch green + the affected focused tests pass",
+        "If the failure does not reproduce, record the exact revision, toolchain, commands, seeds/run count, probe bound and captured logs. Close the investigation as not reproduced at that revision without claiming a fix or changing production behavior; renewed failure evidence reopens diagnosis through a new task."
       ],
       "out_of_scope": [
         "Changing AgentRegistry's production behaviour (it is intentionally a soft, non-persistent hint per its moduledoc) — this is test-isolation only"
@@ -16573,7 +16580,8 @@
       "acceptance_criteria": [
         "A recorded decision (accept-with-rationale / upstream-ask / replace) on the anubis_mcp LGPL-3.0 runtime exposure, documented in the repo (NOTICE / THIRD_PARTY_LICENSES preferred over SECURITY.md — it is a licensing record, not a security posture)",
         "The write-up frames the BEAM-release/LGPL relink question as a compliance question that was answered (with the reasoning), not as pre-established legal fact",
-        "If accept: the rationale is written down so future audits do not re-flag it as open"
+        "If accept: the rationale is written down so future audits do not re-flag it as open",
+        "The decision names the actual distribution artifacts and the current dependency/license evidence; accepted obligations have a concrete fulfillment path, and any need for legal advice is recorded rather than guessed."
       ],
       "out_of_scope": [
         "Any dependency/code change until the licensing decision is made — this task is the decision itself"
@@ -16586,7 +16594,7 @@
       "domains": [
         "otp"
       ],
-      "body": "Surfaced by the 2026-07-12 project health audit (deps-audit.md #1). `{:anubis_mcp, \"~> 1.6\"}`\n(locked 1.6.2) is a HARD RUNTIME dependency — it backs Harness.Dashboard.MCPServer, not an\noptional/dev tool — and its license is GNU LGPL-3.0 (confirmed from upstream LICENSE at\ngithub.com/zoedsoupe/anubis-mcp). Every other runtime dep (Phoenix/Ecto/Postgrex/Oban/Req/\nBandit family) is permissive (MIT/Apache-2.0).\n\nLGPL is copyleft-lite: LGPL-3.0 attaches relink/replacement conditions to combined works,\nand whether a BEAM mix release / escript (compiling the dependency straight in) satisfies\nthe \"dynamic linking\" boundary LGPL relies on is an OPEN COMPLIANCE QUESTION for this\ndecision to answer, not established legal fact — premise unverified, resolve it as part of\nthe decision (upstream guidance, Erlang Ecosystem Foundation / hex licensing discussions,\nor counsel if it matters enough). harness is a PUBLIC repo, so this warrants a one-time\nlicensing decision rather than a silent accept.\n\nThis is a HUMAN decision task (not a code dispatch). Decide one of: (a) accept the LGPL\nexposure with a documented rationale in NOTICE / THIRD_PARTY_LICENSES, (b) contribute to / request a\nlicense change upstream, or (c) evaluate an alternative MCP library / vendor the minimal\nsurface under a compatible license. Whichever, record the decision so it does not resurface\neach audit.\n",
+      "body": "Surfaced by the 2026-07-12 project health audit (deps-audit.md #1). `{:anubis_mcp, \"~> 1.6\"}`\n(locked 1.6.2) is a HARD RUNTIME dependency — it backs Harness.Dashboard.MCPServer, not an\noptional/dev tool — and its license is GNU LGPL-3.0 (confirmed from upstream LICENSE at\ngithub.com/zoedsoupe/anubis-mcp). Every other runtime dep (Phoenix/Ecto/Postgrex/Oban/Req/\nBandit family) is permissive (MIT/Apache-2.0).\n\nLGPL is copyleft-lite: LGPL-3.0 attaches relink/replacement conditions to combined works,\nand whether a BEAM mix release / escript (compiling the dependency straight in) satisfies\nthe \"dynamic linking\" boundary LGPL relies on is an OPEN COMPLIANCE QUESTION for this\ndecision to answer, not established legal fact — premise unverified, resolve it as part of\nthe decision (upstream guidance, Erlang Ecosystem Foundation / hex licensing discussions,\nor counsel if it matters enough). harness is a PUBLIC repo, so this warrants a one-time\nlicensing decision rather than a silent accept.\n\nThis is a HUMAN decision task (not a code dispatch). Decide one of: (a) accept the LGPL\nexposure with a documented rationale in NOTICE / THIRD_PARTY_LICENSES, (b) contribute to / request a\nlicense change upstream, or (c) evaluate an alternative MCP library / vendor the minimal\nsurface under a compatible license. Whichever, record the decision so it does not resurface\neach audit.\n\n2026-09-20 scope refinement: Base the decision on the actual distribution modes: source checkout, Mix development deployment and any release/escript actually shipped. Verify the locked package and current provider-owned license text. Record applicable obligations and who accepts them; no code agent decides legal acceptance on the operator behalf. Do not treat the historical relinking hypothesis as established law.\n",
       "created_at": "2026-07-12",
       "scored_at": "2026-07-12",
       "cross_repo": []
@@ -16635,57 +16643,61 @@
       "phase": 4,
       "bundle": "multi-agent",
       "status": "pending",
-      "title": "Add Kimi Code headless adapter + full roster wiring",
+      "title": "Integrate the package-owned Kimi adapter across harness surfaces",
       "scores": {
-        "d": 5,
-        "b": 7,
-        "u": 6
+        "d": 4,
+        "b": 5,
+        "u": 5
       },
-      "eff": 1.3,
-      "dep_layer": 0,
+      "eff": 1.25,
+      "dep_layer": 1,
       "unlocks": 0,
       "markers": [
         "parallel"
       ],
-      "depends_on": [],
+      "depends_on": [
+        442,
+        430
+      ],
       "assignee": "codex",
       "model": "gpt-6-astra",
       "acceptance_criteria": [
-        "Harness.AgentAdapter.Kimi implements capabilities/0, rule_channel/0, and build_command/1; defaults from `use Harness.AgentAdapter` cover the rest; the shared Harness.AgentAdapter.ConformanceCase passes unchanged",
-        "build_command/1 is verified against the installed Kimi CLI and current official command reference: prompt mode passes -p/--prompt as an option argument with --output-format stream-json and model_args via -m; it does not combine prompt mode with --yolo, --auto, or --plan because prompt mode already uses autonomous permissions",
-        "Permission/resume combinations are derived from the live CLI contract for the installed version; unsupported combinations and session tokens error rather than silently falling back",
-        ":kimi joins every roster surface: Harness.Roadmap @valid_agents, AgentRegistry @delegatable_agents + name map + agent type, Config @implementer_agents, AgentAdapter.Registry lookup map, and the dashboard agent-settings roster",
-        "model_availability probes Kimi's actual non-interactive model-catalog surface after checking the installed version's provider/catalog help; it does not assume `provider list` lists models when that command only lists providers, and fails loudly if no machine-readable catalog is available",
-        "Roster symmetry is asserted as a whole-surface invariant, not per-instance: a test proves every Harness.Roadmap @valid_agents member resolves to a registered adapter module and every registered adapter appears in the roster surfaces, with :droid pinned as the one documented render-only exception",
-        "Transcript parser maps :kimi from real captured stream-json/NDJSON output of one live `kimi -p` run; the raw-passthrough contract remains",
-        "The selected rule channel is proved against Kimi's actual AGENTS.md discovery semantics, including the run worktree path",
-        "CLAUDE.md § Agent Headless Entry Points gains a kimi row; skills/harness-driver/SKILL.md and priv/includes/harness-workflow.md adapter rosters updated; scripts/sync-harness-skills.sh run",
-        "Unit tests cover build_command permutations (model pin, resume, permission mode, env threading, rules injection) and reject command combinations the installed CLI rejects"
+        "Pin the delivered harness_agent_adapter revision from Task 442; no duplicate adapter implementation or registry is introduced inside harness.",
+        "Kimi is wired across roadmap ingestion, agent availability/configuration, model selection and dashboard surfaces; a whole-roster invariant catches missing or extra executor mappings, preserving the documented render-only exception.",
+        "Probe the installed CLI model-catalog contract and exercise a real explicit-model invocation and relevant failure; missing auth/catalog prerequisites fail with actionable setup instructions.",
+        "Transcript presentation is derived from captured real Kimi output while raw capture remains unchanged; unknown events retain their original information.",
+        "The installed rmap can render a Kimi task, and an isolated dispatch proves worktree isolation, rule delivery, explicit model selection and reviewer gating.",
+        "Update headless-entry documentation and both canonical harness skills, regenerate AGENTS.md through the portable generator, and propagate the skills."
       ],
       "out_of_scope": [
-        "The rmap-side --to kimi render target (rmap repo task 53 — must land and the installed rmap binary be rebuilt before a kimi-assigned task can dispatch, since harness shells out to rmap delegate)",
-        "Operator auth (kimi login device-code flow is a one-time host step, not code)",
-        "Promoting kimi into the cross-family reviewer trust defaults (operator decision after dispatch data exists)",
-        "Parsing kimi's event stream beyond the transcript-parser mapping (raw passthrough stays the contract)"
+        "Package-owned adapter implementation and shared conformance (Task 442).",
+        "Operator login or billing changes.",
+        "Changing default reviewer trust or claiming model performance without evidence."
       ],
       "touches": [
-        "lib/harness/agent_adapter/kimi.ex",
-        "test/harness/agent_adapter/kimi_test.exs",
-        "test/harness/agent_adapter/kimi_conformance_test.exs",
+        "mix.exs",
+        "mix.lock",
         "lib/harness/roadmap.ex",
         "lib/harness/agent_registry.ex",
         "lib/harness/config.ex",
-        "lib/harness/agent_adapter/registry.ex",
         "lib/harness/model_availability.ex",
-        "lib/harness/dashboard/transcript/parser.ex",
+        "lib/harness/dashboard/",
+        "test/harness/",
         "CLAUDE.md",
         "skills/harness-driver/SKILL.md",
         "priv/includes/harness-workflow.md"
       ],
-      "body": "Add a Harness.AgentAdapter for Kimi Code (Moonshot's coding CLI, installed at\n~/.kimi-code/bin/kimi, v0.26.0, docs https://moonshotai.github.io/kimi-code/).\nParallels Task 52 (pi.dev) — thin adapter, uniform OTP Port, raw output captured\nverbatim, reviewer AI is the gate.\n\nKnown CLI facts (verify again against the installed binary before coding; authority order:\nlive CLI > current official docs > this body): headless mode is\n`kimi -p/--prompt <prompt>` with `--output-format stream-json`; `-m/--model <model>`\npins the model. Installed v0.26.0 and the current command reference disagree with the old\ntask premise: prompt mode cannot be combined with `--yolo`, `--auto`, or `--plan`, and\nalready uses autonomous permissions. Do not emit `--yolo` on the prompt path. Probe\n`kimi provider --help` and its catalog subcommands for this installed version before\nchoosing the model-list command; `provider list` may list providers rather than models.\n`-c/--continue` resumes the working directory's previous session and `-S/--session <id>`\nresumes by id — pick only combinations the live CLI accepts. Kimi consumes AGENTS.md\n(its system-prompt template embeds a KIMI_AGENTS_MD block), so\n`:codex_ephemeral_file` is a hypothesis; prove the discovery semantics (cwd walk-up vs\nexplicit) before choosing the channel.\nKimi-specific extras (--skills-dir, --add-dir, --plan, acp/server subcommands) stay\nout of the four-callback contract per the Pi precedent. Auth is subscription-style\nkimi login (device-code) with providers configurable via `kimi provider`; check\nwhether an ambient API-key env var can shadow the login before deciding on an\nauth_env_scrub declaration, and cite the doc or observed behavior either way.\n",
+      "body": "The adapter behavior, implementations and registry moved to harness_agent_adapter in Task 397. Task 442 owns Kimi implementation and conformance in that package; this task consumes its delivered revision and integrates the route into harness. The sibling rmap Task 53 is done in the local rmap ledger as of 2026-09-20; verify that the dispatch host runs a binary containing it before live dispatch. The benefit is the requested additional execution option, with no presumed cost/quality advantage. Verify model catalog and transcript behavior against a live installed CLI and official provider documentation, never old task snippets. Keep shared adapter logic in its owning package.\n\n2026-09-20 scope refinement: Score rationale: The package work is tracked in 442; this task delivers the requested additional route and its whole-surface integration, not an unmeasured quality improvement.\n",
       "created_at": "2026-07-17",
-      "scored_at": "2026-08-07",
-      "cross_repo": []
+      "scored_at": "2026-09-20",
+      "cross_repo": [
+        {
+          "repo": "rmap",
+          "task_id": 53,
+          "linear_id": null,
+          "relation": "blocked_by"
+        }
+      ]
     },
     {
       "id": "367",
@@ -16973,7 +16985,7 @@
       "phase": 23,
       "bundle": "run-history",
       "milestone": "v0_17",
-      "status": "pending",
+      "status": "superseded",
       "title": "Per-adapter/model activity trail across runs and agent seats",
       "scores": {
         "d": 5,
@@ -16982,7 +16994,7 @@
       },
       "eff": 1.2,
       "dep_layer": 1,
-      "unlocks": 1,
+      "unlocks": 0,
       "markers": [],
       "depends_on": [
         "374"
@@ -17008,7 +17020,7 @@
         "lib/harness/result_store/",
         "lib/harness/manifest.ex"
       ],
-      "body": "Inspired by Block's Buzz audit trail, but deliberately narrower: harness has adapter/model\nattribution, not a durable member identity. Build the query that the persisted facts support.\nGiven an adapter and optional model, return its bounded chronological activity across seats\nand projects. Task 374's harness_events stream is the canonical source for newly recorded\nseat facts; ResultStore is only a labelled compatibility source for history created before\nthat stream exists. Do not present an adapter/model pair as a stable person, member, or\ncryptographic identity. The trail relays facts; routing and capability judgment stay with\nthe AIs reading them.\n",
+      "body": "Inspired by Block's Buzz audit trail, but deliberately narrower: harness has adapter/model\nattribution, not a durable member identity. Build the query that the persisted facts support.\nGiven an adapter and optional model, return its bounded chronological activity across seats\nand projects. Task 374's harness_events stream is the canonical source for newly recorded\nseat facts; ResultStore is only a labelled compatibility source for history created before\nthat stream exists. Do not present an adapter/model pair as a stable person, member, or\ncryptographic identity. The trail relays facts; routing and capability judgment stay with\nthe AIs reading them.\n\n2026-09-20 consolidation: the bounded multi-seat actor trail and labelled historical compatibility criteria are absorbed into Task 374. No separate query implementation or dispatch is needed. Task 441 consumes the resulting API for Activity.\n",
       "created_at": "2026-07-27",
       "scored_at": "2026-08-07",
       "cross_repo": []
@@ -17019,15 +17031,15 @@
       "bundle": "run-history",
       "milestone": "v0_17",
       "status": "pending",
-      "title": "Unified append-only lifecycle event log (harness_events) — every run action becomes a durable, queryable fact",
+      "title": "Unify lifecycle event history and bounded actor queries with explicit durability guarantees",
       "scores": {
         "d": 8,
         "b": 7,
-        "u": 4
+        "u": 7
       },
-      "eff": 0.69,
+      "eff": 0.88,
       "dep_layer": 0,
-      "unlocks": 3,
+      "unlocks": 2,
       "markers": [],
       "depends_on": [],
       "assignee": "codex",
@@ -17040,12 +17052,15 @@
         "A bounded/index-backed cross-project Elixir + MCP query filters by project, event type, adapter/model actor, time range, and payload text, with pagination/limit and deterministic ordering. Payload text explicitly covers reviewer report and concerns prose on verdict events, so \"which run raised this concern?\" is one bounded query instead of per-run verdict_detail calls",
         "Notification witness sinks consume or write through the same persisted event path; any deliberately separate delivery seam is documented as a projection of the stream, not a competing source of lifecycle truth",
         "ResultStore remains the per-run aggregate/projection and harness_events the fine-grained lifecycle history; no migration pretends to reconstruct actor/seat facts that were never persisted",
-        "Facts only: no scoring, classification, or judgment arithmetic; repo_enabled: false degrades to the documented in-memory ephemeral store; tests cover every taxonomy member, multi-writer append, idempotency, append failure, park/approve trace, and bounded cross-project text query"
+        "Facts only: no scoring, classification, or judgment arithmetic; repo_enabled: false degrades to the documented in-memory ephemeral store; tests cover every taxonomy member, multi-writer append, idempotency, append failure, park/approve trace, and bounded cross-project text query",
+        "Provide the actor-trail contract absorbed from Task 373: adapter plus optional model selects facts across implementer, reviewer, recovery, audit and operator-triggered seats; empty results are empty lists, pagination is bounded, and no absent historical actor is fabricated.",
+        "Define durability honestly: only a successful append claims durable history. A failed append leaves the existing lifecycle outcome unchanged, emits an independent failure witness, and does not claim lossless coverage. Notification delivery of a persisted event and any failure-only channel are explicitly distinguishable.",
+        "Ordering is defined for concurrent writers and late events, including a stable pagination tie-breaker; tests cover equal timestamps and retry idempotency without claiming a global causal order from wall-clock time alone.",
+        "If historical ResultStore rows are exposed, label their source and prevent double-counting events from the overlap period; adapter/model attribution never implies stable personal identity."
       ],
       "out_of_scope": [
         "Cryptographic signing / per-agent keypairs (Buzz's Schnorr identity) — separate decision, only relevant beyond single-operator",
         "Replacing ResultStore run records — they stay the per-run aggregate; the event log is the fine-grained stream beside them",
-        "Task 373's per-actor trail query surface — that task can consume this substrate but ships independently",
         "Nostr/relay protocol compatibility"
       ],
       "touches": [
@@ -17053,9 +17068,9 @@
         "priv/repo/migrations",
         "test/harness/"
       ],
-      "body": "Inspired by Block's Buzz event history, but without importing its signed-identity claim: harness currently scatters lifecycle facts across ResultStore projections, Notification sinks, Oban rows, artifacts, and soft process state. Add one versioned append-only harness_events history beside ResultStore. The task is a repo-wide writer audit, not a suggestive sample: define a closed taxonomy, instrument every lifecycle mutation including operator recovery controls, and pin idempotency, ordering, append-failure, and query-bound contracts. Notification becomes a delivery projection of the same persisted facts; PendingDispatch stays intentionally soft state; ResultStore stays the per-run aggregate. Facts only — meaning remains with the agents that query them. Dispatch as a solo/exclusive wave because the write-set spans the lifecycle surface.",
+      "body": "Inspired by Block's Buzz event history, but without importing its signed-identity claim: harness currently scatters lifecycle facts across ResultStore projections, Notification sinks, Oban rows, artifacts, and soft process state. Add one versioned append-only harness_events history beside ResultStore. The task is a repo-wide writer audit, not a suggestive sample: define a closed taxonomy, instrument every lifecycle mutation including operator recovery controls, and pin idempotency, ordering, append-failure, and query-bound contracts. Notification becomes a delivery projection of the same persisted facts; PendingDispatch stays intentionally soft state; ResultStore stays the per-run aggregate. Facts only — meaning remains with the agents that query them. Dispatch as a solo/exclusive wave because the write-set spans the lifecycle surface.\n\n2026-09-20 scope refinement: Absorbs Task 373 as one coherent event/query delivery. Chosen guarantee: durable successful appends, with explicitly witnessed gaps on write failure, not lossless transactional event sourcing; existing run outcomes remain unchanged. Consumers must not infer a complete audit trail after a witnessed gap. Actor history is a query on this same store, not a second product or persistence layer.\n\n2026-09-20 scope refinement: Score rationale: The event/query substrate now includes the actor trail and directly unblocks durable Activity; it also serves bounded cross-project diagnosis, with a repo-wide writer audit.\n",
       "created_at": "2026-07-28",
-      "scored_at": "2026-08-07",
+      "scored_at": "2026-09-20",
       "cross_repo": []
     },
     {
@@ -17636,7 +17651,7 @@
       "phase": 22,
       "bundle": "core-loop",
       "status": "pending",
-      "title": "Lander: landing job can complete (landed_sha recorded) without the roadmap advance ever reaching origin",
+      "title": "Make roadmap writeback recoverable after delivery has landed",
       "scores": {
         "d": 5,
         "b": 7,
@@ -17650,18 +17665,25 @@
       "assignee": "codex",
       "model": "gpt-6-astra",
       "acceptance_criteria": [
-        "A landing whose rmap-advance commit or push fails does not settle the Oban job as completed: it retries or errors loudly, and never records landed_sha while origin lacks the advance",
-        "A regression test covers the delivery-pushed-but-advance-failed path",
-        "dispatch-reland on a run with a recorded landed_sha and no surviving branch performs an advance-only reland instead of discarding with checkout_failed (test)"
+        "After a successful delivery push, landed_sha remains recorded even if roadmap writeback fails; delivery and roadmap-completion facts are independently observable.",
+        "A writeback failure remains durably recoverable and cannot complete the whole landing workflow silently. Retries repair writeback without re-running implementation/review or duplicating delivery.",
+        "Reland repairs roadmap completion from persisted delivery/provenance when the run branch is absent; verify that the recorded commit belongs to the target history before advancing tasks.",
+        "Regression tests cover delivery-pushed/writeback-failed, branch removed, repeated retry, coalesced partial writeback and PR-merged writeback failure, using isolated real Git origins.",
+        "Roadmap completion preserves every member task identity and reviewer verification provenance; cleanup does not destroy the evidence required for recovery."
       ],
       "out_of_scope": [
         "Changing the witness sink or notification format"
       ],
       "touches": [
         "lib/harness/lander.ex",
-        "test/harness/lander_test.exs"
+        "lib/harness/lander/",
+        "lib/harness/dispatch.ex",
+        "lib/harness/result_store/",
+        "test/harness/lander_test.exs",
+        "test/harness/lander/",
+        "test/harness/dispatch_test.exs"
       ],
-      "body": "Observed trading_dashboard 2026-08-14: task 64's landing job (Oban job 6898, queue landing_trading_dashboard) finished state=completed at 05:02:16Z, the ResultStore record carries landed_sha 92d18a91f0d4 (delivery 36537ec + two reviewer commits, all on origin/main), the run branch was cleaned up — but NO \"roadmap: task 64 -> done\" commit ever reached origin. The next landing on the same queue (task 56, job 6900, 25s later) pushed delivery AND advance normally. Consequence: origin diverged from the lander's own record — rmap still said in_progress for landed work, which is exactly the duplicate-land trap the workflow include warns about, except this time the STALE side was origin itself, so no amount of fetch/rebase could disprove \"didn't land\". The orchestrator had to hand-write the advance (trading_dashboard 9b6f4ab) with provenance copied from the ResultStore.\n\nTwo asks:\n1. Find and fix the path where Lander.Worker returns :ok after pushing the delivery but before (or despite) the rmap-advance commit/push failing — the advance must be part of the landing's success criterion, or the job must retry/fail loudly instead of completing.\n2. Make dispatch-reland usable for this state: job 6902 (manual_reland) discarded with {:checkout_failed, {:git_failed, ... \"invalid reference: harness/run-1786680419733-0929c71f\"}} because the branch was already deleted by the successful code landing. When the persisted record has a landed_sha and the branch is gone, reland should degrade to advance-only (re-run the rmap advance + push) instead of discarding on worktree checkout.\n\nPremise verified: Oban job rows 6898/6900/6902 and the ResultStore record were read live on 2026-08-14; trading_dashboard origin/main history 36537ec..9b6f4ab shows the gap.\n\nSecond occurrence, same day: trading_dashboard task 101 (run run-1786691814297-f2b6f148, grok/codex) — landing job completed, landed_sha ce880b3 recorded, delivery + review commits and even the post-merge audit landed on origin, but the \"task 101 -> done\" advance was again never pushed and was hand-written by the orchestrator (trading_dashboard 717addf). The bug is reproducible, not a one-off.\n",
+      "body": "Observed twice on trading_dashboard on 2026-08-14: delivery commits landed and landed_sha was persisted, but the roadmap completion commit did not reach origin; reland then failed because the run branch had been removed. Current Lander.writeback/3 still persists landed_sha before invoking task writeback. Preserve that truthful delivery fact. Make roadmap completion a separately observable, idempotent operation whose failure cannot be mistaken for full landing completion. Recovery must use the persisted landed commit and reviewer provenance even without the original branch. Cover automatic landing and the PR-merged path, which shares writeback, as well as coalesced task membership.\n",
       "created_at": "2026-08-14",
       "scored_at": "2026-08-14",
       "cross_repo": []
@@ -17679,14 +17701,12 @@
         "u": 7
       },
       "eff": 1.5,
-      "dep_layer": 1,
+      "dep_layer": 0,
       "unlocks": 0,
       "markers": [
         "parallel"
       ],
-      "depends_on": [
-        374
-      ],
+      "depends_on": [],
       "assignee": "cursor",
       "model": "cursor-grok-4.6-high",
       "acceptance_criteria": [
@@ -17697,7 +17717,9 @@
         "A failed or held run is relayed as a factual badge and action state; code does not compute urgency, health, stuckness, or priority from those facts",
         "No new rmap status, lifecycle store, or duplicate task projection becomes authoritative",
         "LiveView tests cover every lane, dependency-ready and dependency-waiting Pending cards, project filtering, bounded Done history, successful and rejected actions, empty states, and multiple projects",
-        "Operator-facing route or dashboard documentation that enumerates the roadmap surface remains accurate"
+        "Operator-facing route or dashboard documentation that enumerates the roadmap surface remains accurate",
+        "Specify and test deterministic placement for rmap in_progress with a settled unlanded run, held/failed attempts, multiple attempts, and temporarily contradictory sources. Keep the authoritative status and attempt identity visible; no task vanishes or appears as newly completed because of an older attempt.",
+        "Build current execution/landing lanes from existing live runs and persisted results; the event history in Task 374 is not a prerequisite or a new source of durable task status."
       ],
       "out_of_scope": [
         "Drag-and-drop or free-form lane movement",
@@ -17709,7 +17731,7 @@
         "lib/harness/dashboard/",
         "test/harness/dashboard/"
       ],
-      "body": "Turn the existing read-only RoadmapLive surface into a project-spanning task board. rmap remains authoritative for durable task status, while Harness run, result, and lifecycle-event facts provide execution and landing context. Present the workflow as factual lanes with direct actions that reuse existing dispatch and recovery contracts; do not add drag-and-drop or a second task-state model.",
+      "body": "Turn the existing read-only RoadmapLive surface into a project-spanning task board. rmap remains authoritative for durable task status, while Harness run, result, and lifecycle-event facts provide execution and landing context. Present the workflow as factual lanes with direct actions that reuse existing dispatch and recovery contracts; do not add drag-and-drop or a second task-state model.\n\n2026-09-20 scope refinement: Removed the event-log dependency: this board composes current rmap, run and landing facts already available. The implementer must define truthful precedence for divergent sources and multiple attempts rather than invent a new status model.\n",
       "created_at": "2026-08-15",
       "scored_at": "2026-08-15",
       "cross_repo": []
@@ -17720,46 +17742,38 @@
       "bundle": "operator-cockpit",
       "milestone": "v0_18",
       "status": "pending",
-      "title": "Add an operator Action Inbox and durable Activity view",
+      "title": "Add an operator Action Inbox over existing recovery and approval contracts",
       "scores": {
-        "d": 7,
+        "d": 5,
         "b": 8,
         "u": 7
       },
-      "eff": 1.07,
-      "dep_layer": 2,
+      "eff": 1.5,
+      "dep_layer": 0,
       "unlocks": 0,
       "markers": [],
-      "depends_on": [
-        373
-      ],
+      "depends_on": [],
       "assignee": "codex",
       "model": "gpt-6-astra",
       "acceptance_criteria": [
-        "Separate /harness/inbox and /harness/activity routes appear in dashboard navigation; Inbox displays the current count of unresolved supported actions",
-        "Inbox includes parked manual dispatch approvals, held runs, failed committed runs eligible for resume or rereview, and approved runs eligible for land or reland, using existing eligibility facts and guards",
-        "Approve, Resume, Resume Failed, Rereview, Land, and Reland invoke the existing Harness operation contracts directly; success updates or removes the row without a full reload, and errors remain visible without being treated as success",
-        "Activity presents deterministic, paginated lifecycle history with bounded filters for project, run, event type, adapter/model, time range, and payload text using the Task 374 and Task 373 query surfaces",
-        "Activity clearly labels any historical compatibility rows supplied by ResultStore and shows an empty result as an empty list rather than an error",
-        "When repository persistence is disabled, the views identify the event history as ephemeral without claiming durability",
-        "The UI relays facts and available operations only; it does not compute severity, urgency, stuckness, health, ranking, or routing judgments",
-        "LiveView and supporting context tests cover every direct action and guard failure, live count updates, filters, pagination, deterministic ordering, ephemeral mode, empty states, and operation errors",
-        "Operator-facing documentation that enumerates dashboard routes and controls remains accurate"
+        "The /harness/inbox route and navigation show the count of unresolved supported actions from current facts, scoped by project and run/task identity.",
+        "Approve, Resume, Resume Failed, Rereview, Land and Reland invoke existing guarded operations; held questions, where supported, retain their context.",
+        "Success refreshes/removes the corresponding row; errors remain visible, and duplicate/stale submissions cannot target a different attempt or imply success.",
+        "Tests cover every supported action, each guard failure, multiple attempts, live counts, empty states and operation errors; user-facing route documentation is updated.",
+        "The Inbox computes no severity, urgency, ranking or diagnosis and adds no independent acknowledgement/workflow store."
       ],
       "out_of_scope": [
-        "Creating, editing, reprioritizing, or dragging rmap tasks",
-        "A new event store, event taxonomy, or notification channel",
-        "Acknowledgement state for informational warnings",
-        "Automated action prioritization, severity scoring, or lifecycle diagnosis",
-        "Cost, runner, files, or knowledge-management dashboards"
+        "Historical Activity and event queries (Task 441 and Task 374).",
+        "Kanban task board (Task 387).",
+        "Task editing, reprioritization, severity scoring or a new lifecycle store."
       ],
       "touches": [
         "lib/harness/dashboard/",
         "test/harness/dashboard/"
       ],
-      "body": "Add separate operator Inbox and Activity dashboard surfaces over the lifecycle contracts delivered by Tasks 374 and 373. The Inbox is an explicit queue of interventions supported by existing Harness operations; Activity is a bounded chronological view of persisted lifecycle facts. Reuse the Dispatch facade and event-query APIs rather than reimplementing action eligibility, storage, or meaning in LiveView code.",
+      "body": "Deliver a current-action Inbox over existing Harness operations, independently of historical event storage. Show pending manual approvals, held runs, failed committed work eligible for recovery and approved unlanded work. Reuse operation guards and the Dispatch facade. Historical Activity is Task 441; no event-log or actor-trail dependency is required for current actionable state.\n\n2026-09-20 scope refinement: Score rationale: Current recovery/approval actions have direct operator value; separating Activity removes historical-query implementation from this scope.\n",
       "created_at": "2026-08-15",
-      "scored_at": "2026-08-15",
+      "scored_at": "2026-09-20",
       "cross_repo": []
     },
     {
@@ -17978,11 +17992,11 @@
       "status": "pending",
       "title": "Gate runner: declare check dependencies, run independent gates in parallel, capture one log per gate",
       "scores": {
-        "d": 5,
+        "d": 6,
         "b": 6,
-        "u": 7
+        "u": 6
       },
-      "eff": 1.3,
+      "eff": 1.0,
       "dep_layer": 0,
       "unlocks": 0,
       "markers": [],
@@ -17991,11 +18005,14 @@
       "model": "cursor-grok-4.6-high",
       "acceptance_criteria": [
         "A gate is declared with an id, a label, the command to run, its dependencies, and an optional allow-failure flag; the check aggregates (check.fast, check.dispatch, precommit, precommit.full/ci) are expressed as gate sets over that declaration instead of serial alias lists",
-        "Independent gates within one aggregate run concurrently under a bounded concurrency limit while declared dependencies are respected; precommit.full's ex_dna, reach.check, and dialyzer.json are independent of each other and must no longer run strictly serially",
+        "Independent gates within one aggregate run concurrently under a bounded concurrency limit while declared dependencies are respected; ex_dna, reach.check and dialyzer.json are candidates whose safe concurrency must be verified against their shared resources",
         "Each gate's stdout and stderr are captured to its own per-run log file; terminal output is a status table of gate, status, duration, and log path rather than interleaved streams",
         "A machine-readable summary maps each gate to its status, duration, and log path, so a reviewer records the checks block from structured data instead of prose about a hand-rolled mktemp path",
         "The existing alias names remain the entry points and behave the same from a caller's view; the aggregate exits non-zero when any gate that is not marked allow-failure fails",
-        "Tests cover dependency ordering, concurrent execution of independent gates, failure propagation to the aggregate exit status, and one log file per gate"
+        "Tests cover dependency ordering, concurrent execution of independent gates, failure propagation to the aggregate exit status, and one log file per gate",
+        "Before selecting concurrent gates, identify shared mutable build artifacts, compiler/PLT locks and process/resource constraints. Only concurrently execute combinations shown safe on a cold and warm checkout; record resource serialization explicitly.",
+        "Failure semantics cover dependent gates blocked by a failed prerequisite, cancellation, timeouts and interruption; allow-failure cannot weaken an existing mandatory check.",
+        "Compare the same declared checks before/after using captured timings; preserve result semantics and bound resource use rather than treating concurrency alone as success."
       ],
       "out_of_scope": [
         "Any verdict or judgment logic — the runner counts status, duration, and exit code; the reviewer AI remains the gate and decides what a failure means",
@@ -18013,9 +18030,9 @@
       "domains": [
         "tooling"
       ],
-      "body": "Two separate documents — this repo's CLAUDE.md (\"Capture dispatch-gate output on the first run\") and the portfolio harness-workflow include (\"Capture dispatch-check output once, to a unique tmp log\") — instruct every agent to hand-roll LOG=$(mktemp -t ...) and report the path in the reviewer's checks entry. That is a convention standing in for a mechanism: it depends on each agent remembering, it produces prose instead of data, and it silently fails when an agent forgets and re-runs a verbose gate just to read it.\n\nSeparately, precommit.full runs harness.deps.check -> precommit -> ex_dna -> reach.check -> dialyzer.json strictly serially even though the last three are mutually independent, so the pre-PR gate is longer than it needs to be.\n\nIdea from DeepSeek Harness scripts/run-gates.ts: package scripts own the names, the runner owns the graph. Each gate carries {id, label, command, needs, allowFailure}, gates run under bounded in-process parallelism, and each gate's output is captured into its own chunk list instead of being interleaved. The transferable part is the declaration plus captured-log-per-gate plus status table; the closed Mode union and the npm-script plumbing are not.\n",
+      "body": "Two separate documents — this repo's CLAUDE.md (\"Capture dispatch-gate output on the first run\") and the portfolio harness-workflow include (\"Capture dispatch-check output once, to a unique tmp log\") — instruct every agent to hand-roll LOG=$(mktemp -t ...) and report the path in the reviewer's checks entry. That is a convention standing in for a mechanism: it depends on each agent remembering, it produces prose instead of data, and it silently fails when an agent forgets and re-runs a verbose gate just to read it.\n\nSeparately, precommit.full runs harness.deps.check -> precommit -> ex_dna -> reach.check -> dialyzer.json strictly serially even though the last three are mutually independent, so the pre-PR gate is longer than it needs to be.\n\nIdea from DeepSeek Harness scripts/run-gates.ts: package scripts own the names, the runner owns the graph. Each gate carries {id, label, command, needs, allowFailure}, gates run under bounded in-process parallelism, and each gate's output is captured into its own chunk list instead of being interleaved. The transferable part is the declaration plus captured-log-per-gate plus status table; the closed Mode union and the npm-script plumbing are not.\n\n2026-09-20 scope refinement: The historical claim that the final three checks are independent is a hypothesis, not proof. Validate it before scheduling them together; any resource-driven serialization must be explicit in the graph. This is a check-invocation tool, never another harness verdict gate.\n\n2026-09-20 scope refinement: Score rationale: Captured check evidence is valuable; safe concurrency, cancellation and shared build state make the original D5 optimistic.\n",
       "created_at": "2026-08-23",
-      "scored_at": "2026-08-23",
+      "scored_at": "2026-09-20",
       "cross_repo": []
     },
     {
@@ -18030,20 +18047,21 @@
         "u": 7
       },
       "eff": 1.75,
-      "dep_layer": 0,
+      "dep_layer": 1,
       "unlocks": 0,
       "markers": [],
-      "depends_on": [],
+      "depends_on": [
+        430
+      ],
       "assignee": "grok",
       "model": "grok-4.6",
       "acceptance_criteria": [
-        "A decision-record tier exists whose path encodes lifecycle (proposed / implemented / rejected) and class, and whose format requires an explicit alternatives-considered section — a decision recorded without what it beat invites the re-litigation the tier exists to prevent",
-        "Each settled decision currently narrated inline in CLAUDE.md is represented as a record: the agent-gate workflow ('THE architecture, do not re-litigate'), the build-thin-core orchestration-library choice, and the inline-vs-dispatch routing rule",
-        "Postmortems are a separate tier from decision records; the incident narratives currently inline — the 2026-06-12 duplicate-land misread and the backlog-churn observation in the harness-workflow include — move there",
-        "CLAUDE.md and priv/includes/harness-workflow.md keep a one-line standing order plus a link per moved item; the behavioral force of every moved rule is unchanged and no standing order loses its imperative",
-        "A check validates decision-record format (folder lifecycle agrees with the declared status, required sections present, relative links resolve) and enforces per-file word ceilings from a manifest. The ceiling for the reviewer-facing surface is measured on the RENDERED AGENTS.md, because that is the artifact every cross-family reviewer pays for on every run",
-        "The check runs from a clone of this repo without depending on a personal checkout path, and is wired into the pre-PR gate; the current rendered baseline (15,062 words, measured 2026-08-23 after a regen that pulled in new eager critical-rules sections) is recorded in the manifest as the starting ceiling",
-        "Ceilings are guardrails, not reduction targets: the failure message names the remedy order (relocate, condense, raise) and raising a ceiling with a stated reason is a legitimate outcome, not a gate bypass"
+        "The agent-gate, thin-core and inline-versus-dispatch decisions retain their rationale and alternatives in existing or necessary decision records; incident histories are separately addressable.",
+        "CLAUDE.md and priv/includes/harness-workflow.md preserve the force of every standing rule with concise text and resolvable references; no rule is silently demoted to optional reading.",
+        "A minimal format check validates required rationale/alternatives/status and links; do not add a folder lifecycle/class taxonomy where a record field suffices.",
+        "Word budgets measure rendered AGENTS.md and the named source files against a freshly captured baseline. Relocate/condense/justifiably raise is the documented remedy order.",
+        "Use the portable Task 430 generator and freshness gate without duplicating them; wire only the additional format/budget validation into the full gate.",
+        "Verify links after scripts/sync-harness-skills.sh propagation, including access to moved material outside this checkout, and add focused positive/negative tests for the checker."
       ],
       "out_of_scope": [
         "A mutating auto-regen hook for AGENTS.md — regeneration stays an explicit step and --check stays the gate; a hook that rewrites and re-stages a generated file during a commit is not wanted here",
@@ -18062,9 +18080,9 @@
       "domains": [
         "docs"
       ],
-      "body": "CLAUDE.md currently carries three different tiers in one eager-loaded file: standing orders (imperative, must stay ambient), settled-decision rationale ('do not re-litigate' plus the argument that settled it), and incident postmortems (the duplicate-land story, the backlog-churn story). The rationale and the postmortems are the longest passages and the least load-bearing per session — but they are eager, and AGENTS.md is generated from them, so every cross-family reviewer on every run pays for them. Measured 2026-08-23: the rendered AGENTS.md is 15,062 words — and it grew ~1,000 words during the very session that measured it, purely from upstream edits to an eager include, without anyone in this repo touching CLAUDE.md. The file has already been hand-trimmed twice (2026-05-30, 2026-06-22) and grown back both times, which is the argument for a gate rather than a third trim.\n\nIdea from DeepSeek Harness: .agents/notes uses {lifecycle}/{class}/date-title.md with a mandatory '## Alternatives considered' section and a machine-checked format, kept deliberately separate from docs/postmortem (incidents, written only when a bug is subtle AND systemic AND costly to rediscover). docs/AGENTS.md adds per-file word ceilings from a manifest with the stated policy that a too-low ceiling is a budget bug, not a mandate to cut. Skipping their archive tier and their bilingual pairing machinery — dsh-scale ceremony for a problem this repo does not have.\n\nNote on the check's home: sync-agents-md.sh currently lives in a personal marketplace checkout, so the freshness gate is not runnable from a clone. This task's check must be portable; making the existing --check portable is the natural place to fix that.\n",
+      "body": "Reduce repeated narrative in the eager reviewer surface while preserving mandatory instructions. Move the named settled rationale and incident histories into decision/postmortem records, use existing documents where they already own that material, and keep concise imperative rules with resolvable references. Add a small format/word-budget check; the portable AGENTS generator and its freshness check belong exclusively to Task 430. Measure the rendered baseline at implementation time; the historical August count is not a current budget. Links must remain usable from this checkout and from propagated harness skills/includes.\n\n2026-09-20 scope refinement: Score rationale: The eager reviewer text is paid on each run; a bounded relocation and budget check addresses regrowth while 430 owns generator portability.\n",
       "created_at": "2026-08-23",
-      "scored_at": "2026-08-23",
+      "scored_at": "2026-09-20",
       "cross_repo": []
     },
     {
@@ -18265,7 +18283,10 @@
         "The answer path reuses existing primitives, not new ones: dispatch-steer with the answer text + dispatch-resume re-enters the run in the same worktree, and a test proves the question and answer both reach the re-invoked agent's prompt/context",
         "Harness reads question.json mechanically only — no classifier, regex, or branching on question content anywhere in harness code (the mantra: count facts, never judge them). A malformed or empty question.json is ignored-and-logged, never a crash",
         "Timeout semantics are explicit and tested: what happens to lifetime_timeout while a run is parked on an unanswered question is a documented, deliberate choice, not an accident",
-        "skills/harness-driver/SKILL.md and priv/includes/harness-workflow.md document the channel (anti-staleness contract), propagated via scripts/sync-harness-skills.sh; mix check.dispatch green plus focused tests for the run-lifecycle and notification paths"
+        "skills/harness-driver/SKILL.md and priv/includes/harness-workflow.md document the channel (anti-staleness contract), propagated via scripts/sync-harness-skills.sh; mix check.dispatch green plus focused tests for the run-lifecycle and notification paths",
+        "Each question is fenced to its run/invocation and has a stable identity. Resume consumes or archives only the answered question; a stale file cannot park the next invocation again, and a later genuine question can park normally.",
+        "Question, answer and pending/answered state survive the supported process/node recovery path without cross-run leakage or duplicate notifications; document the recovery boundary and test it.",
+        "Choose and document the unanswered-hold lifetime policy before dispatch: held time remains inside the existing lifetime budget, expiry records a recoverable timeout, and resume requires an answer for question-held runs. No unbounded wait or ambient timeout change."
       ],
       "out_of_scope": [
         "Reviewer or audit questions — the reviewer already has the concerns channel; baseline is the implementer path only",
@@ -18283,7 +18304,7 @@
         "skills/harness-driver/SKILL.md",
         "priv/includes/harness-workflow.md"
       ],
-      "body": "Today a headless implementer has no way to ask back: it guesses on ambiguous acceptance criteria, and the miss surfaces only post-hoc as reviewer concerns or a reject — a full run's tokens spent on a wrong guess. The operator asked for a Rueckfrage channel (2026-08-24 session).\n\nAll building blocks exist; only the agent-side trigger is missing. Premises, each verified against the harness-driver SKILL and CLAUDE.md (documented shipped surfaces): the :held state plus dispatch-steer (stash guidance for the next agent boundary) and dispatch-resume (re-enter :running in the same worktree) shipped in v0_9 (Task 150); the write-a-json-artifact-harness-reads-it-mechanically pattern is established (review.json, audit.json, recovery.json); Harness.Notification sinks (FileSink/CommandSink) are the shipped push channel for witness events.\n\nSuggested direction, not binding: avoid mid-turn file watching entirely — the natural detection point is the agent-invocation boundary. The agent writes .harness/question.json and ends its invocation; harness, before treating the run as complete, checks for the file and routes to :held + notification instead of commit/review. The answer rides the existing steer note; resume re-invokes the agent in the same worktree with question + answer injected (the resume_failed report-injection pattern). Whatever is chosen must keep judgment out of harness: parking, notifying, and threading text are mechanics; deciding what the question means and what to answer belongs to the orchestrator AI.\n\nDispatch trigger: harness runtime / run-lifecycle change (gen_statem states, notification surface) — per the routing gate this earns the full implement-review-land cycle rather than inline work.\n",
+      "body": "Today a headless implementer has no way to ask back: it guesses on ambiguous acceptance criteria, and the miss surfaces only post-hoc as reviewer concerns or a reject — a full run's tokens spent on a wrong guess. The operator asked for a Rueckfrage channel (2026-08-24 session).\n\nAll building blocks exist; only the agent-side trigger is missing. Premises, each verified against the harness-driver SKILL and CLAUDE.md (documented shipped surfaces): the :held state plus dispatch-steer (stash guidance for the next agent boundary) and dispatch-resume (re-enter :running in the same worktree) shipped in v0_9 (Task 150); the write-a-json-artifact-harness-reads-it-mechanically pattern is established (review.json, audit.json, recovery.json); Harness.Notification sinks (FileSink/CommandSink) are the shipped push channel for witness events.\n\nSuggested direction, not binding: avoid mid-turn file watching entirely — the natural detection point is the agent-invocation boundary. The agent writes .harness/question.json and ends its invocation; harness, before treating the run as complete, checks for the file and routes to :held + notification instead of commit/review. The answer rides the existing steer note; resume re-invokes the agent in the same worktree with question + answer injected (the resume_failed report-injection pattern). Whatever is chosen must keep judgment out of harness: parking, notifying, and threading text are mechanics; deciding what the question means and what to answer belongs to the orchestrator AI.\n\nDispatch trigger: harness runtime / run-lifecycle change (gen_statem states, notification surface) — per the routing gate this earns the full implement-review-land cycle rather than inline work.\n\n2026-09-20 scope refinement: The chosen timeout policy keeps the existing lifetime budget inclusive of question-held time; it bounds resource retention and preserves recoverable expiry. This task must make question consumption/idempotency explicit, not rely on deleting a file by convention.\n",
       "created_at": "2026-08-24",
       "scored_at": "2026-08-24",
       "cross_repo": []
@@ -19002,13 +19023,13 @@
       "phase": 20,
       "bundle": "config-surface",
       "status": "pending",
-      "title": "Scope inherited credentials per project — every dispatched agent currently sees every registered project's keys",
+      "title": "Harden project-scoped agent execution policy",
       "scores": {
-        "d": 4,
-        "b": 7,
-        "u": 6
+        "d": 6,
+        "b": 8,
+        "u": 7
       },
-      "eff": 1.63,
+      "eff": 1.25,
       "dep_layer": 1,
       "unlocks": 0,
       "markers": [
@@ -19020,20 +19041,13 @@
       "assignee": "codex",
       "model": "gpt-6-astra",
       "acceptance_criteria": [
-        "%Harness.Project{} carries an optional credential allowlist of environment-variable NAMES. Unset (the default) preserves today's behaviour exactly — the agent inherits the orchestrator's full environment — so no registered project's integration suite breaks on the day this lands",
-        "When a project declares the allowlist, Harness.Run builds the Invocation.env scrub map by diffing the orchestrator's live environment against that list plus the names harness itself must pass, and sets every remaining name to false. The agent Port therefore receives the declared set and nothing else. This uses the existing Invocation.env mechanism; do not add a second env pathway",
-        "The allowlist composes with, and never silently overrides, the existing :cron_polling subscription_env_scrubs. State the precedence in the moduledoc and pin it with a test: a name that is both allowlisted and scrubbed must resolve one way, deterministically",
-        "Harness never reads, stores, logs or persists a credential VALUE. Only names are declared, compared and recorded — Task 25 put credential vaulting out of scope and it stays out of scope",
-        "Each run records the environment-variable NAMES its agent Ports were given, so the allowlist can be authored from evidence instead of guessed. This is the half that makes the feature usable: nobody currently knows which keys a given project actually needs, because everything has always been present",
-        "Registration validates the field to its @type at every entry point (dashboard form, ProjectRegistry.upsert/1 and register/1 with an attrs map, config-seeded entries), consistent with the validation Task 375 establishes",
-        "Tests cover: unset allowlist inherits everything; a declared allowlist scrubs an inherited name absent from it; a declared name present in the orchestrator env survives; the declared-plus-scrubbed precedence case; and that the recorded name list contains no values",
-        "mix check.dispatch green plus focused mix test.json for the project, registration and run env paths"
+        "An authorized implementer and independent reviewer evaluate the complete private advisory scope, including every affected execution seat, and record evidence privately.",
+        "Tests establish the required isolation, compatibility, precedence and diagnostic boundaries specified in the private record without exposing sensitive data.",
+        "The public delivery description remains generic until the fix is released and the advisory is published; activation and operator policy configuration are explicitly accounted for in private verification."
       ],
       "out_of_scope": [
-        "Storing, vaulting, encrypting or injecting credential values. harness passes through what the operator's environment already holds; this task narrows that pass-through and adds nothing that could hold a secret",
-        "Authoring the actual per-project allowlists. That is operator data derived from the evidence this task produces, filed separately once the recorded name lists exist",
-        "The reviewer and audit Ports' own environment, if it differs from the implementer's. Bring them under the same rule only if they already share the code path; a divergent path is a follow-up",
-        "Any change to how ~/.secrets is loaded or to the ExecStart wrapper. The orchestrator's own environment is the operator's business; this task governs only what is handed to a spawned agent"
+        "Unrelated credential storage or account-management features.",
+        "Publishing the advisory before its fix and release."
       ],
       "files_to_modify": [
         "lib/harness/project.ex",
@@ -19054,9 +19068,9 @@
       "domains": [
         "otp"
       ],
-      "body": "`Harness.AgentAdapter.Invocation` carries `env`, a map of variable name to either a string (set) or `false` (scrub, so the agent does not inherit it). It threads into the Port spawn via `build_command/1`, and `false` is the Erlang Port convention for removing a variable. The mechanism is complete and shipped — Task 25 built it.\n\nIt is used today as a scalpel, in exactly one place: `config/config.exs`'s `subscription_env_scrubs` removes `ANTHROPIC_API_KEY` for claude and `OPENAI_API_KEY` for codex, so those agents fall back to subscription OAuth instead of a metered key. Two names. Everything else the spawned agent inherits wholesale from the orchestrator BEAM.\n\nOn the deployment host that BEAM sources the operator's secrets file before starting, because most registered projects' integration suites flunk without their provider keys. The consequence is that an agent dispatched for project A holds project B's, C's and D's credentials for the duration of its run — and those agents are third-party CLIs running attacker-influenceable content, since a task body, a diff or a dependency's README is input a prompt injection can ride in on. The blast radius of any one compromised or injected agent run is every credential on the host, not the one project it was dispatched for.\n\nThe inversion is small because the primitive already exists: instead of a denylist of two names, a per-project allowlist. Harness reads its own environment, subtracts what the project declared, and sets `false` for the remainder. No new concept, no new pathway — a declaration on `%Harness.Project{}` and the code that derives the scrub map from it.\n\nThe reason this is a task rather than an inline edit is the second half. What a project actually needs is written down nowhere; it works because everything is present. An allowlist assembled by guessing reds that project's integration suite on the next dispatch, and the failure will look like a flaky test rather than a missing key. So the run must first record which names it handed over — names only, never values — and the allowlists get authored from that evidence afterwards. Default-unset preserving today's behaviour is what makes the rollout incremental instead of a flag day.\n\nInteraction to get right rather than discover: `subscription_env_scrubs` already removes two names deliberately. An allowlist that happens to include `ANTHROPIC_API_KEY` must not silently undo that scrub. Pick a precedence, document it, test it.\n",
+      "body": "Implement the project-scoped execution-policy hardening described in the private draft advisory titled \"Harden project-scoped agent execution policy\" under this repository’s Security → Advisories. The private record carries the technical scope, all affected execution seats, rollout requirements and test cases; reviewers and implementers must read it before working. Preserve existing public contracts unless that record explicitly requires a change. Do not copy mechanisms, reproduction details or unpublished advisory identifiers into public roadmap entries, commit messages or comments. The earlier public task text has been removed from the current roadmap but remains in Git history; the private record notes that disclosure.\n\n2026-09-20 scope refinement: Score rationale: The complete project policy applies across execution seats and needs independent security review; implementation effort is greater than the original partial scope.\n",
       "created_at": "2026-08-25",
-      "scored_at": "2026-08-25",
+      "scored_at": "2026-09-20",
       "cross_repo": []
     },
     {
@@ -19792,13 +19806,13 @@
       "phase": 25,
       "bundle": "core-loop",
       "status": "pending",
-      "title": "Settle every in-flight run on node shutdown so a restart never leaves a committed branch without a run record",
+      "title": "Persist recoverable run outcomes during graceful node shutdown",
       "scores": {
-        "d": 5,
-        "b": 7,
-        "u": 6
+        "d": 6,
+        "b": 9,
+        "u": 8
       },
-      "eff": 1.3,
+      "eff": 1.42,
       "dep_layer": 0,
       "unlocks": 0,
       "markers": [
@@ -19808,39 +19822,38 @@
       "assignee": "codex",
       "model": "gpt-6-astra",
       "acceptance_criteria": [
-        "Stopping the application (SIGTERM -> Application.stop, or Run.Supervisor terminate) with runs in flight settles every live run within a bounded window well under 120s: implementer / reviewer / recovery Ports are terminated, a :failed record with a reason naming the node shutdown is persisted through ResultStore, the harness/<run-id> branch is retained, and the worktree is finished as :failed (retained). Test with a fake long-running Port that ignores stdin EOF",
-        "Harness.Run traps exits (or the supervisor child spec carries a shutdown value that lets terminate/3 run) so crash_settle/3 actually executes under a supervisor-driven :shutdown, pinned by a test that stops Run.Supervisor with a live run and asserts the record exists afterwards",
-        "Dispatch.rereview/1 and Dispatch.resume_failed/1 accept such a record: after a simulated shutdown-settle, rereview starts a review-only run branched off the retained branch and resume_failed starts an implementer run off it — no hand-built start_run needed",
-        "The Oban job of a run interrupted by shutdown ends in a state that names the shutdown rather than an unrelated cancel; the harness-workflow include's Recover-Don't-Redo table gains a row for a node restart mid-run (record with the shutdown reason -> rereview / resume_failed), propagated with scripts/sync-harness-skills.sh",
-        "Oban Lifeline no longer re-attempts a dispatch job whose run is still alive: Harness.Oban derives Lifeline rescue_after from the configured run lifetime budget (Config {:run, :lifetime_timeout} plus a margin) instead of the fixed 30-minute constant, so a Run.Worker job that legitimately executes for the full budget is never rescued into a {:duplicate_run_in_flight, pid} cancel; pinned by a test that asserts rescue_after > lifetime_timeout for the running config, and the Task 160 boot orphan sweep (states available/scheduled/executing/retryable) demonstrably still sees the job row of a live run after a restart",
-        "Once the application has begun stopping (Application.prep_stop/1 or Run.Supervisor terminating), no run spawns a new agent Port: the reviewer re-prompt (settle_review on a :missing verdict) and the reviewer-timeout rotation settle the run with the shutdown reason instead of re-invoking a reviewer. Pinned by a test that stops the supervisor while a fake reviewer Port is live and asserts no second reviewer invocation happened",
-        "Stopping the application with zero runs but N open MCP SSE sessions finishes in seconds, not N x shutdown_timeout: Application.prep_stop/1 sends :close_sse to every registered handler (anubis StreamableHTTP handler map) and waits bounded for them to exit before the Endpoint tears down. Pinned by a test that registers a fake SSE handler, calls the prep_stop path, and asserts the handler received :close_sse"
+        "Stopping an isolated application or Run.Supervisor with live implementer, reviewer and recovery invocations persists a failed/shutdown record, retains committed branch/worktree evidence and terminates owned agent processes within a documented bound below the service stop timeout.",
+        "After shutdown begins, no reviewer reprompt, rotation, recovery or other agent invocation starts; a race-oriented test proves this at the invocation boundary.",
+        "The storage lifecycle remains available until run settlement finishes; tests exercise application-wide shutdown ordering as well as an individual supervisor stop.",
+        "The existing rereview and resume_failed operations recover eligible retained commits from shutdown records without hand-built start_run calls; absent commits are reported truthfully.",
+        "Interrupted dispatch jobs and ResultStore records retain attributable shutdown facts rather than being reported as an unrelated cancellation.",
+        "Tests use controlled long-running processes and explicit synchronization, cover persistence failure visibly, and do not claim graceful cleanup under SIGKILL. Update and propagate the recovery workflow documentation."
       ],
       "out_of_scope": [
-        "Changing the systemd unit (TimeoutStopSec) — operator-side",
-        "Adopting Oban.Plugins.Lifeline unless AC 5 shows it is the mechanism",
-        "Re-implementing the interrupted work — recovery stays rereview / resume_failed"
+        "Lifeline rescue timing and duplicate attempts (Task 439).",
+        "MCP SSE connection drain (Task 440).",
+        "Production service restarts, changing systemd timeouts or guaranteeing callbacks after SIGKILL."
       ],
       "files_to_modify": [
+        "lib/harness/run.ex",
         "lib/harness/run/actions/settlement.ex",
         "lib/harness/run/supervisor.ex",
-        "lib/harness/dispatch.ex"
+        "lib/harness/application.ex"
       ],
       "touches": [
         "lib/harness/run.ex",
-        "lib/harness/run/actions/settlement.ex",
-        "lib/harness/run/actions/control.ex",
-        "lib/harness/run/supervisor.ex",
-        "lib/harness/run/worker.ex",
+        "lib/harness/run/",
         "lib/harness/application.ex",
         "lib/harness/dispatch.ex",
         "priv/includes/harness-workflow.md",
+        "skills/harness-driver/SKILL.md",
         "test/harness/run/",
+        "test/harness/run_test.exs",
         "test/harness/dispatch_test.exs"
       ],
-      "body": "Observed 2026-09-13 on the deployed node (ex63-eth, harness.service): at 01:47:48 UTC the node received SIGTERM while run run-1789262032622-221c3186 (task 426, codex) was in :reviewing with a committed branch (da370a0, 14 files, +754/-52) and harness had just re-prompted the reviewer once for a :missing verdict. The drain hung: the endpoint drained its LiveView socket, MCP SSE sessions kept emitting keepalive warnings every 15s, and the process exited at 01:49:48 — exactly TimeoutStopSec=2min later, i.e. systemd SIGKILLed it. Consequences, all verified after the restart: Harness.Run.Supervisor.list_runs() == [], ResultStore has NO record for the run (crash_settle/3 never ran — terminate/3 was pre-empted by SIGKILL, or never reached because the gen_statem does not trap exits; premise unverified which), the boot worktree sweep removed the run worktree (branch retained), and the Oban job 1917 sat in state cancelled with a single error entry from attempt 2 at 01:44:32 reading {:duplicate_run_in_flight, pid} — so the live run had already lost its Oban anchor three minutes before the SIGTERM for a reason the journal does not show (no Run.Worker log line at 01:44). Because no record existed, dispatch-rereview and dispatch-resume_failed both return :not_found (Dispatch.rereview/1 -> ResultStore.fetch_run_record/1; load_failed_record/1), and the only recovery was a hand-built Run.Supervisor.start_run/4 with rereview_opts/3 from project_eval — the Recover-Don't-Redo table has no row for this case. The gap is mechanical: a run must settle a record on shutdown the same way it does on a crash, fast enough to beat the stop timeout, so the existing recovery primitives can pick up the retained branch after a restart. Judgment stays out: harness records the fact (shutdown, retained branch); the orchestrator decides rereview vs resume. Sibling checked: task 29 (lifetime timeout as last-resort settle) covers the in-run timer, not process shutdown; task 424/420 cover roadmap checkout currency, unrelated. Corroboration from the node operator, same session: job 1917 was not alone. Job 1918 (project_harness, same meta harness_stage=dispatch) took the identical {:cancel, {:duplicate_run_in_flight, #PID<0.2459408.0>}} on attempt 2 at 01:46:32 UTC, exactly two minutes after 1917's at 01:44:32 (#PID<0.2453830.0>) — both at attempt 2 of max_attempts 5, both with a single error entry. AC5's premise is therefore not a one-off race: it reproduced twice, two minutes apart, inside the same dispatch window, which rules out a one-shot scheduling fluke and points at something that fires per re-attempt. The two then diverged: 1917 is still cancelled, while 1918 now reads completed with that same attempt-2 cancel error still in its errors array — so a job can apparently lose and later regain its anchor rather than simply dying, worth checking when chasing the mechanism. Resolved 2026-09-13 (orchestrator, verified against the running node): the mechanism is Oban Lifeline, not a one-off race. The premise that only Pruner is configured was wrong — config.exs lists only Pruner, but Harness.Oban registers Lifeline programmatically with rescue_after = 30 min (Task 209, enable_lifeline_plugin/1); Oban.config(Harness.Oban).plugins on the node shows Cron, Pruner, Lifeline. Open-source Lifeline is naive by its own moduledoc: it moves every job still executing longer than rescue_after back to available regardless of node liveness. Job 1917 was inserted 01:13:52 and re-attempted 01:44:31 (30m39s); job 1918 inserted 01:16:01, re-attempted 01:46:31 (30m30s) — both exactly one rescue window after their start. The re-attempt hits Run.Worker.duplicate_cancel_reason/1, the job row flips to cancelled while attempt 1 keeps running, and when attempt 1 finishes its ack overwrites the row to completed (1918); 1917 never got there because of the SIGKILL. Harm: the run lifetime budget is 2.5h (Config {:run, :lifetime_timeout} = 9,000,000 ms) so every dispatch run longer than 30 minutes takes this path, and while the row reads cancelled the Task 160 boot orphan sweep (Run.Worker states available/scheduled/executing/retryable) cannot see the live run after a restart. Decision, vetoable: derive rescue_after from the lifetime budget plus margin (one source of truth, no second constant) rather than dropping Lifeline (Task 209 still needs it for stuck landing/audit rows) or snoozing on duplicate (leaves the row scheduled and still races the original ack). Lifeline cannot be scoped per queue in open-source Oban; if the implementer finds it can, scoping it to landing_*/audit is the better shape. Third occurrence, and it breaks the shutdown framing of this body: job 1943 (project_aave_sim, item 115) took {:cancel, {:duplicate_run_in_flight, #PID<0.16987.0>}} on attempt 2 at 05:46:10 UTC, cancelled 05:46:14. No shutdown was involved anywhere near it — the node had been up 36 minutes (last start 05:10:09) and was under ordinary dispatch load, six concurrent runs across project_harness (4, its cap) and project_aave_sim (2), during a cron poller pass. So whatever produces the surplus attempt is not a shutdown artifact and AC5 should not look for one. The sharpest signal across all three is that every occurrence is attempt 2 of max_attempts 5 and never attempt 1: 1917 at 01:44:31 (cancelled 1s later), 1918 at 01:46:31 (1s), 1943 at 05:46:10 (4s). Two different queues, two different projects, two service lifetimes. Worth checking whether the job is re-attempted while attempt 1's run process is still registered — the guard itself then behaves correctly by refusing the duplicate; the defect is upstream of it. Fourth occurrence, 2026-09-14 06:43:49 UTC (harness-autodeploy restart, HEAD 209663d -> 8302ee1), and it names the two halves precisely. (1) The drain: journal shows one \"MCP transport event: sse_unknown_message {:EXIT, pid, :shutdown}\" every 15 s from 06:43:49 to 06:45:49 — eight MCP client connections, then SIGKILL at exactly TimeoutStopSec. Mechanism read in deps: anubis Anubis.SSE.Streaming.handle_message/6 logs the session EXIT as unknown and loops on, so each SSE connection process only dies when ThousandIsland brutal-kills it after shutdown_timeout (15 s default), and ThousandIsland.AcceptorPoolSupervisor is a plain Supervisor, so the acceptors tear down serially — 8 x 15 s = 120 s before Run.Supervisor was ever reached. Mitigated on origin (commit ebee2a1): the dashboard Endpoint now passes thousand_island_options: [shutdown_timeout: 1_000]. Verify after the next restart that the drain finishes in seconds and that crash_settle/3 then runs and persists a record (premise unverified: whether terminate/3 is reached under the supervisor :shutdown at all — AC 2). (2) The re-prompt: 100 ms after SIGTERM the journal reads \"reviewer verdict unreadable (:missing) for run-1789365648267-3ab3eaac — re-prompting once\" and the same for run-1789365645937-3673244c — the reviewer Ports had died from the cgroup-wide SIGTERM, harness read the missing verdict as a recoverable miss and spawned fresh reviewers into a node that was going away. That is the new AC 6. Damage this time: four trading_dashboard runs (tasks 254, 255, 258, 177 — run-1789365642144-5b19fd77, run-1789365645937-3673244c, run-1789365648267-3ab3eaac, run-1789365723148-e08a27a6) killed with committed harness/<run-id> branches and no run_records row; worktrees swept at boot. The restart guard itself (operator script /usr/local/sbin/harness-autodeploy) had checked oban_jobs executing = 0 and was fooled by exactly the Lifeline cancel of AC 5; it now reads the live registry from GET /harness/api/runs (Harness.Dashboard.RunsAPI, same commit) and refuses to restart while agent CLIs sit in the service cgroup.",
+      "body": "September 13–14 incident evidence recorded committed run branches with no ResultStore record after a service shutdown exceeded its stop timeout. Missing records prevented ordinary rereview/resume_failed recovery. This task owns graceful run shutdown only: stop admitting/spawning agent work, settle live runs with the shutdown fact, retain committed work and persist recoverable records while the stores remain available. Verify actual OTP termination and supervisor ordering before choosing an implementation; trap_exit or terminate callbacks alone are not proof. Lifeline job anchoring is Task 439; transport drain is Task 440. Those are independent failure causes and must not be hidden inside this task. The guarantee is bounded graceful shutdown, not persistence after uncatchable SIGKILL or power loss.\n\n2026-09-20 scope refinement: Score rationale: Recoverable shutdown protects already-committed work; supervisor/store ordering and spawn races require integrated tests even after separating Lifeline and SSE.\n",
       "created_at": "2026-09-13",
-      "scored_at": "2026-09-13",
+      "scored_at": "2026-09-20",
       "cross_repo": []
     },
     {
@@ -19952,7 +19965,7 @@
         "CLAUDE.md",
         "AGENTS.md"
       ],
-      "body": "Evidence, 2026-09-13, architect seat after task 426 landed (origin/main 099f05d): `mix ci` on the operator's macOS laptop failed with 41 test failures, none caused by 424/426. 37 were `{:missing_executable, \"setsid\"}` / `{:missing_executable, \"flock\"}` across every ProjectCache test — `Harness.ProjectCache.Command.run/6` spawns `setsid --wait sh -c …` and the lock path spawns `flock`, both util-linux binaries that macOS does not ship; the hard dependency arrived with 13f2261 (PR #3, 2026-09-08) and is documented nowhere. One more (durable_test 'a push origin does not retain…') was the operator's global core.hooksPath shadowing the fixture's post-receive hook — fixed in dotfiles, not a harness defect.\n\nAfter `brew install util-linux` and symlinking only setsid and flock into /opt/homebrew/bin, 40 of 44 cache tests pass and four fail deterministically (re-run in isolation, same result):\n\n1. test/harness/project_cache/command_test.exs:134 'startup honors short deadlines and owner cancellation before running user code' — 'startup did not reach barrier'. The test prepends a fake `setsid` shell wrapper to PATH; the wrapper's `ready` file never appears, so the real setsid was used or the wrapper was never exec'd. Premise unverified: `open/4` calls System.find_executable at every call, so PATH shadowing should work — find out why it does not on darwin (fork-then-exec of util-linux setsid when already a group leader? BEAM PATH caching?).\n2. test/harness/project_cache/copy_cancellation_test.exs:11 'crash_cleanup waits for a cancelled preparation copy to finish cleanup' — 'Unexpectedly received message {ref, :ok}': the cancelled copy finished immediately, i.e. the fake `cp` barrier in PATH was never hit. Premise unverified: on darwin `Worktree.clone_copy/3` takes the `cp -c` branch via a path that bypasses the PATH-injected cp, or falls back to File.cp_r.\n3. test/harness/project_cache_plt_test.exs:10 and 4. test/harness/project_cache_seed_plt_test.exs:10 — dialyzer 'File not found: /private/var/folders/…/<key>.building-XXXX/source/_build/dev/lib/…/ebin/….beam'. The PLT still references the staging directory after relocation. Premise unverified: relocation rewrites paths by prefix using the staging path as harness knows it (/var/folders/…) while dialyzer recorded the realpath (/private/var/…), so the prefix never matches on a symlinked tmp root; Linux tmp has no such symlink, which is why the deployed node never sees this.\n\nThe deployed node (Linux) is unaffected. What is broken is the operator's architect-seat gate: harness-workflow § Orchestrator Loop requires `mix ci` on the landed base after every wave, and on the laptop that gate cannot be green for this surface — so 37 spurious failures hide any real integration regression. Make the surface portable (or fail loudly with a named prerequisite), pin the realpath relocation with a test that runs on Linux too, and document the macOS prerequisite.",
+      "body": "Evidence, 2026-09-13, architect seat after task 426 landed (origin/main 099f05d): `mix ci` on the operator's macOS laptop failed with 41 test failures, none caused by 424/426. 37 were `{:missing_executable, \"setsid\"}` / `{:missing_executable, \"flock\"}` across every ProjectCache test — `Harness.ProjectCache.Command.run/6` spawns `setsid --wait sh -c …` and the lock path spawns `flock`, both util-linux binaries that macOS does not ship; the hard dependency arrived with 13f2261 (PR #3, 2026-09-08) and is documented nowhere. One more (durable_test 'a push origin does not retain…') was the operator's global core.hooksPath shadowing the fixture's post-receive hook — fixed in dotfiles, not a harness defect.\n\nAfter `brew install util-linux` and symlinking only setsid and flock into /opt/homebrew/bin, 40 of 44 cache tests pass and four fail deterministically (re-run in isolation, same result):\n\n1. test/harness/project_cache/command_test.exs:134 'startup honors short deadlines and owner cancellation before running user code' — 'startup did not reach barrier'. The test prepends a fake `setsid` shell wrapper to PATH; the wrapper's `ready` file never appears, so the real setsid was used or the wrapper was never exec'd. Premise unverified: `open/4` calls System.find_executable at every call, so PATH shadowing should work — find out why it does not on darwin (fork-then-exec of util-linux setsid when already a group leader? BEAM PATH caching?).\n2. test/harness/project_cache/copy_cancellation_test.exs:11 'crash_cleanup waits for a cancelled preparation copy to finish cleanup' — 'Unexpectedly received message {ref, :ok}': the cancelled copy finished immediately, i.e. the fake `cp` barrier in PATH was never hit. Premise unverified: on darwin `Worktree.clone_copy/3` takes the `cp -c` branch via a path that bypasses the PATH-injected cp, or falls back to File.cp_r.\n3. test/harness/project_cache_plt_test.exs:10 and 4. test/harness/project_cache_seed_plt_test.exs:10 — dialyzer 'File not found: /private/var/folders/…/<key>.building-XXXX/source/_build/dev/lib/…/ebin/….beam'. The PLT still references the staging directory after relocation. Premise unverified: relocation rewrites paths by prefix using the staging path as harness knows it (/var/folders/…) while dialyzer recorded the realpath (/private/var/…), so the prefix never matches on a symlinked tmp root; Linux tmp has no such symlink, which is why the deployed node never sees this.\n\nThe deployed node (Linux) is unaffected. What is broken is the operator's architect-seat gate: harness-workflow § Orchestrator Loop requires `mix ci` on the landed base after every wave, and on the laptop that gate cannot be green for this surface — so 37 spurious failures hide any real integration regression. Make the surface portable (or fail loudly with a named prerequisite), pin the realpath relocation with a test that runs on Linux too, and document the macOS prerequisite.\n\n2026-09-20 scope refinement: The September failure counts describe the observed run, not acceptance targets. Re-enumerate current failing cases and pin their behavior; prove executable resolution and canonical paths without requiring the old counts to remain unchanged.\n",
       "created_at": "2026-09-13",
       "scored_at": "2026-09-13",
       "cross_repo": []
@@ -19964,13 +19977,13 @@
       "status": "pending",
       "title": "Vendor the AGENTS.md generator into the repo so a dispatched agent can regenerate it instead of hand-editing a generated file",
       "scores": {
-        "d": 3,
-        "b": 6,
-        "u": 5
+        "d": 4,
+        "b": 7,
+        "u": 7
       },
-      "eff": 1.83,
+      "eff": 1.75,
       "dep_layer": 0,
-      "unlocks": 0,
+      "unlocks": 2,
       "markers": [
         "bug"
       ],
@@ -19979,11 +19992,13 @@
       "model": "gpt-6-astra",
       "acceptance_criteria": [
         "The AGENTS.md generator lives in this repo (scripts/) and runs from a bare clone or a harness run worktree with no dependency on a personal checkout path such as ~/_DATA/code/claude-marketplace. Recursive @-import inlining behaviour is byte-identical to the current marketplace script: regenerating on an unchanged CLAUDE.md leaves AGENTS.md byte-for-byte unchanged.",
-        "The generator resolves @~/.claude/includes/* imports from a source that exists inside the repo or is explicitly declared missing with a named error — it never silently emits an AGENTS.md with an unresolved or dropped import, because a silently-truncated AGENTS.md is worse than a stale one for the cross-family reviewer.",
+        "The generator resolves @~/.claude/includes/* imports from version-controlled sources inside the repo — it never silently emits an AGENTS.md with an unresolved or dropped import, because a silently-truncated AGENTS.md is worse than a stale one for the cross-family reviewer.",
         "A --check mode re-renders in memory and exits non-zero on drift (diffing rendered output, not mtimes, so drift in transitive imports is caught), and it is wired into mix precommit.full / mix ci so staleness fails loudly.",
         "CLAUDE.md § Commands and the 'Regenerate AGENTS.md' row name the in-repo command; the never-hand-edit-AGENTS.md rule is restated with the in-repo generator as the way to satisfy it. AGENTS.md regenerated with the new generator as part of the delivery.",
         "The marketplace script stays authoritative for other repos: this task vendors a harness-runnable copy, it does not delete or fork the marketplace tooling, and any deliberate divergence is named in the vendored script's header.",
-        "mix check.dispatch green plus a focused test that the generator is idempotent and that --check fails on a deliberately edited AGENTS.md."
+        "mix check.dispatch green plus a focused test that the generator is idempotent and that --check fails on a deliberately edited AGENTS.md.",
+        "Ship every required transitive import source or a version-pinned in-repo snapshot and its provenance. A pristine clone with an empty HOME successfully regenerates and checks AGENTS.md; a named missing-import error is only negative-case behavior, not fulfillment of portability.",
+        "Compare unchanged input against the existing generator using the same pinned include contents. Subsequent upstream include updates are explicit reviewed snapshot updates, never ambient HOME-dependent drift."
       ],
       "out_of_scope": [
         "A mutating auto-regen git hook — regeneration stays an explicit step and --check stays the gate (same exclusion Task 395 carries).",
@@ -20007,9 +20022,9 @@
         "tooling",
         "docs"
       ],
-      "body": "CLAUDE.md says AGENTS.md is generated by `~/_DATA/code/claude-marketplace/scripts/sync-agents-md.sh` and that it must never be hand-edited. That path does not exist inside a harness run worktree, so the rule is unsatisfiable for every dispatched implementer, reviewer, and audit agent: the only way to keep AGENTS.md in sync with a CLAUDE.md edit from a worktree is to hand-edit the generated file, which the rule forbids.\n\nThat is not hypothetical. Task 418's delivery commit c047cd1 edited the same sentence in CLAUDE.md and AGENTS.md by hand (mirrored correctly, but by hand). The post-merge audit of 9741f03 hit it again: documenting landing_policy :pr in CLAUDE.md would have left AGENTS.md stale, so the audit mirrored the paragraph manually after confirming the marketplace script is absent on the node.\n\nThe failure mode is silent drift, and it is asymmetric in cost: AGENTS.md is the ONLY rule surface the cross-family reviewer reads, so a stale or hand-mirrored AGENTS.md makes codex/cursor/grok gate every run against rules the repo has already changed. There is currently no gate that can catch it — CLAUDE.md itself notes `--check` is \"not wired into precommit.full\", and it could not be, because the script it would call lives on one operator laptop.\n\nVendor the generator into scripts/ so it runs from any clone, and wire --check into the pre-PR gate. The tricky part is import resolution: the generator recursively inlines @-imports, and several of those (@~/.claude/includes/critical-rules.md, @~/.claude/includes/harness-workflow.md) resolve to operator-home paths. harness-workflow already has an in-repo source at priv/includes/harness-workflow.md; critical-rules does not. Decide and state how each unresolvable import is handled — the AC requires a named error rather than a silently dropped section, because an AGENTS.md missing its guardrails reads to the reviewer as though those guardrails do not exist.\n",
+      "body": "Make AGENTS.md regeneration reproducible from a clean clone and an isolated harness worktree. The current command depends on a personal marketplace checkout and recursively imported home-directory files; historical deliveries manually mirrored generated content when those inputs were unavailable. Vendor the generator and all required transitive include sources as version-controlled snapshots with provenance, using the canonical in-repo harness-workflow source where available. Keep regeneration explicit and add a portable --check to the full gate. Missing inputs must fail clearly in negative tests, but the delivered clone must contain every required input and succeed with an empty HOME. Task 395 owns narrative relocation and budget checking, not another generator. Compare the unchanged source against the old generator using identical input snapshots, and make later snapshot refreshes explicit reviewed updates.\n\nScore rationale: portability includes recursive inputs, not only the script; it enables reproducible reviewer rules and Task 395.\n",
       "created_at": "2026-09-13",
-      "scored_at": "2026-09-13",
+      "scored_at": "2026-09-20",
       "cross_repo": []
     },
     {
@@ -20037,7 +20052,7 @@
         "The orchestrator still receives touches/files_to_modify for each genuinely in-flight task, since touch-disjointness is what the in-flight list exists for. Resolve the live in-flight ids against the rmap rows rather than dropping the path data.",
         "Regression test: a project with concurrency_cap N and N tasks marked in_progress in rmap but ZERO live runs and zero unfinished Oban jobs builds an orchestrator context with in_flight == [] and dispatches, instead of deferring on a full cap. This is the starconiq failure and it must fail on the current code.",
         "Regression test the other direction: a task with a live in-flight run IS reported in_flight (a settled-run task and a running-run task in the same project are distinguished), so the fix does not reopen the stale-base collision the in-flight list was added to prevent.",
-        "INVARIANT (the class, not just this instance): a poll that dispatches nothing for an autonomy-enabled project is never indistinguishable from ordinary backpressure. Every zero-dispatch poll emits one structured witnessed reason naming the cap, how many occupants have a live run or unfinished Oban job, and how many are merely rmap-in_progress. A wedged project is then readable from the log alone, whatever wedges it — the observability gap is what let this run silently for five hours, and it is the same gap Task 375 hit from the uncast-cap side.",
+        "Every zero-dispatch poll emits one bounded factual witness: configured cap, live/unfinished occupancy and rmap-only in_progress count, plus the orchestrator plan rationale or the actual mechanical skip/error fact. Code must not infer a semantic cause or diagnose a wedge from these counts. Tests cover no-ready-work, cap occupancy, AI deferral and read failure.",
         "mix check.dispatch green plus focused mix test.json on the touched cron modules."
       ],
       "out_of_scope": [
@@ -20068,14 +20083,14 @@
       "id": "432",
       "phase": 20,
       "bundle": "reviewer-pair",
-      "status": "blocked",
-      "title": "Fix post-merge cold-check red for c3beaaf",
+      "status": "pending",
+      "title": "Diagnose and pin cold-check dependency bootstrap behavior",
       "scores": {
         "d": 3,
-        "b": 8,
-        "u": 5
+        "b": 5,
+        "u": 4
       },
-      "eff": 2.17,
+      "eff": 1.5,
       "dep_layer": 0,
       "unlocks": 0,
       "markers": [
@@ -20085,15 +20100,24 @@
       "assignee": "codex",
       "model": "gpt-6-astra",
       "acceptance_criteria": [
-        "The clean-build/check passes from a cold checkout at landed SHA c3beaafc605fb12c04401fbefa97fbbe85e3e5b8."
+        "Record revision, environment, exact dependency-bootstrap/check commands and logs for a clean isolated checkout; distinguish missing preparation from a code/dependency defect.",
+        "If defective, the responsible bootstrap/check path is corrected with a regression test; the delivered successor passes the supported cold-check sequence.",
+        "If current behavior is correct, preserve the historical failure and demonstrate a successful correctly bootstrapped run; do not claim a historical SHA was changed or suppress the formatter failure."
       ],
       "out_of_scope": [
-        "Reverting or unmerging the already-landed SHA"
+        "Reverting or rewriting historical commits.",
+        "Weakening the formatter or silently ignoring missing dependencies.",
+        "Production boot provisioning (Task 436)."
       ],
-      "body": "The post-merge audit AI reported a red cold check for landed SHA c3beaafc605fb12c04401fbefa97fbbe85e3e5b8.\n\n** (Mix) Unknown dependency :ecto given to :import_deps in the formatter configuration. Make sure the dependency is listed in your mix.exs for environment :dev and you have run \"mix deps.get\"",
+      "touches": [
+        "lib/harness/audit/",
+        "lib/harness/project_cache/",
+        "test/harness/audit_test.exs",
+        "test/harness/project_cache/"
+      ],
+      "body": "The post-merge audit at historical commit c3beaafc605fb12c04401fbefa97fbbe85e3e5b8 reported an unknown :ecto formatter import. This records a symptom, not proof of a code regression or an external blocker. Reproduce the cold-check setup on that revision and the current target using the supported dependency bootstrap. Determine whether the audit omitted dependency preparation or whether the repository bootstrap is defective; repair the responsible path and test it. The acceptance target is the delivered successor revision, not an immutable historical SHA. A correctly bootstrapped non-reproduction may close the investigation with durable evidence and no production mutation.\n\n2026-09-20 scope refinement: Score rationale: A single bootstrap error needs diagnosis before it can justify a claimed systemic defect; retain the bug investigation without inflating impact.\n",
       "created_at": "2026-09-14",
-      "scored_at": "2026-09-14",
-      "blocked_reason": "post-merge cold check red for landed SHA c3beaafc605fb12c04401fbefa97fbbe85e3e5b8: ** (Mix) Unknown dependency :ecto given to :import_deps in the formatter configuration. Make sure the dependency is listed in your mix.exs for environment :dev and you have run \"mix deps.get\"",
+      "scored_at": "2026-09-20",
       "cross_repo": []
     },
     {
@@ -20200,7 +20224,7 @@
         "lib/harness/suite_health/bootstrap.ex",
         "lib/harness/run/test_db_isolation.ex"
       ],
-      "body": "`Harness.SuiteHealth` creates a test database and never drops it. Not on failure — on the **green** path, by construction, once per project per day.\n\nEvidence:\n\n- `SuiteHealth.Bootstrap.ensure_test_database/3` (`bootstrap.ex:55-60`) runs `mix ecto.create` + `mix ecto.migrate` with `MIX_TEST_PARTITION=_h_suite_health`.\n- `SuiteHealth.Runner.run_suite/4` (`runner.ex:16-34`) runs the suite, builds the `Result`, returns `{:ok, _}`. There is no teardown call, no `try/after`.\n- `grep -rn \"TestDbIsolation.teardown\" lib` returns exactly one call site: `lib/harness/run/actions/worktree.ex:94`. That is the agent-run path. The suite-health path has none.\n- `Runner` aliases `TestDbIsolation` but uses it only for `env_name/1` (`runner.ex:100`) — to *set* the partition, never to reclaim it.\n\nThis is not the orphan class `docs/test-db-templates.md:109` documents. That paragraph excuses orphans from \"cancellation/process death\" and states there is no automatic sweep. Here a fully successful daily cron leaks by design.\n\nWhy it was probably never wired: `TestDbIsolation.teardown/4` derives the partition internally from the run id via `partition_suffix(run_id)`. Suite-health uses the *fixed* `@health_partition = \"_h_suite_health\"`. No run id maps to that string, so the existing API cannot express the drop. The fix needs either a teardown variant taking an explicit partition, or a `Bootstrap.cleanup/3` as the counterpart to `Bootstrap.prepare/3`.\n\nObserved on the production box 2026-09-18: 28 leaked `_h_suite_health` databases across four projects, 21 of them for `tapakly` alone (~381 MB). The multiplier is project-side — tapakly's `config/test.exs` (T337) derives its base name from a sha256 of the checkout path, so every fresh cron worktree yields a new base name under the same fixed partition suffix, i.e. one new never-dropped database per day.\n\nharness already holds itself to this standard for the sibling resource: \"A crashed run does not leak an orphan worktree\" is an acceptance criterion of the worktree task, delivered with `Harness.Worktree.Sweeper`. Databases got the create half and not the destroy half.\n\n2026-09-20 operator refinement: confirmed against server checkout c6d42bc and live PostgreSQL inventory. Cleaned 85 attributable historical scratch databases without terminating sessions; preserved primary databases, retained-worktree databases and ambiguous names. This task remains pending; no dispatch authorized by this refinement. Implement the immediate suite-health lifecycle fix; task 434 supplies durable crash recovery.\n\n",
+      "body": "`Harness.SuiteHealth` creates a test database and never drops it. Not on failure — on the **green** path, by construction, once per project per day.\n\nEvidence:\n\n- `SuiteHealth.Bootstrap.ensure_test_database/3` (`bootstrap.ex:55-60`) runs `mix ecto.create` + `mix ecto.migrate` with `MIX_TEST_PARTITION=_h_suite_health`.\n- `SuiteHealth.Runner.run_suite/4` (`runner.ex:16-34`) runs the suite, builds the `Result`, returns `{:ok, _}`. There is no teardown call, no `try/after`.\n- `grep -rn \"TestDbIsolation.teardown\" lib` returns exactly one call site: `lib/harness/run/actions/worktree.ex:94`. That is the agent-run path. The suite-health path has none.\n- `Runner` aliases `TestDbIsolation` but uses it only for `env_name/1` (`runner.ex:100`) — to *set* the partition, never to reclaim it.\n\nThis is not the orphan class `docs/test-db-templates.md:109` documents. That paragraph excuses orphans from \"cancellation/process death\" and states there is no automatic sweep. Here a fully successful daily cron leaks by design.\n\nWhy it was probably never wired: `TestDbIsolation.teardown/4` derives the partition internally from the run id via `partition_suffix(run_id)`. Suite-health uses the *fixed* `@health_partition = \"_h_suite_health\"`. No run id maps to that string, so the existing API cannot express the drop. The fix needs either a teardown variant taking an explicit partition, or a `Bootstrap.cleanup/3` as the counterpart to `Bootstrap.prepare/3`.\n\nObserved on the production box 2026-09-18: 28 leaked `_h_suite_health` databases across four projects, 21 of them for `tapakly` alone (~381 MB). The multiplier is project-side — tapakly's `config/test.exs` (T337) derives its base name from a sha256 of the checkout path, so every fresh cron worktree yields a new base name under the same fixed partition suffix, i.e. one new never-dropped database per day.\n\nharness already holds itself to this standard for the sibling resource: \"A crashed run does not leak an orphan worktree\" is an acceptance criterion of the worktree task, delivered with `Harness.Worktree.Sweeper`. Databases got the create half and not the destroy half.\n\n2026-09-20 operator refinement: confirmed against server checkout c6d42bc and live PostgreSQL inventory. Cleaned 85 attributable historical scratch databases without terminating sessions; preserved primary databases, retained-worktree databases and ambiguous names. This task remains pending; no dispatch authorized by this refinement. Implement the immediate suite-health lifecycle fix; task 434 supplies durable crash recovery.\n\n2026-09-20 scope refinement: The fixed suffix does not imply one shared physical database: project configuration can derive a worktree-specific base. Verify exact resolved database identity in cleanup. Keep this deterministic lifecycle fix independent of the crash sweeper.\n",
       "created_at": "2026-09-18",
       "scored_at": "2026-09-18",
       "cross_repo": []
@@ -20212,11 +20236,11 @@
       "status": "pending",
       "title": "Orphan test-database sweeper — the Worktree.Sweeper equivalent for scratch DBs",
       "scores": {
-        "d": 4,
-        "b": 5,
-        "u": 3
+        "d": 7,
+        "b": 7,
+        "u": 6
       },
-      "eff": 1.0,
+      "eff": 0.93,
       "dep_layer": 1,
       "unlocks": 0,
       "markers": [],
@@ -20226,8 +20250,8 @@
       "assignee": "codex",
       "model": "gpt-6-astra",
       "acceptance_criteria": [
-        "A boot-time (or scheduled) sweeper reclaims harness-created scratch databases whose owning run has settled, mirroring how `Harness.Worktree.Sweeper` reclaims orphan worktrees",
-        "It drops only databases it can positively attribute to harness — marker comment and/or owner plus partition-suffix shape — never an unmarked database",
+        "A startup and daily sweeper reclaims harness-created scratch databases whose owning run has settled, mirroring how `Harness.Worktree.Sweeper` reclaims orphan worktrees",
+        "It drops only databases it can positively attribute to harness — a positive harness ownership marker together with the exact durable identity and owner — never an unmarked database",
         "It never drops a database with open connections and never terminates another session",
         "It is reportable before it is destructive: an operator can list what would be reclaimed without reclaiming it",
         "Test covers: settled-run orphan reclaimed, in-flight run untouched, unmarked database untouched",
@@ -20235,7 +20259,9 @@
         "Run reclamation at startup and daily; dry-run and destructive execution use identical selection rules. Recheck ownership, completion and connections before each non-forced drop.",
         "Only positively marked harness-owned scratch databases are automatically reclaimed; unmarked historical databases require explicit operator inventory and selection. Protect templates, primary databases, live runs and retained recovery worktrees.",
         "Failed or busy drops remain visible and eligible for a later safe retry; repeated cleanup is idempotent. Real PostgreSQL tests cover process death, missing worktree, active sessions, foreign ownership and unmarked databases.",
-        "Integrate the ownership lifecycle with ordinary non-template run databases and suite-health partitions, not only template clones; audit-created scratch databases must either use the same lifecycle or be explicitly reported as unmanaged."
+        "Integrate the ownership lifecycle with ordinary non-template run databases and suite-health partitions, not only template clones; audit-created scratch databases must either use the same lifecycle or be explicitly reported as unmanaged.",
+        "Explicitly test process death between database creation and ownership marking. If attribution is incomplete, report the database as unmanaged/ambiguous and leave it untouched; never infer permission to drop from a suffix alone.",
+        "An interrupted creation intent is reconciled against the exact server/database and ownership evidence without promoting an unrelated existing database into a managed one."
       ],
       "out_of_scope": [
         "The suite-health-specific create/drop asymmetry — that is task 433 and lands first",
@@ -20245,11 +20271,17 @@
       "touches": [
         "lib/harness/run/test_db_isolation.ex",
         "lib/harness/run/test_db_template.ex",
+        "lib/harness/suite_health/",
+        "lib/harness/application.ex",
+        "lib/harness/cron/",
+        "lib/harness/test_db/",
+        "priv/repo/migrations/",
+        "test/harness/",
         "docs/test-db-templates.md"
       ],
-      "body": "`docs/test-db-templates.md:109-113` states the gap plainly: cancellation or process death can leave an orphan database, including in the window between `CREATE DATABASE` and its marker, and **\"There is no automatic orphan sweep.\"** The doc then puts the burden on an operator, who must verify run id, partition, server and owner by hand before removing anything.\n\nThat is the same situation worktrees were in before `Harness.Worktree.Sweeper`, and the roadmap already accepted the stricter standard there (\"A crashed run does not leak an orphan worktree\"). This task brings databases up to it.\n\nTask 433 fixes the one path that leaks deterministically. It cannot fix this class: a run killed between `CREATE DATABASE` and settlement has no process left to run an `after` block. Only an out-of-band sweeper reclaims those.\n\nNote the real teardown preconditions that make orphans likely in practice. `TestDbIsolation.teardown/4` drops by shelling `mix ecto.drop` **inside the worktree**, and its clauses require `is_binary(worktree_path)` plus `honors_env?(worktree_path, name)` — which reads `config/test.exs` from that worktree. If the worktree is already gone (swept, pruned, or a run killed as `memory_runaway`), control falls through to the catch-all `def teardown(%Project{}, _worktree_path, _run_id, _env), do: :ok` and the database is silently kept, with no log line.\n\nMeasured on the production box 2026-09-18: 156 databases in the cluster, ~5.6 GB, of which 31 are `_h_<run>` scratch partitions (tapakly 13, trading 12, aave 4, starpatron 2) with zero open connections and no executing Oban jobs.\n\nThe guard rails in the existing template cleanup are the right model to reuse: drop only the exact partition, owned by the connecting role, carrying `COMMENT 'harness:test-run:<partition>'`, with `IS_TEMPLATE false`, never forced, never terminating other sessions.\n\n2026-09-20 operator refinement: confirmed against server checkout c6d42bc and live PostgreSQL inventory. Cleaned 85 attributable historical scratch databases without terminating sessions; preserved primary databases, retained-worktree databases and ambiguous names. This task remains pending; no dispatch authorized by this refinement. Use startup plus daily reconciliation, exact durable identities and strict ownership markers. Activation follows reviewed landing and root-owned autodeploy; do not manually restart the harness service.\n\n",
+      "body": "`docs/test-db-templates.md:109-113` states the gap plainly: cancellation or process death can leave an orphan database, including in the window between `CREATE DATABASE` and its marker, and **\"There is no automatic orphan sweep.\"** The doc then puts the burden on an operator, who must verify run id, partition, server and owner by hand before removing anything.\n\nThat is the same situation worktrees were in before `Harness.Worktree.Sweeper`, and the roadmap already accepted the stricter standard there (\"A crashed run does not leak an orphan worktree\"). This task brings databases up to it.\n\nTask 433 fixes the one path that leaks deterministically. It cannot fix this class: a run killed between `CREATE DATABASE` and settlement has no process left to run an `after` block. Only an out-of-band sweeper reclaims those.\n\nNote the real teardown preconditions that make orphans likely in practice. `TestDbIsolation.teardown/4` drops by shelling `mix ecto.drop` **inside the worktree**, and its clauses require `is_binary(worktree_path)` plus `honors_env?(worktree_path, name)` — which reads `config/test.exs` from that worktree. If the worktree is already gone (swept, pruned, or a run killed as `memory_runaway`), control falls through to the catch-all `def teardown(%Project{}, _worktree_path, _run_id, _env), do: :ok` and the database is silently kept, with no log line.\n\nMeasured on the production box 2026-09-18: 156 databases in the cluster, ~5.6 GB, of which 31 are `_h_<run>` scratch partitions (tapakly 13, trading 12, aave 4, starpatron 2) with zero open connections and no executing Oban jobs.\n\nThe guard rails in the existing template cleanup are the right model to reuse: drop only the exact partition, owned by the connecting role, carrying `COMMENT 'harness:test-run:<partition>'`, with `IS_TEMPLATE false`, never forced, never terminating other sessions.\n\n2026-09-20 operator refinement: confirmed against server checkout c6d42bc and live PostgreSQL inventory. Cleaned 85 attributable historical scratch databases without terminating sessions; preserved primary databases, retained-worktree databases and ambiguous names. This task remains pending; no dispatch authorized by this refinement. Use startup plus daily reconciliation, exact durable identities and strict ownership markers. Activation follows reviewed landing and root-owned autodeploy; do not manually restart the harness service.\n\n2026-09-20 scope refinement: Score rationale: Durable ownership across ordinary runs and suite checks, safe server-level reclamation and crash-window PostgreSQL tests are substantially larger than D4; the production inventory establishes concrete resource impact.\n",
       "created_at": "2026-09-18",
-      "scored_at": "2026-09-18",
+      "scored_at": "2026-09-20",
       "cross_repo": []
     },
     {
@@ -20257,13 +20289,13 @@
       "phase": 25,
       "bundle": "core-loop",
       "status": "pending",
-      "title": "Boot chain never fetches deps — a landed mix.lock change crash-loops the service",
+      "title": "Make the host-local dependency bootstrap fix reproducible from version control",
       "scores": {
-        "d": 2,
-        "b": 8,
-        "u": 7
+        "d": 4,
+        "b": 7,
+        "u": 6
       },
-      "eff": 3.75,
+      "eff": 1.63,
       "dep_layer": 0,
       "unlocks": 0,
       "markers": [
@@ -20273,23 +20305,24 @@
       "assignee": "codex",
       "model": "gpt-6-astra",
       "acceptance_criteria": [
-        "A commit that changes mix.lock and lands on the base checkout does not prevent harness.service from starting",
-        "The boot chain fetches deps before running migrations, and a fetch failure does not by itself block the boot",
-        "harness-autodeploy restarting for a mix.lock-only change results in a running service, not a restart loop",
-        "The failure mode and its fix are recorded next to the migration one they mirror"
+        "A repo-owned deployment template fetches locked dependencies before migrations/start, with explicit environment, working directory and executable assumptions; an operator can reproduce the host-local mitigation from the checked-in source.",
+        "A disposable service/boot-chain test covers a lockfile change with available dependencies, an offline fetch with already-valid local dependencies, and unavailable required dependencies. Offline fetch alone does not block valid startup; genuinely missing dependencies still fail visibly.",
+        "Documentation identifies the installed destination and comparison procedure, preserves root-owned idle/restart controls, and does not instruct a dispatched agent to restart production.",
+        "Record the September incident and the template verification in existing deployment documentation; do not claim production activation without post-autodeploy evidence."
       ],
       "out_of_scope": [
-        "Removing mix.lock from harness-autodeploy's CODE_RE — a dep bump is code and must deploy",
-        "Vendoring deps or switching to a release build; this task keeps the mix-run deployment shape",
-        "The slow MCP-SSE drain on shutdown (separate: task 427)"
+        "Changing production systemd state or manually restarting the service.",
+        "Changing agent-worktree dependency bootstrap, switching to releases or vendoring dependencies.",
+        "Removing mix.lock from deployment detection."
       ],
       "touches": [
-        "/etc/systemd/system/harness.service.d/30-migrate.conf",
-        "/usr/local/sbin/harness-autodeploy"
+        "priv/deploy/",
+        "docs/hardware.md",
+        "test/harness/"
       ],
-      "body": "The systemd boot chain runs `mix ecto.migrate` (ExecStartPre) then `mix run --no-halt` (ExecStart). It never runs `mix deps.get`. Verified: no `deps.get` anywhere in `harness.service`, its drop-ins, or `/home/harness/bin/harness-start`.\n\nSo any landed commit that touches `mix.lock` arms a boot failure. mix refuses to run a task whose deps do not match the lock, ExecStartPre exits 1, and `Restart=on-failure` + `RestartSec=10` retry forever.\n\nObserved 2026-09-19. Commit 7b0e466 changed 6 lock entries (tzdata, sourceror, spitfire, phoenix, phoenix_live_view, oban_web); mix.lock landed in the base checkout at 00:47:21. The 00:52:39 restart then failed ten times in a row, restart counter 1 -> 10, from 00:52:59 to 00:54:44:\n\n    Unchecked dependencies for environment dev:\n    * tzdata (Hex package)\n      lock mismatch: the dependency is out of date. To fetch locked version run \"mix deps.get\"\n    ...\n    ** (Mix) Can't continue due to errors on dependencies\n\nIt only recovered because an operator ran `mix deps.get` by hand (deps/ mtime 00:54:35); the next start at 00:54:44 came up.\n\nThis is the same failure class 30-migrate.conf was written for, one layer short. That drop-in's own comment describes it for migrations — \"jeder Task, der eine Migration landet, schaerft einen Boot-Fehler ... crasht endlos im 10-Sekunden-Takt\" — and the dependency case was never closed.\n\nIt also breaks the autonomy loop specifically. harness-autodeploy lists `mix\\.lock$` in CODE_RE, so it restarts *precisely* for this change and then drives the service into the loop. An agent landing a dep bump therefore always needs a human.\n\nMitigated on the box 2026-09-19 01:00 by adding, ahead of the migrate line:\n\n    ExecStartPre=-/home/harness/.asdf/shims/mix deps.get\n\nThe leading `-` is deliberate: a Hex/network outage must not block the boot, and if the deps really are wrong the unguarded ecto.migrate below still fails exactly as before. Verified by restart: \"All dependencies have been fetched\" -> \"Migrations already up\" -> Started, NRestarts=0.\n\nThis task is to carry that host-local change into whatever provisions the unit, and to decide whether the same guard belongs on the agent-run/verification path, which bootstraps deps per worktree and can hit the same lock mismatch after a rebase.\n",
+      "body": "The September 19 incident record reports a service restart loop after lockfile changes and a host-local mitigation adding dependency fetch before migrations. That mitigation is historical operator evidence, not a verified current provisioning source. The remaining deliverable is reproducible deployment configuration in version control. No provisioning script is present in this checkout at review time; add a repo-owned systemd drop-in template and operator installation instructions under priv/deploy and docs rather than editing /etc from an agent. Preserve the root-owned autodeploy idle checks and restart authority. Limit this task to service bootstrap; agent-worktree preparation has its own lifecycle and is not an optional second investigation.\n\n2026-09-20 scope refinement: Score rationale: The live mitigation is already reported; remaining value is reproducible provisioning with failure-path validation, not redoing a one-line host edit.\n",
       "created_at": "2026-09-19",
-      "scored_at": "2026-09-19",
+      "scored_at": "2026-09-20",
       "cross_repo": []
     },
     {
@@ -20341,11 +20374,11 @@
       "status": "pending",
       "title": "A failed suite-health bootstrap is silently dropped — inspect(reason) overflows skip_reason varchar(255)",
       "scores": {
-        "d": 2,
+        "d": 4,
         "b": 8,
         "u": 7
       },
-      "eff": 3.75,
+      "eff": 1.88,
       "dep_layer": 0,
       "unlocks": 0,
       "markers": [
@@ -20356,9 +20389,11 @@
       "model": "gpt-6-astra",
       "acceptance_criteria": [
         "A bootstrap/infrastructure failure is recorded as a witness fact, distinguishable from a genuine red suite",
-        "No witness write can be lost to a column-width error — the reason is bounded before it reaches the database",
+        "No witness write can be lost to a column-width error — short display text is bounded and complete diagnostic evidence remains durably available without a column-width failure",
         "The dashboard never presents a stale checked_at as if it were today's result: a project whose check could not run says so",
-        "Test covers a bootstrap error whose inspected reason exceeds the column width"
+        "Test covers a bootstrap error whose inspected reason exceeds the column width",
+        "Define and test a factual could-not-run outcome distinct from a completed failing suite and an intentional skip across persistence, API and dashboard. It records this attempt timestamp and never presents an older result as the latest completed attempt.",
+        "Tests cover long Unicode diagnostics, exact width boundaries, real PostgreSQL persistence/readback and rendering, and a visible storage-write failure; complete diagnostics are not replaced by an irreversible truncated string."
       ],
       "out_of_scope": [
         "Classifying whether a red suite is real or flaky — task 333 forbids a harness classifier and that stands",
@@ -20368,12 +20403,179 @@
       "touches": [
         "lib/harness/suite_health.ex",
         "lib/harness/suite_health/result.ex",
-        "lib/harness/suite_health_store/schema/result.ex",
-        "lib/harness/cron/suite_health_poller.ex"
+        "lib/harness/suite_health_store/",
+        "lib/harness/cron/suite_health_poller.ex",
+        "lib/harness/dashboard/",
+        "priv/repo/migrations/",
+        "test/harness/"
       ],
-      "body": "When a suite-health check cannot run, the failure never reaches the witness table.\n\n`SuiteHealth.check_project/2` turns the error into a skip (`suite_health.ex:45`):\n\n    {:error, reason} -> Result.skipped(project.name, inspect(reason), languages: ...)\n\n`reason` here is `{:ecto_bootstrap_failed, exit, output}` carrying the full mix output. `inspect/1` on that is thousands of characters, and `skip_reason` is `:string` — `varchar(255)` (`priv/repo/migrations/20260707120000_add_suite_health_results.exs:13`). Postgres rejects the insert:\n\n    [warning] harness suite health cron: tapakly %Postgrex.Error{\n      code: :string_data_right_truncation,\n      message: \"value too long for type character varying(255)\",\n      file: \"varchar.c\", line: \"637\", pg_code: \"22001\"}\n\n`SuiteHealthPoller.perform/1` then only logs (`suite_health_poller.ex:29`): `{:error, reason} -> Logger.warning(...)`. Nothing is persisted.\n\nBecause `suite_health_results` is keyed on `project_name` and written by upsert, the previous row survives untouched. The dashboard keeps showing an old result with an old `checked_at` and no signal that the check failed. Observed 2026-09-18 for tapakly: twelve-plus 22001 warnings in the journal across 16:24-16:33, while the stored witness still reads `checked_at 16:32:28`.\n\nThe consequence is the sharp one: the mechanism whose only job is to surface that a project's suite is broken cannot surface that it was itself unable to run. As of 2026-09-19, 10 of 16 projects show red and the table cannot say which of those are genuine.\n\nTwo things need fixing and they are independent: bound the reason before it is written, and make \"could not run\" a first-class witness state rather than a skip that happens to be unwritable. Bounding alone would still record an infrastructure failure in a field the dashboard reads as a project-health fact.\n",
+      "body": "When a suite-health check cannot run, the failure never reaches the witness table.\n\n`SuiteHealth.check_project/2` turns the error into a skip (`suite_health.ex:45`):\n\n    {:error, reason} -> Result.skipped(project.name, inspect(reason), languages: ...)\n\n`reason` here is `{:ecto_bootstrap_failed, exit, output}` carrying the full mix output. `inspect/1` on that is thousands of characters, and `skip_reason` is `:string` — `varchar(255)` (`priv/repo/migrations/20260707120000_add_suite_health_results.exs:13`). Postgres rejects the insert:\n\n    [warning] harness suite health cron: tapakly %Postgrex.Error{\n      code: :string_data_right_truncation,\n      message: \"value too long for type character varying(255)\",\n      file: \"varchar.c\", line: \"637\", pg_code: \"22001\"}\n\n`SuiteHealthPoller.perform/1` then only logs (`suite_health_poller.ex:29`): `{:error, reason} -> Logger.warning(...)`. Nothing is persisted.\n\nBecause `suite_health_results` is keyed on `project_name` and written by upsert, the previous row survives untouched. The dashboard keeps showing an old result with an old `checked_at` and no signal that the check failed. Observed 2026-09-18 for tapakly: twelve-plus 22001 warnings in the journal across 16:24-16:33, while the stored witness still reads `checked_at 16:32:28`.\n\nThe consequence is the sharp one: the mechanism whose only job is to surface that a project's suite is broken cannot surface that it was itself unable to run. As of 2026-09-19, 10 of 16 projects show red and the table cannot say which of those are genuine.\n\nTwo things need fixing and they are independent: bound the reason before it is written, and make \"could not run\" a first-class witness state rather than a skip that happens to be unwritable. Bounding alone would still record an infrastructure failure in a field the dashboard reads as a project-health fact.\n\n2026-09-20 scope refinement: Score rationale: The full fix spans persistence and explicit outcome presentation; a string truncation alone does not satisfy the witness contract.\n",
       "created_at": "2026-09-19",
-      "scored_at": "2026-09-19",
+      "scored_at": "2026-09-20",
+      "cross_repo": []
+    },
+    {
+      "id": "439",
+      "phase": 25,
+      "bundle": "core-loop",
+      "status": "pending",
+      "title": "Keep legitimate long-running jobs anchored while retaining crash rescue",
+      "scores": {
+        "d": 4,
+        "b": 8,
+        "u": 7
+      },
+      "eff": 1.88,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-6-astra",
+      "acceptance_criteria": [
+        "A dispatch job remains anchored throughout its configured legitimate run lifetime; a deterministic integration test exercises the rescue plugin and proves it does not reschedule a live dispatch.",
+        "Abandoned jobs are still rescued within a documented bound; tests cover dispatch, landing and audit queues and boot orphan recovery.",
+        "The effective rescue bound follows the effective run lifetime, including runtime configuration changes or an explicit supported reconfiguration boundary; no separate drifting timeout constant.",
+        "Tests cover both a genuinely live original attempt and an abandoned attempt, without sleeps, hidden retry or disabling duplicate identity guards."
+      ],
+      "out_of_scope": [
+        "Shutdown settlement and spawning during shutdown (Task 427).",
+        "SSE transport shutdown.",
+        "Changing the reviewer gate or automatically re-implementing retained work."
+      ],
+      "touches": [
+        "lib/harness/oban.ex",
+        "lib/harness/run/worker.ex",
+        "test/harness/oban_test.exs",
+        "test/harness/run/worker_test.exs"
+      ],
+      "body": "Extracted from Task 427: the September 13–14 incident record attributes duplicate attempt-2 dispatches to Lifeline rescuing jobs while their original runs were still alive. Current lib/harness/oban.ex uses a fixed 30-minute rescue window. Correct the job-rescue contract independently of shutdown settlement; do not change duplicate-dispatch identity or replace recovery judgment with automatic redispatch. Use the configured run lifetime plus an explicit margin as the default solution unless the installed provider contract demonstrates queue-scoped rescue that safely excludes live dispatch jobs. Verify the actual plugin behavior and preserve rescue of abandoned landing/audit jobs.",
+      "created_at": "2026-09-20",
+      "scored_at": "2026-09-20",
+      "cross_repo": []
+    },
+    {
+      "id": "440",
+      "phase": 25,
+      "bundle": "core-loop",
+      "status": "pending",
+      "title": "Bound MCP SSE transport shutdown independently of connection count",
+      "scores": {
+        "d": 4,
+        "b": 6,
+        "u": 5
+      },
+      "eff": 1.38,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "cursor",
+      "model": "cursor-grok-4.6-high",
+      "acceptance_criteria": [
+        "An isolated application instance with zero runs and multiple real MCP SSE connections shuts down within a documented total deadline; elapsed shutdown does not accumulate one full connection timeout per client.",
+        "Live integration coverage opens real transport connections and stops the disposable instance, without restarting or modifying the production node.",
+        "Connections are released, no transport children remain, and ordinary request/stream operation is preserved.",
+        "Any added drain uses a verified provider contract; fake-handler messaging alone is not accepted as transport evidence."
+      ],
+      "out_of_scope": [
+        "Run settlement and recovery (Task 427).",
+        "Lifeline job-rescue policy.",
+        "Changing production systemd timeouts or granting agents restart authority."
+      ],
+      "touches": [
+        "lib/harness/application.ex",
+        "lib/harness/dashboard/endpoint.ex",
+        "test/harness/application_test.exs",
+        "test/harness/dashboard/"
+      ],
+      "body": "Extracted from Task 427: September 14 journal evidence described SSE connections delaying application shutdown until the service timeout. Commit ebee2a1 reduced the endpoint shutdown timeout; verify the current behavior before adding another mechanism. Deliver a bounded transport drain that allows application children to shut down promptly. Select the integration from the installed Anubis/Bandit contract, not an assumed private handler map or a guessed close message. If the existing mitigation already satisfies the contract, deliver the missing regression coverage and record that result.",
+      "created_at": "2026-09-20",
+      "scored_at": "2026-09-20",
+      "cross_repo": []
+    },
+    {
+      "id": "441",
+      "phase": 24,
+      "bundle": "operator-cockpit",
+      "milestone": "v0_18",
+      "status": "pending",
+      "title": "Expose bounded durable lifecycle Activity in the operator dashboard",
+      "scores": {
+        "d": 4,
+        "b": 6,
+        "u": 6
+      },
+      "eff": 1.5,
+      "dep_layer": 1,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [
+        374
+      ],
+      "assignee": "grok",
+      "model": "grok-4.6",
+      "acceptance_criteria": [
+        "The /harness/activity route and navigation expose deterministic paginated history filtered by project, run, event type, adapter/model, time range and payload text.",
+        "Historical compatibility rows are labelled by source; absent actor facts remain absent, and no adapter/model pair is presented as a durable personal identity.",
+        "Ephemeral storage mode is visibly identified; an empty history is an empty result, and query failures are visible.",
+        "LiveView tests cover filters, stable pagination/tie ordering, empty and error states, historical labels and ephemeral mode; operator route documentation is updated."
+      ],
+      "out_of_scope": [
+        "Current-action Inbox (Task 388) and Kanban (Task 387).",
+        "New event store, taxonomy, scoring, routing or automated interpretation."
+      ],
+      "touches": [
+        "lib/harness/dashboard/",
+        "test/harness/dashboard/"
+      ],
+      "body": "Extract the historical Activity half of Task 388 so the current-action Inbox can ship independently. Consume the canonical event-query API delivered by Task 374, including the actor trail absorbed from Task 373. Provide navigation and a bounded chronological history; do not add storage or infer action eligibility from historical events.",
+      "created_at": "2026-09-20",
+      "scored_at": "2026-09-20",
+      "cross_repo": []
+    },
+    {
+      "id": "442",
+      "phase": 4,
+      "bundle": "multi-agent",
+      "target_repo": "harness_agent_adapter",
+      "status": "pending",
+      "title": "Add and verify the Kimi adapter in its owning package",
+      "scores": {
+        "d": 5,
+        "b": 5,
+        "u": 5
+      },
+      "eff": 1.0,
+      "dep_layer": 0,
+      "unlocks": 1,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-6-astra",
+      "acceptance_criteria": [
+        "A real authenticated Kimi invocation succeeds in an isolated worktree and a relevant real rejected invocation establishes error behavior before mocks are written; the evidence records CLI version and official contract source.",
+        "The adapter passes the package's shared conformance suite unchanged, preserves raw output, pins the requested model and worktree, threads environment controls and rejects unsupported option/resume combinations.",
+        "Rule discovery is proved in the actual worktree, including ancestor AGENTS.md behavior; authentication precedence is observed without capturing credential values.",
+        "Focused tests cover the observed invocation permutations and failure paths; a durable package commit is recorded for Task 366 to consume."
+      ],
+      "out_of_scope": [
+        "Harness-side catalog, dashboard, roadmap and transcript wiring (Task 366).",
+        "Changing operator accounts, billing preferences or reviewer eligibility defaults."
+      ],
+      "touches": [
+        "lib/harness/agent_adapter/kimi.ex",
+        "lib/harness/agent_adapter/registry.ex",
+        "test/harness/agent_adapter/",
+        "README.md"
+      ],
+      "body": "Task 366's adapter implementation belongs in harness_agent_adapter, which owns the shared adapter behaviour and registry after Task 397. Implement it there and deliver a pinned package revision for harness integration in Task 366. The requested capability is an additional explicit Kimi execution route; no cost or quality advantage is assumed. Observe the installed CLI and official documentation before choosing command, auth, resume, model and rule-discovery behavior; historical CLI flags in Task 366 are not authority. Operator login is an external prerequisite: missing credentials must fail with setup instructions, never silently skip or fall back to another provider.",
+      "created_at": "2026-09-20",
+      "scored_at": "2026-09-20",
       "cross_repo": []
     }
   ]
