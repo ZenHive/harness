@@ -32,6 +32,7 @@ defmodule Harness.Audit.QATest do
       opts = invocation.adapter_opts
       Agent.update(opts[:capture], &Map.put(&1, :prompt, invocation.prompt))
       if opts[:on_invoke], do: opts[:on_invoke].()
+      if opts[:in_worktree], do: opts[:in_worktree].(invocation.cwd)
       report = opts[:report] || %{}
       script = ~S(mkdir -p .harness; printf '%s' "$1" > .harness/audit.json)
       {:ok, {"/bin/sh", ["-c", script, "qa-test", Jason.encode!(report)], []}}
@@ -121,6 +122,36 @@ defmodule Harness.Audit.QATest do
     assert {:ok, %{attempts: [passed | _]}} = QA.list(ctx.project.name)
     assert passed.base_sha == ctx.base
     assert passed.included_landings == 2
+  end
+
+  test "incomplete QA publishes repair discoveries before requesting retry", ctx do
+    revision = land(ctx.repo, "needs-credentials")
+
+    discovery = fn path ->
+      File.mkdir_p!(Path.join(path, "roadmap"))
+      File.write!(Path.join(path, "roadmap/qa-repair.txt"), "Configure missing test credentials")
+    end
+
+    assert {:error, {:qa_incomplete, id}} =
+             run(ctx, report(ctx.project, revision, "incomplete"), in_worktree: discovery)
+
+    assert GitFixture.git!(ctx.repo, ["show", "origin/main:roadmap/qa-repair.txt"]) =~
+             "Configure missing test credentials"
+
+    attempt = Repo.get!(QAAttempt, id)
+    assert attempt.status == "incomplete"
+    assert attempt.report["qa"]["report"] == "clean hygiene"
+    assert QA.base(attempt) == ctx.base
+  end
+
+  test "a newer executing job attempt cannot revive an interrupted QA attempt", ctx do
+    job = Repo.insert!(Worker.new(%{"project_name" => ctx.project.name, "base_sha" => ctx.base}))
+    Repo.update!(Ecto.Changeset.change(job, state: "executing", attempt: 1))
+    assert {:ok, _} = QA.start(%{project: ctx.project, base_sha: ctx.base, job_id: job.id, attempt: 1})
+    assert {:ok, %{attempts: [%{status: "running"}]}} = QA.list(ctx.project.name)
+
+    Repo.update!(Ecto.Changeset.change(job, state: "executing", attempt: 2))
+    assert {:ok, %{attempts: [%{status: "incomplete"}]}} = QA.list(ctx.project.name)
   end
 
   test "wrong revision, wrong command, missing evidence and interruptions never pass", ctx do
@@ -213,7 +244,7 @@ defmodule Harness.Audit.QATest do
     assert {:ok, duplicate} = Oban.insert(__MODULE__.Oban, changeset)
     assert first.id == duplicate.id
     assert {:ok, %{pending: [%{status: "queued"}]}} = QA.list(ctx.project.name)
-    Repo.update!(Ecto.Changeset.change(first, state: "executing"))
+    Repo.update!(Ecto.Changeset.change(first, state: "executing", attempt: 1))
     assert {:ok, attempt} = QA.start(%{project: ctx.project, base_sha: ctx.base, job_id: first.id, attempt: 1})
     assert {:ok, %{attempts: [%{status: "running"}]}} = QA.list(ctx.project.name)
     assert {:ok, %{status: "incomplete"}} = QA.incomplete(attempt, :unavailable_prerequisite)

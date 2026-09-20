@@ -337,13 +337,18 @@ defmodule Harness.Audit do
     if is_nil(project.qa_command),
       do: witness_cold_check(report, project, request_store(request), worktree.base_sha, worktree.path, repo)
 
-    with :ok <- finish_qa(request, report, output),
+    qa_result = finish_qa(request, report, output)
+
+    # Incomplete QA still owns durable repair discoveries. Publish those before
+    # returning the retry signal; cleanup must not discard the agent's repair task.
+    with true <- qa_result == :ok or match?({:error, {:qa_incomplete, _}}, qa_result),
          :ok <- commit_cold_check_discovery(worktree.path, range.short_sha),
          {:ok, final_head} <- head_sha(worktree.path) do
       outcome = push_if_advanced(repo, worktree, target, final_head)
       record_watermark(project, target, final_head, outcome)
-      {outcome, meta}
+      {if(qa_result == :ok, do: outcome, else: qa_result), meta}
     else
+      false -> {qa_result, meta}
       {:error, reason} -> {{:error, reason}, meta}
     end
   end

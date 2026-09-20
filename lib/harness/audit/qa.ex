@@ -199,9 +199,9 @@ defmodule Harness.Audit.QA do
   end
 
   @spec observed_status(attempt()) :: String.t()
-  defp observed_status(%{status: "running", job_id: job_id}) when not is_nil(job_id) do
+  defp observed_status(%{status: "running", job_id: job_id, attempt: attempt}) when not is_nil(job_id) do
     case Repo.get(Oban.Job, job_id) do
-      %{state: "executing"} -> "running"
+      %{state: "executing", attempt: ^attempt} -> "running"
       _ -> "incomplete"
     end
   end
