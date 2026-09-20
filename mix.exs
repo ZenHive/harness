@@ -227,6 +227,7 @@ defmodule Harness.MixProject do
       # No .github/workflows yet; this alias IS the CI bar. `mix ci` (below) is the
       # ecosystem-convention entry point and maps here so there is ONE gate, not two.
       "precommit.full": [
+        "cmd bash scripts/sync-agents-md.sh --check",
         "harness.deps.check",
         "precommit",
         "ex_dna --max-clones 0",

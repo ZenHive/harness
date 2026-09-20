@@ -717,12 +717,12 @@ Toolchain: **Elixir 1.20.3 / OTP 29** (asdf) — pinned by the repo-local `.tool
 | Fast gate | `mix check.fast` — `format --check-formatted` + `compile --warnings-as-errors` + `credo --strict`. Local inner loop, not the dispatch hint. |
 | Dispatch checks | `mix check.dispatch` runs format and compile; select focused behavior and risk-relevant tests separately. |
 | QA command inventory | `mix precommit` — format, compile, Credo, Doctor, `test.json` coverage ≥80% excluding integration, Sobelow. Used by audit QA via `precommit.full`. |
-| Post-merge audit + QA | `mix precommit.full` (alias `mix ci`) — `precommit` + `ex_dna --max-clones 0` + `reach.check --arch --smells` + `dialyzer.json`. Full-project QA on the landed base; not an implementer/reviewer gate. |
+| Post-merge audit + QA | `mix precommit.full` (alias `mix ci`) — `bash scripts/sync-agents-md.sh --check` + `precommit` + `ex_dna --max-clones 0` + `reach.check --arch --smells` + `dialyzer.json`. Full-project QA on the landed base; not an implementer/reviewer gate. |
 | Ecosystem entry point | `mix ci` — vibe_kit-convention name; delegates to `precommit.full` (one gate, not two). |
 | Update project hints | `mix harness.projects.use_dispatch_check` — retired; refuses unchecked settings changes. Use the rollout command. |
 | Roll out dispatch vs QA | `mix harness.projects.rollout_dispatch_qa` — dry-run inventory + prior-settings capture. `--apply` installs `qa_command` without reducing `check_command`; dispatch switches only after an evidenced QA pass. Hook inventory is read-only; no hook installation or bypass. |
 | Sync harness skills | `scripts/sync-harness-skills.sh` (`--dry-run` to preview) — after editing `priv/includes/harness-workflow.md` or `skills/harness-driver/SKILL.md`, propagate to `~/.claude/includes/` + the marketplace `harness` plugin skills. The general marketplace sync excludes these two. |
-| Regenerate AGENTS.md | `bash ~/_DATA/code/claude-marketplace/scripts/sync-agents-md.sh` (`--check` = freshness gate, exits non-zero on drift) — after any `CLAUDE.md` edit, so cross-family reviewers gate against current rules. **Never hand-edit `AGENTS.md`.** Operator/marketplace gate (path is the personal checkout) — not wired into `precommit.full`. |
+| Regenerate AGENTS.md | `bash scripts/sync-agents-md.sh` (`--check` = freshness gate, exits non-zero on drift) — after any `CLAUDE.md` edit, so cross-family reviewers gate against current rules. **Never hand-edit `AGENTS.md`.** Portable snapshots and refresh procedure: `priv/agents/README.md`. Checked by `precommit.full` / `ci`. |
 
 Check timing is defined in `verification-policy.md`; do not assume a hook ran without observed evidence.
 
@@ -760,7 +760,7 @@ Self-contained so it reaches `AGENTS.md` (and the cross-family reviewer) even af
 - **QA evidence:** the post-merge audit + QA records full-project results; the orchestrator consumes those results and handles findings.
 - **`mix test.json` and `mix dialyzer.json` emit JSON by design** (ex_unit_json / dialyzer_json reporters). Parse the payload for *real* failures — never flag the JSON envelope itself as an error. When the dialyzer_json encoder can't serialize a particular warning, **plain `mix dialyzer` is authoritative** for that warning.
 - **`ex_dna --max-clones 0`** is a zero-tolerance AST-clone gate; **`reach.check --arch --smells`** runs two phases: `--arch` **gates** on the architecture policy in `.reach.exs` (forbidden cross-boundary calls + the `boundaries[:public]` facade list — non-zero exit on violation), while `--smells` is **advisory** (reports the smell surface but exits 0 unless `--strict` / `smells: [strict: true]` is configured). An `--arch` red is real debt to fix or model honestly in `.reach.exs`, not to suppress; smell findings are a backlog signal, not a build break.
-- **`AGENTS.md` is generated from `CLAUDE.md`** by `~/_DATA/code/claude-marketplace/scripts/sync-agents-md.sh` (recursively inlines every `@`-import; `--check` re-renders and exits non-zero on drift). Regenerate after any `CLAUDE.md` change so the reviewer gates against current rules — **never hand-edit `AGENTS.md`**.
+- **`AGENTS.md` is generated from `CLAUDE.md`** by `bash scripts/sync-agents-md.sh` (recursively inlines every `@`-import; `--check` re-renders and exits non-zero on drift). Regenerate after any `CLAUDE.md` change so the reviewer gates against current rules — **never hand-edit `AGENTS.md`**.
 
 ## What This Is
 
