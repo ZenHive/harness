@@ -5,6 +5,7 @@ defmodule Harness.Cron.OrchestratorTest do
   alias Harness.Cron.Orchestrator
   alias Harness.ProjectFixture
   alias Harness.ResultStore.Memory
+  alias Harness.Run.Status
 
   setup do
     previous = Application.get_env(:harness, :result_store)
@@ -12,6 +13,8 @@ defmodule Harness.Cron.OrchestratorTest do
 
     on_exit(fn ->
       Application.delete_env(:harness, :cron_orchestrator)
+      Application.delete_env(:harness, :live_run_statuses)
+      Application.delete_env(:harness, :roadmap_list)
       Application.put_env(:harness, :result_store, previous)
     end)
 
@@ -204,6 +207,46 @@ defmodule Harness.Cron.OrchestratorTest do
     assert {:error, :missing} = Orchestrator.plan(project, [])
     Application.put_env(:harness, :cron_polling, orchestrator_adapter: :unknown)
     assert {:error, {:no_adapter, _}} = Orchestrator.plan(project, [])
+  end
+
+  describe "context/2 — in-flight occupancy is live/Oban identity, not rmap in_progress" do
+    test "N rmap in_progress tasks with zero live runs yield an empty in_flight list" do
+      project = ProjectFixture.from_repo("/tmp/harness-orch-phantom", name: "orch-phantom", concurrency_cap: 4)
+      Application.put_env(:harness, :live_run_statuses, fn -> [] end)
+
+      Application.put_env(:harness, :roadmap_list, fn _project ->
+        {:ok,
+         for id <- ["4", "12", "22", "23"] do
+           %{"id" => id, "status" => "in_progress", "touches" => ["lib/#{id}.ex"]}
+         end}
+      end)
+
+      ctx = Orchestrator.context(project, [%{"id" => "20", "assignee" => "codex"}])
+      assert ctx.in_flight == []
+      assert ctx.concurrency_cap == 4
+    end
+
+    test "a live running task is in_flight with its rmap touches; a settled sibling is not" do
+      project = ProjectFixture.from_repo("/tmp/harness-orch-live", name: "orch-live", concurrency_cap: 4)
+
+      Application.put_env(:harness, :live_run_statuses, fn ->
+        [
+          %Status{run_id: "run-12", project_name: project.name, task_id: "12", state: :running},
+          %Status{run_id: "run-4", project_name: project.name, task_id: "4", state: :done}
+        ]
+      end)
+
+      Application.put_env(:harness, :roadmap_list, fn _project ->
+        {:ok,
+         [
+           %{"id" => "4", "status" => "in_progress", "touches" => ["lib/settled.ex"]},
+           %{"id" => "12", "status" => "in_progress", "touches" => ["lib/starpatron/media.ex"]}
+         ]}
+      end)
+
+      ctx = Orchestrator.context(project, [%{"id" => "20", "assignee" => "codex"}])
+      assert [%{"id" => "12", "touches" => ["lib/starpatron/media.ex"]}] = ctx.in_flight
+    end
   end
 
   @spec write_plan(String.t(), String.t()) :: :ok

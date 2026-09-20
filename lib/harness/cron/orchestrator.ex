@@ -54,9 +54,9 @@ defmodule Harness.Cron.Orchestrator do
   alias Harness.Artifact
   alias Harness.CapabilityScore
   alias Harness.Config
+  alias Harness.Cron.InFlight
   alias Harness.Dispatch.Attempts
   alias Harness.Project
-  alias Harness.Roadmap
 
   @artifact_path ".harness/cron-plan.json"
   @default_adapter :codex
@@ -161,9 +161,10 @@ defmodule Harness.Cron.Orchestrator do
 
   @doc """
   Assembles the full orchestrator context: the dispatchable ready set, the
-  in-flight tasks (with their touches, so the plan avoids stale-base overlap),
-  the project's concurrency cap, best-effort capability facts, and the agent
-  roster with the operator's enabled/available switches.
+  in-flight tasks (live registry or unfinished Oban jobs, with rmap touches so
+  the plan avoids stale-base overlap), the project's concurrency cap, best-effort
+  capability facts, and the agent roster with the operator's enabled/available
+  switches. A settled run is not in-flight regardless of rmap `in_progress`.
   """
   @spec context(Project.t(), [map()]) :: context()
   def context(%Project{} = project, ready) when is_list(ready) do
@@ -171,21 +172,10 @@ defmodule Harness.Cron.Orchestrator do
       project: project.name,
       concurrency_cap: project.concurrency_cap,
       ready: ready,
-      in_flight: in_flight_tasks(project),
+      in_flight: InFlight.tasks(project),
       capability: capability_facts(),
       agents: agent_facts()
     }
-  end
-
-  # In-flight = tasks rmap marks `in_progress` (set at dispatch). Resolving them
-  # from rmap rather than Oban gives their `touches`/`files_to_modify` directly,
-  # which is exactly what the plan needs to avoid overlapping a running task.
-  @spec in_flight_tasks(Project.t()) :: [map()]
-  defp in_flight_tasks(%Project{} = project) do
-    case Roadmap.list(project.name, "in_progress") do
-      {:ok, tasks} when is_list(tasks) -> tasks
-      _other -> []
-    end
   end
 
   @spec capability_facts() :: [map()]

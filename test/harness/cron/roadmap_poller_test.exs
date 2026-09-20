@@ -41,6 +41,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
       SettingsStoreMemory.reset(scope: :test_default)
       Application.delete_env(:harness, :oban_insert)
       Application.delete_env(:harness, :roadmap_ready)
+      Application.delete_env(:harness, :roadmap_list)
       Application.delete_env(:harness, :cron_orchestrator)
       Application.delete_env(:harness, :test_capture_pid)
       Application.delete_env(:harness, :live_run_statuses)
@@ -460,9 +461,11 @@ defmodule Harness.Cron.RoadmapPollerTest do
       {:ok, Ecto.Changeset.apply_action!(changeset, :insert)}
     end)
 
-    assert :ok = RoadmapPoller.perform(%Oban.Job{})
+    log = capture_log(fn -> assert :ok = RoadmapPoller.perform(%Oban.Job{}) end)
 
     refute_received {:inserted, _args}
+    assert log =~ "cron-noplan zero dispatch cap=10 occupancy=0 rmap_in_progress="
+    assert log =~ "fact={:orchestrator, :missing}"
   end
 
   test "operator config can disable subscription scrubs for metered API-key agents" do
@@ -847,6 +850,210 @@ defmodule Harness.Cron.RoadmapPollerTest do
 
     assert {:ok, ~U[2026-05-27 01:00:00Z]} =
              RoadmapPoller.next_tick(~U[2026-05-27 00:15:00Z])
+  end
+
+  describe "in-flight occupancy (Task 431)" do
+    test "N rmap in_progress with zero live runs dispatch instead of deferring on a full cap" do
+      parent = self()
+      project = ProjectFixture.from_repo("/tmp/harness-cron-starconiq", name: "cron-starconiq", concurrency_cap: 4)
+      assert :ok = ProjectRegistry.register(project)
+      enable_project("cron-starconiq")
+
+      Application.put_env(:harness, :live_run_statuses, fn -> [] end)
+
+      Application.put_env(:harness, :roadmap_list, fn _project ->
+        {:ok,
+         for id <- ["4", "12", "22", "23"] do
+           %{"id" => id, "status" => "in_progress", "touches" => ["lib/#{id}.ex"]}
+         end}
+      end)
+
+      Application.put_env(:harness, :roadmap_ready, fn _p ->
+        {:ok, [task("20", "codex"), task("3", "codex")]}
+      end)
+
+      Application.put_env(:harness, :cron_orchestrator, fn project, ready ->
+        in_flight = Orchestrator.context(project, ready).in_flight
+        send(parent, {:in_flight, in_flight})
+
+        if in_flight == [] do
+          dispatch = Enum.map(ready, &%{task_id: &1["id"], adapter: "codex"})
+          {:ok, %Orchestrator{dispatch: dispatch, skip: []}}
+        else
+          skip = Enum.map(ready, &%{task_id: &1["id"], disposition: "defer", reason: "cap occupied"})
+          {:ok, %Orchestrator{dispatch: [], skip: skip}}
+        end
+      end)
+
+      capture_inserts(parent)
+      assert :ok = RoadmapPoller.perform(%Oban.Job{})
+
+      assert_received {:in_flight, []}
+      assert_received {:inserted, %{item_id: "20"}}
+      assert_received {:inserted, %{item_id: "3"}}
+    end
+
+    test "a live in-flight run is handed to the orchestrator so a colliding ready task can be deferred" do
+      parent = self()
+      project = ProjectFixture.from_repo("/tmp/harness-cron-live-cap", name: "cron-live-cap", concurrency_cap: 4)
+      assert :ok = ProjectRegistry.register(project)
+      enable_project("cron-live-cap")
+
+      Application.put_env(:harness, :live_run_statuses, fn ->
+        [%Status{run_id: "run-12", project_name: "cron-live-cap", task_id: "12", state: :running}]
+      end)
+
+      Application.put_env(:harness, :roadmap_list, fn _project ->
+        {:ok,
+         [
+           %{"id" => "4", "status" => "in_progress", "touches" => ["lib/settled.ex"]},
+           %{"id" => "12", "status" => "in_progress", "touches" => ["lib/starpatron/media.ex"]}
+         ]}
+      end)
+
+      Application.put_env(:harness, :roadmap_ready, fn _p ->
+        {:ok, [task("20", "codex"), task("3", "codex")]}
+      end)
+
+      Application.put_env(:harness, :cron_orchestrator, fn project, ready ->
+        send(parent, {:in_flight, Orchestrator.context(project, ready).in_flight})
+
+        {:ok,
+         %Orchestrator{
+           dispatch: [%{task_id: "20", adapter: "codex"}],
+           skip: [%{task_id: "3", disposition: "defer", reason: "overlaps in-flight task 12"}]
+         }}
+      end)
+
+      capture_inserts(parent)
+      assert :ok = RoadmapPoller.perform(%Oban.Job{})
+
+      assert_received {:in_flight, [%{"id" => "12", "touches" => ["lib/starpatron/media.ex"]}]}
+      assert_received {:inserted, %{item_id: "20"}}
+      refute_received {:inserted, %{item_id: "3"}}
+    end
+  end
+
+  describe "zero-dispatch occupancy witness (Task 431)" do
+    test "no-ready-work emits cap, occupancy and rmap_in_progress plus no_ready_work" do
+      project =
+        ProjectFixture.from_repo("/tmp/harness-cron-witness-ready", name: "cron-witness-ready", concurrency_cap: 4)
+
+      assert :ok = ProjectRegistry.register(project)
+      enable_project("cron-witness-ready")
+
+      Application.put_env(:harness, :live_run_statuses, fn -> [] end)
+      Application.put_env(:harness, :roadmap_list, fn _ -> {:ok, []} end)
+      Application.put_env(:harness, :roadmap_ready, fn _p -> {:ok, [task("51", "human")]} end)
+
+      log = capture_log(fn -> assert :ok = RoadmapPoller.perform(%Oban.Job{}) end)
+
+      assert log =~ "cron-witness-ready zero dispatch cap=4 occupancy=0 rmap_in_progress=0 fact=:no_ready_work"
+      refute log =~ "deadlock"
+      refute log =~ "wedge"
+    end
+
+    test "cap occupancy is reported as the live count, not as a diagnosed cause" do
+      project = ProjectFixture.from_repo("/tmp/harness-cron-witness-cap", name: "cron-witness-cap", concurrency_cap: 2)
+      assert :ok = ProjectRegistry.register(project)
+      enable_project("cron-witness-cap")
+
+      Application.put_env(:harness, :live_run_statuses, fn ->
+        [
+          %Status{run_id: "run-1", project_name: "cron-witness-cap", task_id: "1", state: :running},
+          %Status{run_id: "run-2", project_name: "cron-witness-cap", task_id: "2", state: :reviewing}
+        ]
+      end)
+
+      Application.put_env(:harness, :roadmap_list, fn _ ->
+        {:ok,
+         [
+           %{"id" => "1", "status" => "in_progress"},
+           %{"id" => "2", "status" => "in_progress"}
+         ]}
+      end)
+
+      Application.put_env(:harness, :roadmap_ready, fn _p ->
+        {:ok, [task("20", "codex"), task("3", "codex")]}
+      end)
+
+      skip = [
+        %{task_id: "20", disposition: "defer", reason: "All 2 concurrency slots are occupied"},
+        %{task_id: "3", disposition: "defer", reason: "All 2 concurrency slots are occupied"}
+      ]
+
+      Application.put_env(:harness, :cron_orchestrator, fn _p, _ready ->
+        {:ok, %Orchestrator{dispatch: [], skip: skip}}
+      end)
+
+      log = capture_log(fn -> assert :ok = RoadmapPoller.perform(%Oban.Job{}) end)
+
+      assert log =~ "cron-witness-cap zero dispatch cap=2 occupancy=2 rmap_in_progress=2 fact="
+      assert log =~ "orchestrator_plan"
+      assert log =~ "All 2 concurrency slots are occupied"
+      refute log =~ "deadlock"
+      refute log =~ "manual landing"
+    end
+
+    test "AI deferral includes the plan skip entries as the fact" do
+      project = ProjectFixture.from_repo("/tmp/harness-cron-witness-ai", name: "cron-witness-ai", concurrency_cap: 4)
+      assert :ok = ProjectRegistry.register(project)
+      enable_project("cron-witness-ai")
+
+      Application.put_env(:harness, :live_run_statuses, fn -> [] end)
+
+      Application.put_env(:harness, :roadmap_list, fn _ ->
+        {:ok,
+         for id <- ["4", "12", "22", "23"] do
+           %{"id" => id, "status" => "in_progress"}
+         end}
+      end)
+
+      Application.put_env(:harness, :roadmap_ready, fn _p ->
+        {:ok, [task("20", "codex"), task("3", "codex")]}
+      end)
+
+      skip = [
+        %{task_id: "20", disposition: "defer", reason: "wait for land"},
+        %{task_id: "3", disposition: "inline", reason: "one-liner"}
+      ]
+
+      Application.put_env(:harness, :cron_orchestrator, fn _p, _ready ->
+        {:ok, %Orchestrator{dispatch: [], skip: skip}}
+      end)
+
+      log = capture_log(fn -> assert :ok = RoadmapPoller.perform(%Oban.Job{}) end)
+
+      assert log =~ "cron-witness-ai zero dispatch cap=4 occupancy=0 rmap_in_progress=4 fact="
+      assert log =~ "wait for land"
+      assert log =~ "inline"
+    end
+
+    test "a ready-set read failure emits occupancy plus the refused reason" do
+      parent = self()
+      repo = GitFixture.init_repo(name: "cron-witness-read")
+      project = ProjectFixture.from_repo(repo, name: "cron-witness-read", target_branch: "main", concurrency_cap: 3)
+      assert :ok = ProjectRegistry.register(project)
+      enable_project("cron-witness-read")
+
+      Application.put_env(:harness, :live_run_statuses, fn -> [] end)
+      Application.put_env(:harness, :roadmap_list, fn _ -> {:ok, []} end)
+
+      Application.put_env(:harness, :roadmap_ready, fn _project ->
+        send(parent, :unproven_roadmap_read)
+        {:ok, [task("52", "codex")]}
+      end)
+
+      capture_inserts(parent)
+      log = capture_log(fn -> assert :ok = RoadmapPoller.perform(%Oban.Job{}) end)
+
+      assert log =~ "roadmap ready refused"
+      assert log =~ "cron-witness-read zero dispatch cap=3 occupancy=0 rmap_in_progress=0 fact="
+      assert log =~ "ready_refused"
+      assert log =~ "roadmap_currency_unproven"
+      refute_received :unproven_roadmap_read
+      refute_received {:inserted, _args}
+    end
   end
 
   describe "task_agent/1" do
