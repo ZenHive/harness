@@ -180,16 +180,20 @@ Installed: `git` 2.43, `cargo` 1.98, Postgres 18.6, `claude`
 - [x] **Authenticate each agent CLI headlessly** — subscription OAuth on a box
       with no browser is the real migration work, not the hardware
 - [x] harness runs as its own unprivileged system user (`harness`), deliberately
-      **not** in the sudo group. That user owns its checkout, its database and
-      the worktree root, and nothing beyond them — so a dispatched agent's blast
-      radius is exactly those files
-- [x] `harness_prod` database + migrations. The node runs **`MIX_ENV=dev`**
-      (systemd drop-in `harness.service.d/10-mix-env.conf`): this is an
+      **not** in the sudo group. That user owns its checkout and
+      the worktree root. The runtime database is owned by `postgres`;
+      `harness` retains the grants needed for application writes and migrations,
+      but cannot drop the database
+- [x] `harness_runtime` database + migrations. The node runs **`MIX_ENV=dev`**
+      (Mix default; `MIX_ENV` is unset in systemd): this is an
       operator-only box behind a forward-only SSH tunnel, and Tidewave is
       `only: [:dev, :test]`, so a prod build would have no `/tidewave/mcp` —
       the very surface the operator drives the node from. `runtime.exs` honours
       `HARNESS_DATABASE_URL` in every env, so the dev build still uses
-      `harness_prod`. `mix.exs` sets `start_permanent: Mix.env() != :test` so
+      `harness_runtime` (renamed from `harness_prod` on 2026-09-20;
+      separate from `harness_dev` and `harness_test`). The database name identifies
+      its role, not the Mix environment. `mix.exs` sets
+      `start_permanent: Mix.env() != :test` so
       the systemd restart net survives the dev switch — under the old
       `== :prod` a crashed supervision tree left a live-but-dead BEAM that
       `Restart=` never noticed.
