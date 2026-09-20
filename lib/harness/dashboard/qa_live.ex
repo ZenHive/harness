@@ -72,6 +72,8 @@ defmodule Harness.Dashboard.QALive do
      |> start_async(:enqueue, fn -> Requests.enqueue(name) end)}
   end
 
+  def handle_event("start", _, socket), do: {:noreply, socket}
+
   def handle_event("evidence", %{"id" => id}, socket) do
     {:noreply, load_evidence(socket, id, 0)}
   end
@@ -98,20 +100,19 @@ defmodule Harness.Dashboard.QALive do
 
   @spec refresh(Socket.t()) :: Socket.t()
   defp refresh(socket) do
-    name = socket.assigns.name
-    project = socket.assigns.project_filter
-    status = socket.assigns.status_filter
-    offset = socket.assigns.offset
+    assigns = socket.assigns
+    assign_async(socket, :page, fn -> load_page(assigns) end)
+  end
 
-    assign_async(socket, :page, fn ->
-      if name do
-        with {:ok, registered} <- ProjectRegistry.lookup(name) do
-          {:ok, %{page: %{detail: QA.project(registered, 10)}}}
-        end
-      else
-        {:ok, %{page: QA.page(project, status, offset)}}
-      end
-    end)
+  @spec load_page(map()) :: {:ok, map()} | {:error, term()}
+  defp load_page(%{name: name}) when is_binary(name) do
+    with {:ok, registered} <- ProjectRegistry.lookup(name) do
+      {:ok, %{page: %{detail: QA.project(registered, 10)}}}
+    end
+  end
+
+  defp load_page(assigns) do
+    {:ok, %{page: QA.page(assigns.project_filter, assigns.status_filter, assigns.offset)}}
   end
 
   @spec load_evidence(Socket.t(), String.t(), non_neg_integer()) :: Socket.t()
@@ -170,6 +171,7 @@ defmodule Harness.Dashboard.QALive do
       <p :if={@page.loading} role="status">Loading QA facts…</p>
       <div :if={@page.failed} role="alert">
         <p>QA facts unavailable: {inspect(@page.failed)}</p><button
+          type="button"
           phx-click="refresh"
           class="btn-save"
         >Retry loading</button>
@@ -260,12 +262,14 @@ defmodule Harness.Dashboard.QALive do
           <div class="insights-actions">
             <button
               :if={@evidence_offset > 0}
+              type="button"
               phx-click="evidence_page"
               phx-value-direction="previous"
               class="btn-save"
             >Previous evidence</button>
             <button
               :if={@evidence_offset + 8_000 < @evidence.result.total}
+              type="button"
               phx-click="evidence_page"
               phx-value-direction="next"
               class="btn-save"
@@ -297,16 +301,21 @@ defmodule Harness.Dashboard.QALive do
         "not pinned"}
     </p>
     <p :if={!@row.latest and match?({:ok, _}, @row.facts)}>No recorded QA attempts.</p>
-    <button :if={match?({:error, _}, @row.facts)} phx-click="refresh" class="btn-save">Retry loading</button>
+    <button :if={match?({:error, _}, @row.facts)} type="button" phx-click="refresh" class="btn-save">
+      Retry loading
+    </button>
     <p>Last fetched target revision: {@row.revision || "unavailable"}</p>
-    <p :if={match?({:ok, _}, @row.facts)}>
+    <p :if={@row.configured and match?({:ok, _}, @row.facts)}>
       {if @row.matched,
         do: "Latest evidence matches the configured command and last fetched target revision.",
         else:
           "No matching latest evidence for the configured command and last fetched target revision."} Remote changes since the last fetch are unverified.
     </p>
-    <p>{@row.adoption}</p>
-    <p :if={match?({:ok, _}, @row.facts) and !(@row.matched and @row.latest.status == "passed")}>
+    <p :if={@row.configured}>{@row.adoption}</p>
+    <p :if={
+      @row.configured and match?({:ok, _}, @row.facts) and
+        not (@row.matched and is_map(@row.latest) and @row.latest.status == "passed")
+    }>
       Rollout evidence: no latest passed report matches the configured QA command and observed target revision.
     </p>
     """
@@ -321,6 +330,7 @@ defmodule Harness.Dashboard.QALive do
       <h2>{@row.id}</h2><.facts row={@row} />
       <button
         id="qa-start"
+        type="button"
         phx-click="start"
         phx-disable-with="Submitting…"
         disabled={@busy or !@row.configured}
@@ -349,7 +359,9 @@ defmodule Harness.Dashboard.QALive do
           </dd>
         </div>
         <div>
-          <dt>Landing override</dt><dd>{inspect(@row.override || :none)}</dd>
+          <dt>Landing override</dt><dd>
+            {if @row.override, do: inspect(@row.override), else: "none"}
+          </dd>
         </div>
       </dl>
       <p :if={@row.catalog}>Rollout notes: {@row.catalog.notes}</p>
@@ -391,7 +403,9 @@ defmodule Harness.Dashboard.QALive do
         }>
           Historical evidence: command, target or revision differs from the current observation.
         </p>
-        <button class="btn-save" phx-click="evidence" phx-value-id={attempt.id}>Read evidence</button>
+        <button type="button" class="btn-save" phx-click="evidence" phx-value-id={attempt.id}>
+          Read evidence
+        </button>
       </article>
     </section>
     """

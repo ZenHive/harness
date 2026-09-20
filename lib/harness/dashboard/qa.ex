@@ -16,25 +16,8 @@ defmodule Harness.Dashboard.QA do
   def project(project, limit \\ 1) do
     facts = Attempts.list(project.name, limit)
     revision = observed_revision(project)
-
-    attempts =
-      case facts do
-        {:ok, data} -> data.attempts
-        _ -> []
-      end
-
-    pending =
-      case facts do
-        {:ok, data} -> data.pending
-        _ -> []
-      end
-
+    {attempts, pending} = split_facts(facts)
     latest = List.first(attempts)
-
-    matched =
-      latest && latest.command == project.qa_command &&
-        latest.target_branch == project.target_branch && latest.revision == revision && not is_nil(revision)
-
     entry = Catalog.entry(project.name)
 
     %{
@@ -44,10 +27,10 @@ defmodule Harness.Dashboard.QA do
       attempts: attempts,
       pending: pending,
       latest: latest,
-      matched: matched || false,
+      matched: matched?(latest, project, revision),
       status: status(pending, latest, facts),
       facts: facts,
-      configured: is_binary(project.qa_command) and project.qa_command != "",
+      configured: configured?(project),
       adoption: adoption(project, entry),
       catalog: entry,
       persisted: persisted(project),
@@ -74,6 +57,21 @@ defmodule Harness.Dashboard.QA do
     do: not is_nil(row.latest) and row.latest.status == status
 
   defp matches?(row, status), do: row.status == status
+
+  @spec split_facts(term()) :: {[map()], [map()]}
+  defp split_facts({:ok, data}), do: {data.attempts, data.pending}
+  defp split_facts(_facts), do: {[], []}
+
+  @spec configured?(Project.t()) :: boolean()
+  defp configured?(project), do: is_binary(project.qa_command) and project.qa_command != ""
+
+  @spec matched?(map() | nil, Project.t(), String.t() | nil) :: boolean()
+  defp matched?(latest, project, revision) when is_map(latest) and is_binary(revision) do
+    latest.command == project.qa_command and latest.target_branch == project.target_branch and
+      latest.revision == revision
+  end
+
+  defp matched?(_latest, _project, _revision), do: false
 
   @spec status([map()], map() | nil, term()) :: String.t()
   defp status(_, _, {:error, _}), do: "unavailable"

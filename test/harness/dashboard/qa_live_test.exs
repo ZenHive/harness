@@ -21,10 +21,16 @@ defmodule Harness.Dashboard.QALiveTest do
     :ok = ProjectRegistry.register(project)
     on_exit(fn -> ProjectRegistry.unregister(project.name) end)
 
-    start_supervised!(
-      {Oban,
-       name: Harness.Oban, repo: Repo, testing: :manual, queues: false, plugins: false, notifier: Oban.Notifiers.Isolated}
-    )
+    oban = [
+      name: Harness.Oban,
+      repo: Repo,
+      testing: :manual,
+      queues: false,
+      plugins: false,
+      notifier: Oban.Notifiers.Isolated
+    ]
+
+    start_supervised!({Oban, oban})
 
     %{project: project, repo: repo, revision: sha(repo)}
   end
@@ -104,19 +110,24 @@ defmodule Harness.Dashboard.QALiveTest do
     assert {:ok, first} = Requests.enqueue(ctx.project.name)
     assert {:ok, duplicate} = Requests.enqueue(ctx.project.name)
     assert first.id == duplicate.id
-    Repo.update!(Ecto.Changeset.change(first, state: "executing"))
-    assert {:ok, duplicate} = Requests.enqueue(ctx.project.name)
-    assert duplicate.id == first.id
+    assert duplicate.conflict?
+    Repo.update!(Ecto.Changeset.change(first, state: "completed"))
+    assert {:ok, recheck} = Requests.enqueue(ctx.project.name)
+    refute recheck.id == first.id
+    refute recheck.conflict?
+    Repo.update!(Ecto.Changeset.change(recheck, state: "executing"))
+    assert {:ok, still_active} = Requests.enqueue(ctx.project.name)
+    assert still_active.id == recheck.id
     File.write!(Path.join(ctx.repo, "new.txt"), "new work")
     GitFixture.git!(ctx.repo, ["add", "new.txt"])
     GitFixture.git!(ctx.repo, ["commit", "-qm", "new work"])
     GitFixture.git!(ctx.repo, ["push", "-q", "origin", "main"])
     assert {:ok, newer} = Requests.enqueue(ctx.project.name)
-    refute newer.id == first.id
+    refute newer.id == recheck.id
     assert newer.args["qa_revision"] == sha(ctx.repo)
     :ok = ProjectRegistry.upsert(%{ctx.project | qa_command: "printf changed-suite"})
     assert {:ok, changed} = Requests.enqueue(ctx.project.name)
-    refute changed.id in [first.id, newer.id]
+    refute changed.id in [first.id, recheck.id, newer.id]
     assert changed.args["qa_command"] == "printf changed-suite"
   end
 
@@ -246,14 +257,25 @@ defmodule Harness.Dashboard.QALiveTest do
     assert has_element?(missing, "button", "Retry loading")
     :ok = ProjectRegistry.upsert(%{ctx.project | qa_command: nil})
     {:ok, view, _} = live(build_conn(), "/harness/qa/#{ctx.project.name}")
-    assert render_async(view) =~ "QA not configured"
+    html = render_async(view)
+    assert html =~ "QA not configured"
+    refute html =~ "No matching latest evidence"
+    refute html =~ "Rollout evidence"
+    refute html =~ "No rollout mapping available"
     assert has_element?(view, "#qa-start[disabled]")
     assert {:error, :qa_not_configured} = Requests.enqueue(ctx.project.name)
+
+    {:ok, overview, _} = live(build_conn(), "/harness/qa")
+    overview_html = render_async(overview)
+    assert overview_html =~ "QA not configured"
+    refute overview_html =~ "No matching latest evidence"
+    refute overview_html =~ "Rollout evidence"
   end
 
   test "history and evidence reads remain bounded", ctx do
     for _ <- 1..12, do: record(ctx, "incomplete")
-    assert length(Presentation.project(ctx.project, 10).attempts) == 10
+    attempts = Presentation.project(ctx.project, 10).attempts
+    assert Enum.count_until(attempts, 11) == 10
     assert {:ok, %{attempts: [summary]}} = QA.list(ctx.project.name, 1)
     refute Map.has_key?(summary, :report)
     refute Map.has_key?(summary, :transcript)
