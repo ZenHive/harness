@@ -19,4 +19,6 @@ defmodule Harness.Audit.QAAttempt do
     field :transcript, :string
     timestamps(type: :utc_datetime_usec)
   end
+
+  @type t :: %__MODULE__{}
 end

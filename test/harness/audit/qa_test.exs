@@ -50,6 +50,25 @@ defmodule Harness.Audit.QATest do
     %{repo: repo, project: project, base: sha(repo), capture: capture}
   end
 
+  test "legacy projects keep focused check_command behavior without QA rows", ctx do
+    project = %{ctx.project | qa_command: nil}
+    land(ctx.repo, "legacy")
+
+    assert :no_changes =
+             Audit.run(%{
+               project: project,
+               base_sha: ctx.base,
+               auditor: Auditor,
+               result_store: false,
+               auditor_opts: [capture: ctx.capture, report: %{"cold_check" => %{"passed" => true}}]
+             })
+
+    prompt = Agent.get(ctx.capture, & &1.prompt)
+    assert prompt =~ "FOCUSED_ONLY"
+    refute prompt =~ "FULL-PROJECT QA"
+    assert {:ok, %{attempts: []}} = QA.list(project.name)
+  end
+
   test "clean evidence survives cache reset and covers every coalesced landing", ctx do
     first = land(ctx.repo, "one")
     revision = land(ctx.repo, "two")
@@ -124,6 +143,15 @@ defmodule Harness.Audit.QATest do
     assert {:ok, attempt} = QA.pin(attempt, %{revision: revision})
     assert {:ok, %{status: "incomplete"}} = QA.finish(attempt, valid, {:timed_out, :total}, "interrupted")
     assert QA.base(attempt) == ctx.base
+  end
+
+  test "a reported command still matches after surrounding whitespace", ctx do
+    revision = land(ctx.repo, "trim")
+    valid = report(ctx.project, revision, "passed")
+    padded = put_in(valid, ["qa", "command"], "  #{ctx.project.qa_command}  \n")
+
+    assert :no_changes = run(ctx, padded)
+    assert {:ok, %{attempts: [%{status: "passed"}]}} = QA.list(ctx.project.name)
   end
 
   test "an absent artifact cannot mark a clean agent exit as passed", ctx do

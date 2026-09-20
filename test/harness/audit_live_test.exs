@@ -24,8 +24,8 @@ defmodule Harness.AuditLiveTest do
     assert is_binary(model), "export HARNESS_LIVE_AUDITOR_MODEL=<supported Claude model id>"
 
     for {command, expected} <- [
-          {"printf 'audit-live-success\\n'", "passed"},
-          {"printf 'audit-live-failure\\n'; exit 17", "failed"}
+          {"printf audit-live-success", "passed"},
+          {"printf audit-live-failure; exit 17", "failed"}
         ] do
       %{repo: repo} = GitFixture.init_with_origin()
       revision = repo |> GitFixture.git!(["rev-parse", "HEAD"]) |> String.trim()

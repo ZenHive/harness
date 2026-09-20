@@ -1403,7 +1403,7 @@ defmodule Harness.Dashboard.Components do
               placeholder="full-project QA command (post-merge)"
               aria-label={"QA command for #{project.label}"}
             />
-            <div :if={Map.has_key?(project, :qa)} id={"qa-status-#{project.name}"}>
+            <div :if={Map.get(project, :qa_command, "") != ""} id={"qa-status-#{project.name}"}>
               <p :if={project.qa.error}>{project.qa.error}</p>
               <p :for={job <- project.qa.pending}>QA {job.status} · job {job.job_id}</p>
               <details :for={attempt <- project.qa.attempts}>

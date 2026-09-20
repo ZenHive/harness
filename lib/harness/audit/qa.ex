@@ -7,7 +7,7 @@ defmodule Harness.Audit.QA do
   alias Harness.Repo
 
   @db_errors [RuntimeError, DBConnection.ConnectionError, DBConnection.OwnershipError, Postgrex.Error]
-  @type attempt :: %QAAttempt{}
+  @type attempt :: QAAttempt.t()
   @worker "Harness.Audit.Worker"
 
   @doc "Starts an attempt, preserving earlier interrupted attempts and their pending range."
@@ -154,7 +154,7 @@ defmodule Harness.Audit.QA do
 
   @spec report_status(attempt(), term(), term()) :: String.t()
   defp report_status(attempt, qa, :exited) when is_map(qa) do
-    if qa["revision"] == attempt.revision and qa["command"] == attempt.command and
+    if qa["revision"] == attempt.revision and same_command?(qa["command"], attempt.command) and
          qa["status"] in ["passed", "failed", "incomplete"] and
          nonempty?(qa["evidence"]) and nonempty?(qa["report"]) do
       qa["status"]
@@ -164,6 +164,13 @@ defmodule Harness.Audit.QA do
   end
 
   defp report_status(_attempt, _qa, _termination), do: "incomplete"
+
+  @spec same_command?(term(), String.t()) :: boolean()
+  defp same_command?(reported, configured) when is_binary(reported) do
+    String.trim(reported) == String.trim(configured)
+  end
+
+  defp same_command?(_reported, _configured), do: false
 
   @spec nonempty?(term()) :: boolean()
   defp nonempty?(value), do: is_binary(value) and String.trim(value) != ""

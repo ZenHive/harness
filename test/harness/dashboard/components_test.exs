@@ -681,6 +681,8 @@ defmodule Harness.Dashboard.ComponentsTest do
           source_location: "/tmp/demo",
           roadmap_path: "/tmp/demo",
           check_command: "mix precommit",
+          qa_command: "mix ci",
+          qa: %{attempts: [], pending: [], error: nil},
           languages: "elixir",
           target_branch: "development",
           roadmap_target_branch: "roadmap-main",
@@ -698,6 +700,9 @@ defmodule Harness.Dashboard.ComponentsTest do
       assert html =~ ~s(name="warm_paths")
       assert html =~ ~s(name="languages")
       assert html =~ ~s(name="roadmap_target_branch")
+      assert html =~ ~s(name="qa_command")
+      assert html =~ ~s(value="mix ci")
+      assert html =~ ~s(id="qa-status-demo")
       assert html =~ ~s(value="roadmap-main")
       assert html =~ "priv/discoveries"
       assert html =~ ~s(id="unregister-project-demo")

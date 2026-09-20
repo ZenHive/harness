@@ -16,6 +16,7 @@ defmodule Harness.ProjectTest do
       assert project.name == "demo"
       assert project.languages == [:elixir]
       assert project.check_command == nil
+      assert project.qa_command == nil
       assert project.concurrency_cap == nil
       assert project.landing_policy == :manual
       assert project.roadmap_target_branch == nil

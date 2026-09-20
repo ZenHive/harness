@@ -36,8 +36,8 @@ defmodule Harness.Audit.QALiveTest do
     assert :ok = Config.put({:agent_model, :claude}, model, "qa-live-test")
 
     for {command, expected} <- [
-          {"printf 'audit-live-success\\n'", "passed"},
-          {"printf 'audit-live-failure\\n'; exit 17", "failed"}
+          {"printf audit-live-success", "passed"},
+          {"printf audit-live-failure; exit 17", "failed"}
         ] do
       %{repo: repo} = GitFixture.init_with_origin()
       base = sha(repo)

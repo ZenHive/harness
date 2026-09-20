@@ -6,6 +6,13 @@ The agent executed the supplied shell checks and wrote `.harness/audit.json`.
 The test independently asserted the command, revision, outcome, evidence marker,
 and unchanged repository HEAD.
 
+The live fixture commands originally used `printf '...\\n'`. An independent
+reviewer re-run of `Audit.run/1` recorded a genuine failed check as `incomplete`
+because the agent wrote a JSON newline while the configured command stored the
+two-character `\n` sequence. The fixtures now use `printf audit-live-success`
+and `printf audit-live-failure; exit 17` so the exact-command assertion is
+unambiguous. Historical reports below retain the original commands.
+
 Command:
 
 ```sh

@@ -41,6 +41,18 @@ defmodule Harness.ProjectRegistry.OptionalFieldsTest do
       assert {:ok, @valid} == OptionalFields.fetch(@valid)
     end
 
+    test "accepts nil or a non-empty qa_command" do
+      assert {:ok, %{qa_command: nil}} = OptionalFields.fetch(%{qa_command: nil})
+      assert {:ok, %{qa_command: "mix ci"}} = OptionalFields.fetch(%{qa_command: "mix ci"})
+    end
+
+    test "rejects a blank or non-binary qa_command" do
+      for command <- ["", " ", 17] do
+        assert {:error, {:invalid_project, {:invalid_qa_command, ^command}}} =
+                 OptionalFields.fetch(%{qa_command: command})
+      end
+    end
+
     test "validates the explicit template contract" do
       recipe = %{
         "repo" => "App.Repo",

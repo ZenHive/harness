@@ -42,6 +42,8 @@ Reachable over MCP/chat (JSON scalars only). Grouped by orchestrator intent.
 | `config-list` / `config-get` | `Harness.Config` | Read operator config schema entries and effective values; secret values are redacted |
 | `describe-tools` / `describe-tool` | `Harness.Describe` | Self-describe the live MCP tool catalog and one tool's params/returns schema |
 | `playbooks-list` / `playbooks-get` | `Harness.Playbooks` | Orchestration recipes |
+| `dispatch-qa_status` | `Harness.Audit.QA` | Bounded durable audit/QA attempts and queued/running audit jobs, per project |
+| `dispatch-qa_evidence` | `Harness.Audit.QA` | Bounded slices of persisted revision, included commits, command, report and transcript |
 
 ### Write / control
 
@@ -52,8 +54,6 @@ Reachable over MCP/chat (JSON scalars only). Grouped by orchestrator intent.
 | `dispatch-cancel` | `Harness.Run.cancel/1` (flat) | Kill an in-flight run (idempotent) |
 | `roadmap-mark_landed` / `roadmap-mark_blocked` / `roadmap-mark_in_progress` / `roadmap-mark_pending` | `Harness.Roadmap` | Write a run's outcome back to the roadmap |
 | `project_registry-unregister` | `Harness.ProjectRegistry` | Drop a runtime registration |
-| `dispatch-qa_status` | `Harness.Audit.QA` | Bounded durable audit/QA attempts and queued/running audit jobs, per project |
-| `dispatch-qa_evidence` | `Harness.Audit.QA` | Bounded slices of persisted revision, included commits, command, report and transcript |
 | `audit_review-grade_fix` | `Harness.AuditReview` | Cross-agent HIGH-tier grade of one commit |
 | `dispatch-pending` / `dispatch-approve` | `Harness.Dispatch` | List / approve parked autonomous (cron) dispatch decisions for `:manual` mode projects (Task 237) |
 
