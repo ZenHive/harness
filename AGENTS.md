@@ -469,6 +469,16 @@ produces a landing commit, so a watcher with no bound waits forever on a wave th
 dead; on expiry it must print what did land in the range and name what did not, so the missing
 tasks get reconciled through `dispatch-status` instead of assumed.
 
+**Do not micromanage in-flight runs.** After dispatch, let the implementer and reviewer
+finish. Arm the bounded landing watcher once and wait, or do independent work. Do not
+repeatedly read transcripts, inspect intermediate worktree diffs/files/test logs, review
+unfinished code, or narrate unchanged status. That duplicates the reviewer and spends
+tokens without advancing the task. Inspect the verdict and integrated result after
+completion. Intervene only on an explicit operator request, a reported failure, or an
+expired watcher deadline — the absence of a landing commit during normal execution is
+not a failure signal. Keep waiting mechanical rather than turning every polling interval
+into another AI investigation.
+
 Poll `dispatch-status <run-id>` only to diagnose a run that the watcher shows as *not*
 landing — a `:failed` verdict, a rebase conflict that retained the branch, a hung
 implementer. Status is for diagnosis; git is for waiting.
