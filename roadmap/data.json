@@ -16486,7 +16486,7 @@
       "phase": 23,
       "bundle": "audit-tests",
       "milestone": "v0_16",
-      "status": "in_progress",
+      "status": "done",
       "title": "Diagnose and eliminate the AgentRegistry empty-registry test flake",
       "scores": {
         "d": 4,
@@ -16521,10 +16521,17 @@
       "domains": [
         "otp"
       ],
+      "shipped_in": "dc1bfaa048b546ea735c8a3ae4bdf295a519b7c3",
       "body": "Surfaced by the 2026-07-12 project health audit (test-audit.md #1) — observed live once:\n`test/harness/lander/resolver_test.exs:51` failed on first attempt with `available: []`\n(empty registry) then passed on retry. `AgentRegistry.set_installed/2` does mutate the global\nsingleton through `:sys.replace_state`, but the prior causal claim was too strong: a current\nscan shows the direct AgentRegistry mutators, including Resolver and ReviewerSelection, are\nalready in `async: false` modules. That leaves restart/reset timing, ownership, indirect\nmutation, or another interleaving as hypotheses rather than facts.\n\nReproduce first under varied seeds/repeated focused and suite runs, identify the concrete\nstate transition that empties the registry, then fix that class. Do not preselect global\nserialization or a production AgentRegistry refactor until the evidence points there.\n",
       "created_at": "2026-07-12",
       "started_at": "2026-09-20",
+      "done_at": "2026-09-20",
       "scored_at": "2026-08-07",
+      "implemented": "Landed by grok via merge-train; reviewer-approved (run run-1789945924595-b7ef47f1, dc1bfaa048b546ea735c8a3ae4bdf295a519b7c3).",
+      "delivered_by": "grok",
+      "verified": true,
+      "verified_by": "cursor",
+      "verification_ref": "harness-run:run-1789945924595-b7ef47f1",
       "cross_repo": []
     },
     {
