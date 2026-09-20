@@ -13467,6 +13467,8 @@ scores = { d = 3, b = 8, u = 5 }
 markers = ["bug"]
 acceptance_criteria = ["The clean-build/check passes from a cold checkout at landed SHA c3beaafc605fb12c04401fbefa97fbbe85e3e5b8."]
 out_of_scope = ["Reverting or unmerging the already-landed SHA"]
+assignee = "codex"
+model = "gpt-6-astra"
 blocked_reason = 'post-merge cold check red for landed SHA c3beaafc605fb12c04401fbefa97fbbe85e3e5b8: ** (Mix) Unknown dependency :ecto given to :import_deps in the formatter configuration. Make sure the dependency is listed in your mix.exs for environment :dev and you have run "mix deps.get"'
 body = """
 The post-merge audit AI reported a red cold check for landed SHA c3beaafc605fb12c04401fbefa97fbbe85e3e5b8.
@@ -13593,6 +13595,8 @@ markers = ["bug"]
 acceptance_criteria = ["A commit that changes mix.lock and lands on the base checkout does not prevent harness.service from starting", "The boot chain fetches deps before running migrations, and a fetch failure does not by itself block the boot", "harness-autodeploy restarting for a mix.lock-only change results in a running service, not a restart loop", "The failure mode and its fix are recorded next to the migration one they mirror"]
 out_of_scope = ["Removing mix.lock from harness-autodeploy's CODE_RE — a dep bump is code and must deploy", "Vendoring deps or switching to a release build; this task keeps the mix-run deployment shape", "The slow MCP-SSE drain on shutdown (separate: task 427)"]
 touches = ["/etc/systemd/system/harness.service.d/30-migrate.conf", "/usr/local/sbin/harness-autodeploy"]
+assignee = "codex"
+model = "gpt-6-astra"
 body = '''
 The systemd boot chain runs `mix ecto.migrate` (ExecStartPre) then `mix run --no-halt` (ExecStart). It never runs `mix deps.get`. Verified: no `deps.get` anywhere in `harness.service`, its drop-ins, or `/home/harness/bin/harness-start`.
 
@@ -13673,6 +13677,8 @@ markers = ["bug"]
 acceptance_criteria = ["A bootstrap/infrastructure failure is recorded as a witness fact, distinguishable from a genuine red suite", "No witness write can be lost to a column-width error — the reason is bounded before it reaches the database", "The dashboard never presents a stale checked_at as if it were today's result: a project whose check could not run says so", "Test covers a bootstrap error whose inspected reason exceeds the column width"]
 out_of_scope = ["Classifying whether a red suite is real or flaky — task 333 forbids a harness classifier and that stands", "The dead deps.get guard that produces these errors today (separate task)", "Widening every varchar in the schema as a blanket change"]
 touches = ["lib/harness/suite_health.ex", "lib/harness/suite_health/result.ex", "lib/harness/suite_health_store/schema/result.ex", "lib/harness/cron/suite_health_poller.ex"]
+assignee = "codex"
+model = "gpt-6-astra"
 body = """
 When a suite-health check cannot run, the failure never reaches the witness table.
 

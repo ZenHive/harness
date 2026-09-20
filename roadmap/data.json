@@ -20082,6 +20082,8 @@
         "bug"
       ],
       "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-6-astra",
       "acceptance_criteria": [
         "The clean-build/check passes from a cold checkout at landed SHA c3beaafc605fb12c04401fbefa97fbbe85e3e5b8."
       ],
@@ -20268,6 +20270,8 @@
         "bug"
       ],
       "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-6-astra",
       "acceptance_criteria": [
         "A commit that changes mix.lock and lands on the base checkout does not prevent harness.service from starting",
         "The boot chain fetches deps before running migrations, and a fetch failure does not by itself block the boot",
@@ -20348,6 +20352,8 @@
         "bug"
       ],
       "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-6-astra",
       "acceptance_criteria": [
         "A bootstrap/infrastructure failure is recorded as a witness fact, distinguishable from a genuine red suite",
         "No witness write can be lost to a column-width error — the reason is bounded before it reaches the database",
