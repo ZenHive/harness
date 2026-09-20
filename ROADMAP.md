@@ -423,4 +423,5 @@
 | Task 436 | ⬜ | 🎁 **core-loop** · 🐛 Make the host-local dependency bootstrap fix reproducible from version control [D:4/B:7/U:6 → Eff:1.62] 🚀 |
 | Task 439 | ⬜ | 🎁 **core-loop** · 🐛 Keep legitimate long-running jobs anchored while retaining crash rescue [D:4/B:8/U:7 → Eff:1.88] 🚀 |
 | Task 440 | ⬜ | 🎁 **core-loop** · 🐛 Bound MCP SSE transport shutdown independently of connection count [D:4/B:6/U:5 → Eff:1.38] 📋 |
+| Task 446 | ⬜ | 🎁 **core-loop** · 🐛 Cron planner distinguishes verified empty history from missing recovery evidence [D:2/B:8/U:8 → Eff:4.0] 🎯 |
 <!-- TASKS:END -->

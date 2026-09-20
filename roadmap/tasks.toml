@@ -13816,3 +13816,19 @@ created_at = "2026-09-20"
 started_at = "2026-09-20"
 scored_at = "2026-09-20"
 
+[[task]]
+id = "446"
+phase = 25
+bundle = "core-loop"
+status = "pending"
+title = "Cron planner distinguishes verified empty history from missing recovery evidence"
+scores = { d = 2, b = 8, u = 8 }
+markers = ["bug"]
+acceptance_criteria = ["A live planner invocation in its normal non-Git scratch directory with two eligible tasks and successfully loaded empty attempts chooses fresh dispatch rather than deferring for absent Git evidence; preserve test evidence without starting real task runs.", "Prior attempts with missing required branch/origin evidence remain deferred; unavailable history remains an error, never an empty list.", "Prompt explains scratch is only an artifact workspace and supplied attempt facts are the evidence source; recovery remains AI judgment without a procedural fallback forcing dispatch.", "Focused regressions and dispatch checks pass; reviewer independently verifies live planner evidence. Keep the fix bounded to prompt and tests."]
+touches = ["lib/harness/cron/orchestrator.ex", "test/harness/cron/"]
+assignee = "codex"
+model = "gpt-6-astra"
+body = "Production incident 2026-09-20 04:34:42 UTC: Dispatch now found ready tasks but planner deferred every candidate because attempts was empty and scratch was not a Git repository. Attempts.attach uses strict_history; Orchestrator.build_invocation intentionally uses scratch cwd. Prompt rule 4 unconditionally requires branch/origin evidence and describes every fresh action as discarding work. Clarify first-attempt versus recovery semantics, preserving safeguards. Reproduce using a real planner in disposable workspace, then add regressions. Runtime-control bug needs independent review. No production restart/recompile, autonomy changes or unrelated dispatch by implementer/reviewer; root owns activation through autodeploy. User authorized fixing this incident."
+created_at = "2026-09-20"
+scored_at = "2026-09-20"
+
