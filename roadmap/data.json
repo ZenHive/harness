@@ -314,6 +314,11 @@
       "order": 1,
       "description": "Per-agent KPIs aggregated from existing run records — success rate, cost-to-green, tokens, repair burden — surfaced at a glance"
     },
+    "repo-maintenance": {
+      "phase": 24,
+      "order": 6,
+      "description": "AI-selected repository maintenance with durable task publication and visible outcomes."
+    },
     "resilience": {
       "phase": 3,
       "order": 1,
@@ -20632,6 +20637,64 @@
       "body": "Add Run Insights, an independently enabled AI witness that examines active and completed runs across registered projects and maintains evidence-backed observations of recurring problems. Include successful runs that repeatedly required reviewer fixes or recovery. The operator requested a learning loop: identify what recurs, explain the evidence and likely cause, propose improvements, and revisit findings when later evidence supports, contradicts or reopens them. Interpretations belong to the AI; code handles scheduling, bounded retrieval, persistence and counters only.\n\nDeliver the observer, persistent findings and usable dashboard together. Existing run status/transcript and ResultStore review/recovery/landing/audit surfaces are the evidence sources (see lib/harness/result_store/schema/run_record.ex and Harness.Dispatch). Do not wait for Task 374's lifecycle event history or duplicate its store; Task 388 owns the action Inbox and Task 441 owns Activity. Observation must capture late landing/audit changes as well as new runs, and must not present an incomplete evidence window as a complete review.\n\nDecisions approved by the operator: observe both active and completed runs; active-run conclusions are provisional. Ship disabled independently of dispatch autonomy. When enabled, observe hourly by default, with selectable cadence and Observe now. Observe all registered projects, with project filters in the dashboard. Bootstrap the last seven days, then consume new/changed evidence in bounded batches with durable progress; feed existing findings back into the AI for revision and deduplication. Failed passes do not advance successful progress. A dedicated serialized Oban job prevents overlapping passes; repeated delivery must not duplicate finding revisions. Persist observation passes, findings, revisions, cited excerpts/source references and observer agent/model in Postgres, following the existing visibly ephemeral repo_enabled:false convention. Preserve excerpts after source transcript retention; record unavailable/truncated evidence explicitly.\n\nThe observer only produces observations. Its evidence interface exposes no mutation operations, and its output must never execute dispatch, steering, recovery, routing changes, repository edits or roadmap writes. Inspect the real execution boundary: existing coding adapters use autonomous permission modes, so a scratch cwd or prompt alone is not proof of enforced read-only access. Deliver an execution path appropriate to the witness contract and verify it against the real configured agent before deriving doubles. No procedural failure classifiers, semantic deduplication, severity scores or ranking arithmetic.\n\nUI: add Run Insights to the MAIN NAVBAR linking /harness/insights, subtitle AI observations across runs. The overview shows enabled/paused, agent/model, last successful pass, next pass, current progress and findings newest-revision first with project filtering. Distinguish disabled, observing, no new evidence, successful/no findings, partial evidence and failure. Each finding displays title, short explanation, linked evidence count and current AI assessment. /harness/insights/:id shows explanation, proposed improvement, chronological revisions, linked runs and cited evidence; distinguish facts from hypotheses, expose contradictions and recurrence. A merge alone is not evidence of resolution. Run detail pages link related findings. Settings provides independent enablement, cadence and explicit agent/model selection. Match the existing dashboard design system and update through LiveView without full reloads.\n\nExpose bounded Elixir/MCP status, manual observation, finding-list and finding-history operations; update the canonical harness-driver skill. Implementer verifies in its isolated worktree. The orchestrator owns installed-skill propagation and production activation through the existing root autodeployer; no production restart/recompile or enablement by the implementer.\n",
       "created_at": "2026-09-20",
       "started_at": "2026-09-20",
+      "scored_at": "2026-09-20",
+      "cross_repo": []
+    },
+    {
+      "id": "444",
+      "phase": 24,
+      "bundle": "repo-maintenance",
+      "status": "pending",
+      "title": "Add autonomous maintenance sweeps across opted-in repositories",
+      "scores": {
+        "d": 8,
+        "b": 9,
+        "u": 6
+      },
+      "eff": 0.94,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-6-astra",
+      "acceptance_criteria": [
+        "A live configured agent performs a maintenance sweep of a disposable repository, produces evidence-backed findings across the requested categories, and publishes justified executable tasks under existing dispatch/landing policies; independent review checks the evidence and generated criteria.",
+        "Per-repository opt-in, weekly default, configurable cadence, explicit agent/model and Sweep now work through UI and bounded Elixir/MCP interfaces. Maintenance is disabled until enabled and does not automatically change model selections.",
+        "A dedicated serialized queue and configurable 30-minute per-repository deadline bound sweeps; progress and disabled, queued, running, successful/no findings, partial evidence and failure states remain distinguishable.",
+        "Passes, findings, revisions, source revision, agent/model and publication identities survive restart in Postgres; database-free mode is visibly ephemeral. Repeated jobs and interrupted publication cannot duplicate tasks or exceed three unfinished maintenance tasks per repo.",
+        "Publication re-reads the current roadmap, preserves concurrent changes and reconciles findings with existing tasks using AI judgment. Unknown history or roadmap state stops publication visibly; retries reconcile already-published identities before writing.",
+        "Analysis uses isolated current-target checkouts without modifying the operator tree or delivering code. Task publication uses durable roadmap writeback, and generated work follows reviewer-gated execution and retained-work recovery.",
+        "Dependency/security findings cite current provider-owned evidence; inaccessible sources are disclosed. Undisclosed vulnerability details never enter public task bodies, logs exposed by the UI, or git history; public references are sanitized.",
+        "Major upgrades and breaking changes have migration scope and consumer verification. Performance tasks require comparable measurements; test-speed tasks preserve coverage/assertions/live integration checks; refactors require concrete simplification and behavioral verification.",
+        "Maintenance appears in the main navigation with fleet overview, repository detail, finding assessment history, evidence, linked implementation/review/landing states and verified outcomes. Per-repo controls and all empty/error states update through LiveView in the existing design system.",
+        "Later sweeps use prior findings and delivery evidence, preserve additional findings for reassessment and can produce no new tasks. Landing alone is never labeled verified improvement. Run Insights remains read-only and independent.",
+        "Live-agent integration coverage precedes doubles and covers real discovery, a relevant real failure and repeated publication. Missing credentials fail loudly with exact setup instructions. Tests cover restart, concurrent triggers, interrupted publication, roadmap conflicts, task limits, unavailable evidence, migrations and UI interactions.",
+        "Reviewer runs mix check.dispatch and focused tests with durable logs, verifies canonical driver documentation, and confirms operation boundaries. Orchestrator runs the full integrated check after landing and handles skill propagation and runtime activation."
+      ],
+      "out_of_scope": [
+        "Implementing another dependency-freshness provider or Task 394's gate runner",
+        "Giving Run Insights mutation authority",
+        "Automatically selecting newly released models",
+        "Bypassing reviewer/landing policies or restarting production from a dispatched agent",
+        "Dispatching this task before a later explicit operator instruction"
+      ],
+      "touches": [
+        "lib/harness/maintenance/",
+        "lib/harness/maintenance.ex",
+        "lib/harness/cron/",
+        "lib/harness/oban.ex",
+        "lib/harness/application.ex",
+        "lib/harness/dashboard/",
+        "lib/harness/manifest.ex",
+        "lib/harness/roadmap/",
+        "lib/harness/roadmap.ex",
+        "priv/repo/migrations/",
+        "test/harness/",
+        "skills/harness-driver/SKILL.md"
+      ],
+      "body": "Deliver a recurring AI maintenance loop across individually enabled repositories, including its complete UI and durable roadmap publication. The operator requested automatic dependency updates, security fixes, refactoring, application performance improvements and faster tests, with outcomes visible in the dashboard. AI judges relevance, priority, semantic duplication and whether evidence justifies work; harness handles scheduling, isolation, persistence, limits and publication. A sweep may correctly produce no tasks. Score rationale: this adds the requested fleet-wide improvement capability; isolated analysis, durable publication and autonomous operation make it substantial work.\n\nApproved decisions: opt-in per repository; weekly default with configurable cadence and Sweep now; explicit agent/model settings; automatic task publication under each repository's existing dispatch and landing policies. Cap unfinished maintenance tasks at three per repository, including pending, running and blocked work. Retain additional findings for later reassessment rather than growing the backlog. Allow major upgrades and breaking changes with explicit migration scope and consumer verification; establish coordinated cross-repository changes before dispatch, and expose unavailable consumers or credentials as blockers. Do not switch models automatically when new models appear.\n\nInspect a fresh isolated checkout of the current target revision, repository instructions, current roadmap, dependency-freshness facts, suite-health evidence and previous findings. Use current provider-owned docs and advisories, including accessible private repository advisories; unavailable evidence is not a clean result. Keep undisclosed vulnerability details out of public roadmap entries and git history. Performance tasks require comparable before/after measurements. Faster-test tasks preserve assertions, coverage and real integration checks. Refactor tasks name concrete simplification and behavior-preservation criteria. Newer-model suggestions are hypotheses to verify. Later sweeps reassess findings against delivery evidence; a merge alone is not proof of improvement.\n\nPersist passes, findings, assessment revisions, publication identities, source revision and agent/model in Postgres, following existing visibly ephemeral repo_enabled:false behavior. Serialize sweeps on a dedicated queue with a configurable 30-minute deadline per repository. Analyze isolated checkouts without mutating the operator's tree or delivering code directly. Publish selected tasks through the existing durable roadmap writeback boundary. Re-read the current roadmap before publication: AI reconciles existing tasks and findings, while mechanical idempotency prevents duplicates after retries or crashes. Unknown roadmap/history state stops publication visibly. Generated tasks carry D/B/U scores, explicit live routing/model pins, accurate write sets and independently verifiable criteria; they use the existing recovery-aware implement/review/land workflow.\n\nUI: add Maintenance to the main navigation, separate from Run Insights. The fleet overview shows opted-in repos, current progress, next sweep, last result and outstanding maintenance tasks. Repository detail shows findings, evidence, AI rationale and linked task implementation/review/landing state. Finding detail shows chronological assessments, evidence, proposed improvement and verified outcomes, including before/after measurements where applicable. Settings expose per-repo enablement, cadence, explicit agent/model and Sweep now. Distinguish disabled, queued, running, successful/no findings, partial evidence and failed states. Match the existing design system and update through LiveView. Expose equivalent bounded Elixir/MCP controls, status and finding-history operations.\n\nReuse completed dependency-freshness Tasks 331/336/341/342 (the inspected DepFreshness and DepFreshnessPoller capture facts rather than automatically updating dependencies). Keep Task 443 Run Insights advisory/read-only and reuse its landed surfaces where appropriate without granting it mutation authority. Task 394 owns the gate runner; do not duplicate it. Include task-publication recovery in this feature; do not assume the pending Task 386 already guarantees it. Existing-module coverage must meet repository tiers before mutation. Write real-agent integration coverage before doubles; independent reviewer verifies evidence and operation boundaries, not implementer self-report. Update canonical driver documentation. Orchestrator owns full integrated checks, installed-skill propagation and production activation through the existing autodeployer; implementers never restart production or enable maintenance there.\n\nOperator instruction 2026-09-20: file this task but DO NOT DISPATCH YET. Leave pending for a later explicit dispatch instruction. Harness project cron was disabled when this task was filed; this note is an operator hold, not permission to dispatch automatically.\n",
+      "created_at": "2026-09-20",
       "scored_at": "2026-09-20",
       "cross_repo": []
     }
