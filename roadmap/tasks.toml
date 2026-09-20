@@ -11761,7 +11761,7 @@ id = "387"
 phase = 24
 bundle = "operator-cockpit"
 milestone = "v0_18"
-status = "in_progress"
+status = "done"
 title = "Build a fleet task Kanban from rmap and Harness lifecycle facts"
 scores = { d = 5, b = 8, u = 7 }
 markers = ["parallel"]
@@ -11776,9 +11776,16 @@ Turn the existing read-only RoadmapLive surface into a project-spanning task boa
 
 2026-09-20 scope refinement: Removed the event-log dependency: this board composes current rmap, run and landing facts already available. The implementer must define truthful precedence for divergent sources and multiple attempts rather than invent a new status model.
 '''
+implemented = "Landed by cursor via merge-train; reviewer-approved (run run-1789885060592-b14f4290, e62d5c96d6e4d721826d52cf86cc424b06286d1d)."
+delivered_by = "cursor"
+verified = true
+verified_by = "codex"
+verification_ref = "harness-run:run-1789885060592-b14f4290"
 created_at = "2026-08-15"
 started_at = "2026-09-20"
 scored_at = "2026-08-15"
+done_at = "2026-09-20"
+shipped_in = "e62d5c96d6e4d721826d52cf86cc424b06286d1d"
 
 [[task]]
 id = "388"
