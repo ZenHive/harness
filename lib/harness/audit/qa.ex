@@ -97,8 +97,31 @@ defmodule Harness.Audit.QA do
   def list(project_name, limit) when is_binary(project_name) and is_integer(limit) and limit in 1..100 do
     attempts =
       Repo.all(
-        from(a in QAAttempt, where: a.project_name == ^project_name, order_by: [desc: a.inserted_at], limit: ^limit)
+        from(a in QAAttempt,
+          where: a.project_name == ^project_name,
+          order_by: [desc: a.inserted_at, desc: a.id],
+          limit: ^limit,
+          select:
+            struct(a, [
+              :id,
+              :project_name,
+              :target_branch,
+              :base_sha,
+              :revision,
+              :command,
+              :status,
+              :agent,
+              :model,
+              :job_id,
+              :attempt,
+              :inserted_at,
+              :updated_at,
+              :landing_shas
+            ])
+        )
       )
+
+    job_limit = max(limit, 20)
 
     jobs =
       Repo.all(
@@ -106,9 +129,16 @@ defmodule Harness.Audit.QA do
           where:
             j.worker == ^@worker and j.args["project_name"] == ^project_name and
               j.state in ["available", "scheduled", "retryable", "executing"],
-          order_by: [asc: j.id],
-          limit: ^limit,
-          select: %{job_id: j.id, state: j.state, base_sha: j.args["base_sha"]}
+          order_by: [desc: j.state == "executing", asc: j.id],
+          limit: ^job_limit,
+          select: %{
+            job_id: j.id,
+            state: j.state,
+            base_sha: j.args["base_sha"],
+            inserted_at: j.inserted_at,
+            revision: j.args["qa_revision"],
+            command: j.args["qa_command"]
+          }
         )
       )
 
@@ -128,29 +158,79 @@ defmodule Harness.Audit.QA do
   def evidence(id, offset \\ 0, limit \\ 8_000)
 
   def evidence(id, offset, limit) when is_binary(id) and is_integer(offset) and offset >= 0 and limit in 1..32_000 do
-    with {:ok, uuid} <- Ecto.UUID.cast(id),
-         %QAAttempt{} = row <- Repo.get(QAAttempt, uuid) do
-      facts = %{
-        project: row.project_name,
-        revision: row.revision,
-        base_sha: row.base_sha,
-        command: row.command,
-        agent: row.agent,
-        model: row.model,
-        landing_shas: row.landing_shas,
-        report: row.report
-      }
+    case Ecto.UUID.cast(id) do
+      {:ok, uuid} ->
+        source =
+          from(a in QAAttempt,
+            where: a.id == ^uuid,
+            select: %{
+              id: a.id,
+              text:
+                fragment(
+                  "jsonb_build_object('project', ?, 'revision', ?, 'base_sha', ?, 'command', ?, 'agent', ?, 'model', ?, 'landing_shas', ?, 'report', ?)::text || chr(10) || coalesce(?, '')",
+                  a.project_name,
+                  a.revision,
+                  a.base_sha,
+                  a.command,
+                  a.agent,
+                  a.model,
+                  a.landing_shas,
+                  a.report,
+                  a.transcript
+                )
+            }
+          )
 
-      text = Jason.encode!(facts) <> "\n" <> (row.transcript || "")
-      {:ok, %{id: row.id, evidence: String.slice(text, offset, limit), offset: offset, total: String.length(text)}}
-    else
-      _ -> {:error, :not_found}
+        case Repo.one(
+               from(e in subquery(source),
+                 select: %{
+                   id: e.id,
+                   evidence:
+                     fragment(
+                       "substring(? from ?::integer for ?::integer)",
+                       e.text,
+                       ^(min(offset, 2_147_483_646) + 1),
+                       ^limit
+                     ),
+                   total: fragment("char_length(?)", e.text)
+                 }
+               )
+             ) do
+          nil -> {:error, :not_found}
+          page -> {:ok, Map.put(page, :offset, offset)}
+        end
+
+      _ ->
+        {:error, :not_found}
     end
   rescue
     error in @db_errors -> {:error, {:qa_unavailable, Exception.message(error)}}
   end
 
   def evidence(_id, _offset, _limit), do: {:error, :invalid_limit}
+
+  @doc "Reads bounded agent-authored report sections without loading the transcript."
+  @spec detail(String.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  def detail(project, id) do
+    with {:ok, uuid} <- Ecto.UUID.cast(id),
+         row when not is_nil(row) <-
+           Repo.one(
+             from(a in QAAttempt,
+               where: a.id == ^uuid and a.project_name == ^project,
+               select: %{
+                 report: fragment("left(?->'qa'->>'report', 8000)", a.report),
+                 evidence: fragment("left(?->'qa'->>'evidence', 8000)", a.report),
+                 checks: fragment("left(jsonb_pretty(?->'qa'->'checks'), 8000)", a.report)
+               }
+             )
+           ) do
+      {:ok, row}
+    else
+      _ -> {:error, :not_found}
+    end
+  rescue
+    error in @db_errors -> {:error, {:qa_unavailable, Exception.message(error)}}
+  end
 
   @spec report_status(attempt(), term(), term()) :: String.t()
   defp report_status(attempt, qa, :exited) when is_map(qa) do

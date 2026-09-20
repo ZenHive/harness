@@ -94,6 +94,7 @@ defmodule Harness.Dashboard.Components do
         <a href="/harness/projects/explore">Explore</a>
         <a href="/harness/deps">Deps</a>
         <a href="/harness/health">Health</a>
+        <a href="/harness/qa">QA</a>
         <a href="/harness/insights">Insights</a>
         <a href="/harness/maintenance">Maintenance</a>
         <a href="/harness/chat">Chat</a>

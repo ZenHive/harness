@@ -306,6 +306,7 @@ defmodule Harness.Dashboard.SettingsLive do
         <p class="settings-sub">Operator controls for autonomous roadmap polling.</p>
       </header>
 
+      <p><.link navigate="/harness/qa">QA overview and evidence</.link></p>
       <p><.link navigate="/harness/insights/settings">Run Insights settings</.link></p>
 
       <nav class="settings-tabs" role="tablist" aria-label="Settings sections">

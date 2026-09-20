@@ -59,6 +59,8 @@ defmodule Harness.Dashboard.Router do
     live("/harness", Live, :index, as: :dashboard)
     live("/harness/inbox", InboxLive, :index, as: :dashboard_inbox)
     live("/harness/roadmap", RoadmapLive, :index, as: :dashboard_roadmap)
+    live("/harness/qa", QALive, :index)
+    live("/harness/qa/:name", QALive, :show)
     live("/harness/settings", SettingsLive, :index, as: :dashboard_settings)
     live("/harness/maintenance", MaintenanceLive, :index)
     live("/harness/maintenance/repositories/:project", MaintenanceLive, :repository)

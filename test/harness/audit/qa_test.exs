@@ -200,6 +200,17 @@ defmodule Harness.Audit.QATest do
     assert {:ok, %{attempts: [%{status: "incomplete"}]}} = QA.list(ctx.project.name)
   end
 
+  test "explicit QA can recheck a passed unchanged revision", ctx do
+    revision = land(ctx.repo, "unchanged")
+    assert :no_changes = run(ctx, report(ctx.project, revision, "passed"))
+    assert :no_changes = run(ctx, report(ctx.project, revision, "passed"))
+    assert {:ok, %{attempts: [latest, prior]}} = QA.list(ctx.project.name)
+    assert latest.status == "passed"
+    assert latest.revision == prior.revision
+    assert latest.base_sha == revision
+    assert latest.included_landings == 0
+  end
+
   test "retry marks the interrupted attempt incomplete and duplicate attempts preserve evidence", ctx do
     request = %{project: ctx.project, base_sha: ctx.base, job_id: 900_447, attempt: 1}
     assert {:ok, interrupted} = QA.start(request)
