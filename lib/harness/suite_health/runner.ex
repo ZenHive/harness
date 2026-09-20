@@ -18,19 +18,23 @@ defmodule Harness.SuiteHealth.Runner do
     runner = runner(opts)
     languages = language_label(project.languages)
 
-    with :ok <- Bootstrap.prepare(project, worktree_path, runner: runner),
-         {:ok, commands} <- resolve_commands(project, worktree_path),
-         {:ok, aggregate} <- run_commands(project, worktree_path, commands, runner) do
-      {:ok,
-       Result.build(project.name,
-         checked_at: Keyword.get(opts, :checked_at, DateTime.utc_now(:millisecond)),
-         passed: aggregate.passed,
-         exit_code: aggregate.exit_code,
-         command: aggregate.command,
-         base_sha: base_sha,
-         failing_tests: aggregate.failing_tests,
-         languages: languages
-       )}
+    try do
+      with :ok <- Bootstrap.prepare(project, worktree_path, runner: runner),
+           {:ok, commands} <- resolve_commands(project, worktree_path),
+           {:ok, aggregate} <- run_commands(project, worktree_path, commands, runner) do
+        {:ok,
+         Result.build(project.name,
+           checked_at: Keyword.get(opts, :checked_at, DateTime.utc_now(:millisecond)),
+           passed: aggregate.passed,
+           exit_code: aggregate.exit_code,
+           command: aggregate.command,
+           base_sha: base_sha,
+           failing_tests: aggregate.failing_tests,
+           languages: languages
+         )}
+      end
+    after
+      Bootstrap.cleanup(project, worktree_path)
     end
   end
 

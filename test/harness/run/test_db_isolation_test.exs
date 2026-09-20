@@ -134,31 +134,123 @@ defmodule Harness.Run.TestDbIsolationTest do
       old_path = System.get_env("PATH", "")
       System.put_env("PATH", fake_bin <> ":" <> old_path)
       System.put_env("HARNESS_DROP_CAPTURE", capture)
+      System.put_env("HARNESS_DROP_BEHAVIOR", "ok")
 
       on_exit(fn ->
         System.put_env("PATH", old_path)
         System.delete_env("HARNESS_DROP_CAPTURE")
+        System.delete_env("HARNESS_DROP_BEHAVIOR")
       end)
 
       project = %{@project | test_db_isolation_env: "APP_TEST_PARTITION"}
 
       assert :ok = TestDbIsolation.teardown(project, dir, "run-1781945210212-deadbeef")
 
-      assert File.read!(capture) == """
-             ecto.drop --quiet
-             test
-             _h_deadbeef
-             """
+      capture_contents = File.read!(capture)
+      assert capture_contents =~ "run --no-start"
+      assert capture_contents =~ "MIX_ENV=test"
+      assert capture_contents =~ "APP_TEST_PARTITION=_h_deadbeef"
     end
+
+    test "teardown_partition no-ops when isolation is opted out", %{tmp_dir: dir} do
+      capture = Path.join(dir, "drop-capture")
+      refute File.exists?(capture)
+      assert :ok = TestDbIsolation.teardown_partition(%{@project | test_db_isolation_env: false}, dir, "_h_suite_health")
+      refute File.exists?(capture)
+    end
+
+    test "teardown_partition skips an invalid partition without invoking mix", %{tmp_dir: dir} do
+      File.mkdir_p!(Path.join(dir, "config"))
+      File.write!(Path.join(dir, "mix.exs"), "defmodule Fake.MixProject do\nend\n")
+      File.write!(Path.join([dir, "config", "test.exs"]), "MIX_TEST_PARTITION")
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert :ok = TestDbIsolation.teardown_partition(@project, dir, "test")
+        end)
+
+      assert log =~ "invalid_partition"
+    end
+
+    test "teardown_partition logs an unpartitioned resolved name and still returns :ok", %{tmp_dir: dir} do
+      {capture, _old_path} = install_fake_mix!(dir, "unpartitioned")
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert :ok = TestDbIsolation.teardown_partition(@project, dir, "_h_suite_health")
+        end)
+
+      assert log =~ "unpartitioned"
+      assert File.read!(capture) =~ "MIX_TEST_PARTITION=_h_suite_health"
+    end
+
+    test "teardown_partition reports active sessions without treating them as a crash", %{tmp_dir: dir} do
+      {_capture, _old_path} = install_fake_mix!(dir, "sessions")
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert :ok = TestDbIsolation.teardown_partition(@project, dir, "_h_suite_health")
+        end)
+
+      assert log =~ "active sessions"
+    end
+  end
+
+  @spec install_fake_mix!(String.t(), String.t()) :: {String.t(), String.t()}
+  defp install_fake_mix!(dir, behavior) do
+    capture = Path.join(dir, "drop-capture")
+    fake_bin = Path.join(dir, "bin")
+    fake_mix = Path.join(fake_bin, "mix")
+
+    File.mkdir_p!(Path.join(dir, "config"))
+    File.mkdir_p!(fake_bin)
+    File.write!(Path.join(dir, "mix.exs"), "defmodule Fake.MixProject do\nend\n")
+    File.write!(Path.join([dir, "config", "test.exs"]), "MIX_TEST_PARTITION")
+    File.write!(fake_mix, fake_mix_script())
+    File.chmod!(fake_mix, 0o755)
+
+    old_path = System.get_env("PATH", "")
+    System.put_env("PATH", fake_bin <> ":" <> old_path)
+    System.put_env("HARNESS_DROP_CAPTURE", capture)
+    System.put_env("HARNESS_DROP_BEHAVIOR", behavior)
+
+    on_exit(fn ->
+      System.put_env("PATH", old_path)
+      System.delete_env("HARNESS_DROP_CAPTURE")
+      System.delete_env("HARNESS_DROP_BEHAVIOR")
+    end)
+
+    {capture, old_path}
   end
 
   @spec fake_mix_script() :: String.t()
   defp fake_mix_script do
     """
     #!/bin/sh
-    printf '%s %s\\n' "$1" "$2" > "$HARNESS_DROP_CAPTURE"
-    printf '%s\\n' "$MIX_ENV" >> "$HARNESS_DROP_CAPTURE"
-    printf '%s\\n' "$APP_TEST_PARTITION" >> "$HARNESS_DROP_CAPTURE"
+    {
+      printf '%s %s\\n' "$1" "$2"
+      printf 'MIX_ENV=%s\\n' "$MIX_ENV"
+      printf 'APP_TEST_PARTITION=%s\\n' "$APP_TEST_PARTITION"
+      printf 'MIX_TEST_PARTITION=%s\\n' "$MIX_TEST_PARTITION"
+    } > "$HARNESS_DROP_CAPTURE"
+
+    case "${HARNESS_DROP_BEHAVIOR:-ok}" in
+      fail)
+        echo boom
+        exit 1
+        ;;
+      sessions)
+        echo 'active sessions on probe_test_h_suite_health: pid=42'
+        exit 1
+        ;;
+      unpartitioned)
+        echo 'refusing drop of unpartitioned database "probe_test"'
+        exit 1
+        ;;
+      *)
+        exit 0
+        ;;
+    esac
     """
   end
 end

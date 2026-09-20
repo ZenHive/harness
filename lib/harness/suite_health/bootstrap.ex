@@ -4,6 +4,8 @@ defmodule Harness.SuiteHealth.Bootstrap do
   alias Harness.Project
   alias Harness.Run.TestDbIsolation
 
+  require Logger
+
   @health_partition "_h_suite_health"
   @ecto_create_args ~w(ecto.create --quiet)
   @ecto_migrate_args ~w(ecto.migrate --quiet)
@@ -14,6 +16,21 @@ defmodule Harness.SuiteHealth.Bootstrap do
   def prepare(%Project{} = project, worktree_path, opts \\ []) when is_binary(worktree_path) do
     runner = runner(opts)
     maybe_bootstrap_elixir(project, worktree_path, runner)
+  end
+
+  @doc """
+  Drops the suite-health partition created by `prepare/3`.
+
+  Isolation opt-out is a no-op. Failures are logged inside
+  `TestDbIsolation.teardown_partition/4` and never raised.
+  """
+  @spec cleanup(Project.t(), String.t()) :: :ok
+  def cleanup(%Project{} = project, worktree_path) when is_binary(worktree_path) do
+    TestDbIsolation.teardown_partition(project, worktree_path, @health_partition)
+  rescue
+    error ->
+      Logger.warning("harness suite health: test DB cleanup raised: #{Exception.message(error)}")
+      :ok
   end
 
   @spec maybe_bootstrap_elixir(Project.t(), String.t(), runner()) :: :ok | {:error, term()}

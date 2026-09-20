@@ -52,6 +52,10 @@ defmodule Harness.SuiteHealth.BootstrapTest do
     end
   end
 
+  test "default_runner returns exit 127 when the command cannot be started", %{path: path} do
+    assert {"", 127} = Bootstrap.default_runner("hsh433-missing-cmd", [], path, [])
+  end
+
   describe "skip_reason bound" do
     test "an over-long reason is truncated to the column width" do
       # inspect/1 of {:ecto_bootstrap_failed, exit, output} carries the whole

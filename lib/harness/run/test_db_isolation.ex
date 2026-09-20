@@ -8,15 +8,19 @@ defmodule Harness.Run.TestDbIsolation do
   """
 
   alias Harness.Project
+  alias Harness.Run.TestDbPartition
   alias Harness.Run.TestDbTemplate
 
   require Logger
 
   @default_env "MIX_TEST_PARTITION"
   @suffix_prefix "_h_"
-  @drop_args ["ecto.drop", "--quiet"]
-  @external_resource Path.join(__DIR__, "test_db_template.ex")
-  @template_source File.read!(@external_resource)
+  @template_path Path.join(__DIR__, "test_db_template.ex")
+  @partition_path Path.join(__DIR__, "test_db_partition.ex")
+  @external_resource @template_path
+  @external_resource @partition_path
+  @template_source File.read!(@template_path)
+  @partition_source File.read!(@partition_path)
 
   @doc false
   @spec env(Project.t(), String.t()) :: %{optional(String.t()) => String.t() | false}
@@ -52,12 +56,31 @@ defmodule Harness.Run.TestDbIsolation do
     end
   end
 
-  def teardown(%Project{} = project, worktree_path, run_id, _env) when is_binary(worktree_path) and is_binary(run_id) do
+  def teardown(%Project{} = project, worktree_path, run_id, env) when is_binary(worktree_path) and is_binary(run_id) do
+    teardown_partition(project, worktree_path, partition_suffix(run_id), env)
+  end
+
+  def teardown(%Project{}, _worktree_path, _run_id, _env), do: :ok
+
+  @doc """
+  Best-effort drop of the test database identified by an explicit partition.
+
+  Isolation opt-out is a no-op so a shared test database is never dropped.
+  The drop uses the worktree's resolved Mix.Ecto database name, refuses names
+  that do not end with `partition`, and never forces a drop or terminates
+  sessions. Failures are logged with evidence and do not raise.
+  """
+  @spec teardown_partition(Project.t(), String.t() | nil, String.t(), map()) :: :ok
+  def teardown_partition(project, worktree_path, partition, extra_env \\ %{})
+
+  def teardown_partition(%Project{} = project, path, partition, extra_env)
+      when is_binary(path) and is_binary(partition) and is_map(extra_env) do
     with {:ok, name} <- env_name(project),
-         true <- honors_env?(worktree_path, name),
-         env = [{name, partition_suffix(run_id)}, {"MIX_ENV", "test"}],
-         {_output, 0} <- run_drop(worktree_path, env) do
-      :ok
+         true <- honors_env?(path, name),
+         :ok <- TestDbPartition.validate_partition(partition) do
+      path
+      |> run_partition_drop(cmd_env(extra_env, name, partition), partition)
+      |> log_drop_result()
     else
       :disabled ->
         :ok
@@ -66,16 +89,12 @@ defmodule Harness.Run.TestDbIsolation do
         :ok
 
       {:error, reason} ->
-        Logger.warning("harness run: test DB teardown failed: #{inspect(reason)}")
-        :ok
-
-      {output, status} when is_integer(status) ->
-        Logger.warning("harness run: test DB teardown exited #{status}: #{String.trim(output)}")
+        Logger.warning("harness: test DB teardown skipped: #{inspect(reason)}")
         :ok
     end
   end
 
-  def teardown(%Project{}, _worktree_path, _run_id, _env), do: :ok
+  def teardown_partition(%Project{}, _worktree_path, _partition, _env), do: :ok
 
   @spec suffix(Project.t(), String.t()) :: String.t()
   defp suffix(%Project{test_db_template: nil}, run_id), do: partition_suffix(run_id)
@@ -155,6 +174,7 @@ defmodule Harness.Run.TestDbIsolation do
   end
 
   @spec config_mentions_env?(String.t(), String.t()) :: boolean()
+  # sobelow_skip ["Traversal.FileModule"] — worktree_path is a harness-managed checkout.
   defp config_mentions_env?(test_config, env_name) do
     case File.read(test_config) do
       {:ok, config} -> String.contains?(config, env_name)
@@ -162,10 +182,45 @@ defmodule Harness.Run.TestDbIsolation do
     end
   end
 
-  @spec run_drop(String.t(), [{String.t(), String.t()}]) :: {String.t(), non_neg_integer()} | {:error, term()}
-  defp run_drop(worktree_path, env) do
-    System.cmd("mix", @drop_args, cd: worktree_path, env: env, stderr_to_stdout: true)
+  @spec cmd_env(map(), String.t(), String.t()) :: [{String.t(), String.t() | nil}]
+  defp cmd_env(extra_env, name, partition) do
+    extra_env
+    |> Map.merge(%{name => partition, "MIX_ENV" => "test"})
+    |> Enum.map(fn
+      {key, false} -> {key, nil}
+      pair -> pair
+    end)
+  end
+
+  @spec run_partition_drop(String.t(), [{String.t(), String.t() | nil}], String.t()) ::
+          {String.t(), non_neg_integer()} | {:error, term()}
+  defp run_partition_drop(path, env, partition) do
+    code = @partition_source <> "\nHarness.Run.TestDbPartition.run!(#{inspect(partition)})"
+    System.cmd("mix", ["run", "--no-start", "-e", code], cd: path, env: env, stderr_to_stdout: true)
   rescue
     e in ErlangError -> {:error, e.original}
+  end
+
+  @spec log_drop_result({String.t(), non_neg_integer()} | {:error, term()}) :: :ok
+  defp log_drop_result({_output, 0}), do: :ok
+
+  defp log_drop_result({output, status}) when is_integer(status) do
+    trimmed = String.trim(output)
+    Logger.warning("harness: test DB teardown #{drop_log_label(trimmed)} #{status}: #{trimmed}")
+    :ok
+  end
+
+  defp log_drop_result({:error, reason}) do
+    Logger.warning("harness: test DB teardown failed: #{inspect(reason)}")
+    :ok
+  end
+
+  @spec drop_log_label(String.t()) :: String.t()
+  defp drop_log_label(output) do
+    cond do
+      String.contains?(output, "active sessions") -> "skipped (active sessions) exit"
+      String.contains?(output, "unpartitioned") -> "skipped (unpartitioned) exit"
+      true -> "exited"
+    end
   end
 end
