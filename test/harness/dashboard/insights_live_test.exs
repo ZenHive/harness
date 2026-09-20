@@ -12,6 +12,8 @@ defmodule Harness.Dashboard.InsightsLiveTest do
   alias Harness.SettingsStore
   alias Harness.Test.InsightsWitness
 
+  setup {Harness.Test.AgentRegistryIsolation, :isolate}
+
   setup do
     old_models = Application.get_env(:harness, :agent_model)
     Application.put_env(:harness, :agent_model, codex: "gpt-6-astra")

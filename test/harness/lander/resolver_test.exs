@@ -53,18 +53,29 @@ defmodule Harness.Lander.ResolverTest do
       assert Resolver.select_resolver(nil, nil) == {:error, :no_resolver}
     end
 
-    test "a mark_unavailable/2 model block that survives AgentRegistry.reset/0 does not poison selection" do
+    test "a mark_unavailable/2 model block that survives AgentRegistry.reset/0 yields available: []" do
       signal = %{"status" => 429, "retry_after_seconds" => 90, "model" => "composer-2.5"}
       :ok = AgentRegistry.mark_unavailable(Cursor, {:structured_quota, signal})
       AgentRegistry.reset()
       refute ModelAvailability.available?(:cursor, "composer-2.5")
 
-      AgentRegistryIsolation.reset_dispatch_state()
-
       mark_all_installed(false)
       mark_installed(Codex, true)
       mark_installed(Cursor, true)
       put_model_env(agent_model: [cursor: "composer-2.5"], reviewer_model: [])
+
+      assert {:error, {:no_spawnable_resolver, skipped}} =
+               Resolver.select_resolver_candidate(:claude, :codex)
+
+      assert skipped[:codex] == {:model_required, :codex}
+
+      assert skipped[:cursor] ==
+               {:unavailable, :cursor, "composer-2.5", available: []}
+
+      AgentRegistryIsolation.reset_dispatch_state()
+      mark_all_installed(false)
+      mark_installed(Codex, true)
+      mark_installed(Cursor, true)
 
       assert {:ok, %{agent: :cursor, module: Cursor, model: "composer-2.5"}} =
                Resolver.select_resolver_candidate(:claude, :codex)

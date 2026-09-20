@@ -11,6 +11,8 @@ defmodule Harness.Chat.ToolsTest do
   alias Harness.ResultStore.Memory, as: MemoryStore
   alias Harness.ResultStoreContract
 
+  setup {Harness.Test.AgentRegistryIsolation, :isolate}
+
   test "build/0 resolves MCP tool names to MFAs" do
     registry = Tools.build()
 
