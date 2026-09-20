@@ -1,7 +1,7 @@
 {
   "output": [
     {
-      "thread_id": "01a0bd35-5539-7353-9ce8-4968b265f6de",
+      "thread_id": "01a0bd47-a107-70e0-b8e6-b90cf1a839f5",
       "type": "thread.started"
     },
     {
@@ -10,7 +10,7 @@
     {
       "item": {
         "id": "item_0",
-        "text": "I’ll attempt the requested patch and report the tool result.\n",
+        "text": "I’ll attempt the requested `apply_patch` call and report its result.",
         "type": "agent_message"
       },
       "type": "item.completed"
@@ -27,9 +27,9 @@
       "type": "turn.completed",
       "usage": {
         "cache_write_input_tokens": 0,
-        "cached_input_tokens": 0,
-        "input_tokens": 19756,
-        "output_tokens": 150,
+        "cached_input_tokens": 9600,
+        "input_tokens": 19759,
+        "output_tokens": 153,
         "reasoning_output_tokens": 0
       }
     }
@@ -110,7 +110,7 @@
   ],
   "rejection": [
     {
-      "thread_id": "01a0bd35-7b52-70e2-ad14-af66649e7e56",
+      "thread_id": "01a0bd47-c319-7d31-937e-b284fb84c530",
       "type": "thread.started"
     },
     {

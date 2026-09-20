@@ -94,6 +94,15 @@ probe: exit 143, with its owned server port released. It never reuses a server.
 The reviewer must independently render and inspect these surfaces; this document
 records implementer inspection, not reviewer approval.
 
+Independent reviewer inspection (run `run-1789878990023-c5bad025`, 2026-09-20):
+re-rendered desktop/mobile paused, settings, filtered-empty, populated, history,
+expanded excerpt and provider-error at 1440×1000 and 390×844. No horizontal
+overflow or page errors. Settings are labelled stacked fields using dashboard
+buttons; history separates current assessment from chronological revisions; long
+excerpts wrap inside keyboard-operable `<details>`. Live Codex was re-run through
+`Insights.observe/1` against Postgres: model `gpt-6-astra`, VM-scoped UUID boot,
+first pass published a finding, later cold-check evidence revised the same id.
+
 ## Verification results
 
 [Check summaries and coverage](checks.json) preserve the measurements.

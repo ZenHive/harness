@@ -254,6 +254,13 @@ defmodule Harness.Dashboard.InsightsLive do
             <select id="insights-project" name="project">
               <option value="">All projects</option>
               <option
+                :if={@project != "" and not Enum.any?(@projects, &(&1.name == @project))}
+                value={@project}
+                selected
+              >
+                {@project}
+              </option>
+              <option
                 :for={project <- @projects}
                 value={project.name}
                 selected={project.name == @project}
@@ -307,7 +314,7 @@ defmodule Harness.Dashboard.InsightsLive do
       </section>
 
       <section :if={@live_action == :show} aria-label="Finding history">
-        <.link class="insights-back" navigate="/harness/insights">All findings</.link>
+        <.link class="btn-save insights-back" navigate="/harness/insights">All findings</.link>
         <p :if={!@history["finding"]}>Finding not found.</p>
         <div :if={@history["finding"]}>
           <section class="insights-panel" aria-label="Current assessment">

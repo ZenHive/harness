@@ -40,6 +40,8 @@ defmodule Harness.Dashboard.InsightsLiveTest do
     assert html =~ "Ephemeral"
     assert html =~ "Paused — observation is disabled"
     assert has_element?(view, "button[phx-click=observe][disabled]")
+    assert html =~ "Your run history has more to tell"
+    assert has_element?(view, "a", "Configure observation")
     assert html =~ ~s(href="/harness/insights")
     {:ok, settings, _html} = live(conn, "/harness/insights/settings")
 
@@ -75,6 +77,7 @@ defmodule Harness.Dashboard.InsightsLiveTest do
     view |> form("#insights-filter", %{"project" => ""}) |> render_change()
     assert_patch(view, "/harness/insights?project=")
     {:ok, detail, html} = live(conn, "/harness/insights/" <> stored["id"])
+    assert has_element?(detail, "a.btn-save", "All findings")
     assert html =~ "AI hypothesis"
     assert html =~ "Provisional"
     assert html =~ "&lt;script&gt;"
@@ -143,5 +146,8 @@ defmodule Harness.Dashboard.InsightsLiveTest do
     {:ok, filtered, html} = live(conn, "/harness/insights?run_id=missing")
     assert html =~ "No findings match this view"
     assert has_element?(filtered, "a", "Clear filters")
+    {:ok, unknown, unknown_html} = live(conn, "/harness/insights?project=missing-project")
+    assert unknown_html =~ "No findings match this view"
+    assert has_element?(unknown, "#insights-project option[selected]", "missing-project")
   end
 end

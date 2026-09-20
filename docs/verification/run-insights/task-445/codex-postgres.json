@@ -1,6 +1,6 @@
 {
   "first_pass": {
-    "at": "2026-09-20T05:06:43.877632Z",
+    "at": "2026-09-20T05:28:58.143651Z",
     "changed_runs": 2,
     "committed": true,
     "finding_context_count": 0,
@@ -10,16 +10,16 @@
       "model": "gpt-6-astra"
     },
     "owner": {
-      "boot": "-576460752000000000",
+      "boot": "e86a6da0-44d7-43b8-ab62-9e5cc6df7950",
       "node": "nonode@nohost",
-      "pid": "<0.2081.0>"
+      "pid": "<0.1208.0>"
     },
     "partial": false,
     "pending": false,
     "sources": [
       {
         "availability": "available",
-        "content_hash": "551F5033D617A64B0AB92898BFA0442EDA8A276FBC2F660BA1B20B21CBB0CE12",
+        "content_hash": "7AAD9AEAFEEDE425163F842CA7F1436B73214157414BC5CE58B56A24436AC407",
         "field": "record",
         "next_offset": null,
         "offset": 0,
@@ -27,7 +27,7 @@
         "provisional": false,
         "run_id": "live-pg-a",
         "source_id": "live-pg-a/record",
-        "text": "%{model: nil, project_name: \"insights-pg\", agent: nil, recovery_attempts: 0, reason: %{\"$atom\" => \"approved\"}, agent_outcome_kind: nil, landed_sha: nil, reviewer_diff_size: 18, state: \"done\", pr_writeback: nil, reviewer_model: nil, review_proposed_tasks: %{\"$list\" => []}, review_iterations: 0, run_id: \"live-pg-a\", reviewer_outcome_kind: nil, review_facets: %{}, adapter: \"Elixir.Harness.AgentAdapter.Claude\", verdict: \"approve\", updated_at: ~N[2026-09-20 05:06:43.873289], duration_ms: 1234, recovery_repaired: nil, reviewer_rotation_count: 0, agent_exit_status: nil, task_id: \"task-73\", dispatch_decision: %{}, composed_inputs: %{\"$list\" => []}, recovery_token_usage: %{\"cache_creation\" => nil, \"cache_read\" => nil, \"input\" => nil, \"output\" => nil, \"total\" => nil}, review_ratings: %{}, reviewer_reprompt_count: 0, batch_id: \"batch-test\", cold_check: nil, domains: %{\"$list\" => []}, approved_then_found_red: %{}, task_fingerprint: nil, reviewer_exit_status: nil, task_ids: [], review_report: \"Reviewer fixed the missing empty-input validation and added a regression test.\", review_warning?: false, review_concerns: %{\"$list\" => []}, recovery_outcome: nil, token_usage: %{\"cache_creation\" => nil, \"cache_read\" => nil, \"input\" => nil, \"output\" => nil, \"total\" => nil}, pr_url: nil, agent_diff_size: nil, reviewer_adapter: nil, inserted_at: ~N[2026-09-20 05:06:43.873289], review_checks: %{}, review_skills: %{}}",
+        "text": "%{pr_url: nil, domains: %{\"$list\" => []}, reviewer_model: nil, recovery_token_usage: %{\"cache_creation\" => nil, \"cache_read\" => nil, \"input\" => nil, \"output\" => nil, \"total\" => nil}, recovery_attempts: 0, reason: %{\"$atom\" => \"approved\"}, recovery_outcome: nil, reviewer_diff_size: 18, task_fingerprint: nil, reviewer_reprompt_count: 0, batch_id: \"batch-test\", review_ratings: %{}, review_proposed_tasks: %{\"$list\" => []}, state: \"done\", review_facets: %{}, agent_exit_status: nil, updated_at: ~N[2026-09-20 05:28:58.134152], inserted_at: ~N[2026-09-20 05:28:58.134152], model: nil, agent: nil, reviewer_rotation_count: 0, task_ids: [], landed_sha: nil, review_skills: %{}, adapter: \"Elixir.Harness.AgentAdapter.Claude\", cold_check: nil, duration_ms: 1234, dispatch_decision: %{}, review_concerns: %{\"$list\" => []}, approved_then_found_red: %{}, reviewer_exit_status: nil, recovery_repaired: nil, review_iterations: 0, review_checks: %{}, agent_outcome_kind: nil, review_report: \"Reviewer fixed the missing empty-input validation and added a regression test.\", composed_inputs: %{\"$list\" => []}, agent_diff_size: nil, pr_writeback: nil, reviewer_outcome_kind: nil, review_warning?: false, run_id: \"live-pg-a\", verdict: \"approve\", token_usage: %{\"cache_creation\" => nil, \"cache_read\" => nil, \"input\" => nil, \"output\" => nil, \"total\" => nil}, project_name: \"insights-pg\", task_id: \"task-73\", reviewer_adapter: nil}",
         "total_bytes": 1412
       },
       {
@@ -58,7 +58,7 @@
       },
       {
         "availability": "available",
-        "content_hash": "9BD7B0A2DA5B4AC0A355BD36EE09E21B864C2E62C07416648667F99025C16E7B",
+        "content_hash": "BAFCB1AEF9C024F4B7E5D213AFF3547D44A624DD9F49507A2F0437B88DD38490",
         "field": "record",
         "next_offset": null,
         "offset": 0,
@@ -66,7 +66,7 @@
         "provisional": false,
         "run_id": "live-pg-b",
         "source_id": "live-pg-b/record",
-        "text": "%{model: nil, project_name: \"insights-other\", agent: nil, recovery_attempts: 0, reason: %{\"$atom\" => \"approved\"}, agent_outcome_kind: nil, landed_sha: nil, reviewer_diff_size: 21, state: \"done\", pr_writeback: nil, reviewer_model: nil, review_proposed_tasks: %{\"$list\" => []}, review_iterations: 0, run_id: \"live-pg-b\", reviewer_outcome_kind: nil, review_facets: %{}, adapter: \"Elixir.Harness.AgentAdapter.Claude\", verdict: \"approve\", updated_at: ~N[2026-09-20 05:06:43.874919], duration_ms: 1234, recovery_repaired: nil, reviewer_rotation_count: 0, agent_exit_status: nil, task_id: \"task-73\", dispatch_decision: %{}, composed_inputs: %{\"$list\" => []}, recovery_token_usage: %{\"cache_creation\" => nil, \"cache_read\" => nil, \"input\" => nil, \"output\" => nil, \"total\" => nil}, review_ratings: %{}, reviewer_reprompt_count: 0, batch_id: \"batch-test\", cold_check: nil, domains: %{\"$list\" => []}, approved_then_found_red: %{}, task_fingerprint: nil, reviewer_exit_status: nil, task_ids: [], review_report: \"Reviewer again fixed the missing empty-input validation and added a regression test.\", review_warning?: false, review_concerns: %{\"$list\" => []}, recovery_outcome: nil, token_usage: %{\"cache_creation\" => nil, \"cache_read\" => nil, \"input\" => nil, \"output\" => nil, \"total\" => nil}, pr_url: nil, agent_diff_size: nil, reviewer_adapter: nil, inserted_at: ~N[2026-09-20 05:06:43.874919], review_checks: %{}, review_skills: %{}}",
+        "text": "%{pr_url: nil, domains: %{\"$list\" => []}, reviewer_model: nil, recovery_token_usage: %{\"cache_creation\" => nil, \"cache_read\" => nil, \"input\" => nil, \"output\" => nil, \"total\" => nil}, recovery_attempts: 0, reason: %{\"$atom\" => \"approved\"}, recovery_outcome: nil, reviewer_diff_size: 21, task_fingerprint: nil, reviewer_reprompt_count: 0, batch_id: \"batch-test\", review_ratings: %{}, review_proposed_tasks: %{\"$list\" => []}, state: \"done\", review_facets: %{}, agent_exit_status: nil, updated_at: ~N[2026-09-20 05:28:58.139355], inserted_at: ~N[2026-09-20 05:28:58.139355], model: nil, agent: nil, reviewer_rotation_count: 0, task_ids: [], landed_sha: nil, review_skills: %{}, adapter: \"Elixir.Harness.AgentAdapter.Claude\", cold_check: nil, duration_ms: 1234, dispatch_decision: %{}, review_concerns: %{\"$list\" => []}, approved_then_found_red: %{}, reviewer_exit_status: nil, recovery_repaired: nil, review_iterations: 0, review_checks: %{}, agent_outcome_kind: nil, review_report: \"Reviewer again fixed the missing empty-input validation and added a regression test.\", composed_inputs: %{\"$list\" => []}, agent_diff_size: nil, pr_writeback: nil, reviewer_outcome_kind: nil, review_warning?: false, run_id: \"live-pg-b\", verdict: \"approve\", token_usage: %{\"cache_creation\" => nil, \"cache_read\" => nil, \"input\" => nil, \"output\" => nil, \"total\" => nil}, project_name: \"insights-other\", task_id: \"task-73\", reviewer_adapter: nil}",
         "total_bytes": 1421
       },
       {
@@ -99,7 +99,7 @@
     "state": "successful"
   },
   "later_pass": {
-    "at": "2026-09-20T05:06:57.215926Z",
+    "at": "2026-09-20T05:29:11.493101Z",
     "changed_runs": 1,
     "committed": true,
     "finding_context_count": 1,
@@ -109,16 +109,16 @@
       "model": "gpt-6-astra"
     },
     "owner": {
-      "boot": "-576460752000000000",
+      "boot": "e86a6da0-44d7-43b8-ab62-9e5cc6df7950",
       "node": "nonode@nohost",
-      "pid": "<0.2081.0>"
+      "pid": "<0.1208.0>"
     },
     "partial": false,
     "pending": false,
     "sources": [
       {
         "availability": "available",
-        "content_hash": "0957E8A4330562992ABCB28B5FD33D389CEE532069579A11207C8EFF3AB1235B",
+        "content_hash": "FC66ED56C69D2698EE203C93438B1CEDBB399ADC735363F7837F1584C89B179D",
         "field": "record",
         "next_offset": null,
         "offset": 0,
@@ -126,7 +126,7 @@
         "provisional": false,
         "run_id": "live-pg-a",
         "source_id": "live-pg-a/record",
-        "text": "%{model: nil, project_name: \"insights-pg\", agent: nil, recovery_attempts: 0, reason: %{\"$atom\" => \"approved\"}, agent_outcome_kind: nil, landed_sha: nil, reviewer_diff_size: 18, state: \"done\", pr_writeback: nil, reviewer_model: nil, review_proposed_tasks: %{\"$list\" => []}, review_iterations: 0, run_id: \"live-pg-a\", reviewer_outcome_kind: nil, review_facets: %{}, adapter: \"Elixir.Harness.AgentAdapter.Claude\", verdict: \"approve\", updated_at: ~N[2026-09-20 05:06:57.213277], duration_ms: 1234, recovery_repaired: nil, reviewer_rotation_count: 0, agent_exit_status: nil, task_id: \"task-73\", dispatch_decision: %{}, composed_inputs: %{\"$list\" => []}, recovery_token_usage: %{\"cache_creation\" => nil, \"cache_read\" => nil, \"input\" => nil, \"output\" => nil, \"total\" => nil}, review_ratings: %{}, reviewer_reprompt_count: 0, batch_id: \"batch-test\", cold_check: %{\"passed\" => false, \"report\" => \"A later check still fails on empty input after merge. The earlier reviewer repair did not resolve the recurrence.\"}, domains: %{\"$list\" => []}, approved_then_found_red: %{}, task_fingerprint: nil, reviewer_exit_status: nil, task_ids: [], review_report: \"Reviewer fixed the missing empty-input validation and added a regression test.\", review_warning?: false, review_concerns: %{\"$list\" => []}, recovery_outcome: nil, token_usage: %{\"cache_creation\" => nil, \"cache_read\" => nil, \"input\" => nil, \"output\" => nil, \"total\" => nil}, pr_url: nil, agent_diff_size: nil, reviewer_adapter: nil, inserted_at: ~N[2026-09-20 05:06:43.873289], review_checks: %{}, review_skills: %{}}",
+        "text": "%{pr_url: nil, domains: %{\"$list\" => []}, reviewer_model: nil, recovery_token_usage: %{\"cache_creation\" => nil, \"cache_read\" => nil, \"input\" => nil, \"output\" => nil, \"total\" => nil}, recovery_attempts: 0, reason: %{\"$atom\" => \"approved\"}, recovery_outcome: nil, reviewer_diff_size: 18, task_fingerprint: nil, reviewer_reprompt_count: 0, batch_id: \"batch-test\", review_ratings: %{}, review_proposed_tasks: %{\"$list\" => []}, state: \"done\", review_facets: %{}, agent_exit_status: nil, updated_at: ~N[2026-09-20 05:29:11.490478], inserted_at: ~N[2026-09-20 05:28:58.134152], model: nil, agent: nil, reviewer_rotation_count: 0, task_ids: [], landed_sha: nil, review_skills: %{}, adapter: \"Elixir.Harness.AgentAdapter.Claude\", cold_check: %{\"passed\" => false, \"report\" => \"A later check still fails on empty input after merge. The earlier reviewer repair did not resolve the recurrence.\"}, duration_ms: 1234, dispatch_decision: %{}, review_concerns: %{\"$list\" => []}, approved_then_found_red: %{}, reviewer_exit_status: nil, recovery_repaired: nil, review_iterations: 0, review_checks: %{}, agent_outcome_kind: nil, review_report: \"Reviewer fixed the missing empty-input validation and added a regression test.\", composed_inputs: %{\"$list\" => []}, agent_diff_size: nil, pr_writeback: nil, reviewer_outcome_kind: nil, review_warning?: false, run_id: \"live-pg-a\", verdict: \"approve\", token_usage: %{\"cache_creation\" => nil, \"cache_read\" => nil, \"input\" => nil, \"output\" => nil, \"total\" => nil}, project_name: \"insights-pg\", task_id: \"task-73\", reviewer_adapter: nil}",
         "total_bytes": 1558
       },
       {
@@ -161,12 +161,12 @@
   "histories": [
     {
       "finding": {
-        "assessment": "The later cold check reports failure after merge, overturning the earlier assessment of successful repair before approval. Resolution is not established.",
-        "at": "2026-09-20T05:07:12.601461Z",
+        "assessment": "The later failed check provides evidence that the reported reviewer repair did not establish resolution, despite approval.",
+        "at": "2026-09-20T05:29:25.522546Z",
         "citations": [
           {
             "availability": "available",
-            "content_hash": "0957E8A4330562992ABCB28B5FD33D389CEE532069579A11207C8EFF3AB1235B",
+            "content_hash": "FC66ED56C69D2698EE203C93438B1CEDBB399ADC735363F7837F1584C89B179D",
             "excerpt": "A later check still fails on empty input after merge. The earlier reviewer repair did not resolve the recurrence.",
             "field": "record",
             "next_offset": null,
@@ -179,21 +179,8 @@
           },
           {
             "availability": "available",
-            "content_hash": "0957E8A4330562992ABCB28B5FD33D389CEE532069579A11207C8EFF3AB1235B",
+            "content_hash": "FC66ED56C69D2698EE203C93438B1CEDBB399ADC735363F7837F1584C89B179D",
             "excerpt": "Reviewer fixed the missing empty-input validation and added a regression test.",
-            "field": "record",
-            "next_offset": null,
-            "offset": 0,
-            "project": "insights-pg",
-            "provisional": false,
-            "run_id": "live-pg-a",
-            "source_id": "live-pg-a/record",
-            "total_bytes": 1558
-          },
-          {
-            "availability": "available",
-            "content_hash": "0957E8A4330562992ABCB28B5FD33D389CEE532069579A11207C8EFF3AB1235B",
-            "excerpt": "landed_sha: nil, reviewer_diff_size: 18",
             "field": "record",
             "next_offset": null,
             "offset": 0,
@@ -204,12 +191,12 @@
             "total_bytes": 1558
           }
         ],
-        "contradictions": "The reviewer reported a fix and regression test, and the run was approved and marked done; the later cold check explicitly reports that empty-input failure persists. The report describes a post-merge check, but no landed SHA identifies the tested revision.",
-        "explanation": "Reviewer repair and approval did not establish durable resolution of the empty-input issue. The later check supplies adverse evidence that was absent from the previous assessment.",
-        "facts": "The live-pg-a record retains the reviewer repair report and an 18-line reviewer diff, while cold_check.passed is false. Its report says empty input still fails after merge. No landed SHA or regression-test execution details are supplied.",
-        "hypothesis": "The repair or regression coverage may not address the failing empty-input path; the available evidence cannot distinguish incomplete repair from a revision or integration mismatch.",
-        "id": "eaa2c68e-b89e-49de-b699-eea4132dd610",
-        "improvement": "Reproduce the cold-check failure against an identified landed revision, reconcile it with the reviewer-added regression test, and record passing results for the failing case before treating the issue as resolved.",
+        "contradictions": "The reviewer reports a fix and regression test, but the later check reports continued failure. Merge is reported in the check narrative; landed_sha remains nil, so the exact tested and landed revisions cannot be verified.",
+        "explanation": "New audit evidence revises the existing finding: reviewer repair and approval were followed by a reported empty-input failure after merge.",
+        "facts": "The live-pg-a record retains an approve verdict and zero recovery attempts. Its cold_check now has passed=false and reports that empty input still fails after merge.",
+        "hypothesis": "The repair or regression test may have missed the failing path, or the checked revision may differ from the repaired revision. The supplied evidence does not distinguish these causes.",
+        "id": "36a0b733-085f-4255-ad7f-da34a39b944e",
+        "improvement": "Reproduce the later failure against an identified revision, check whether the reviewer-added regression exercises that case, and retain passing results tied to the final landed revision before declaring resolution.",
         "observer": {
           "agent": "codex",
           "model": "gpt-6-astra"
@@ -220,22 +207,22 @@
           "insights-other"
         ],
         "provisional": false,
-        "recurrence": "This updates the existing finding about reviewer repairs across live-pg-a and live-pg-b. The new evidence establishes reported persistence within live-pg-a after repair, rather than an additional independent run.",
+        "recurrence": "This updates the existing cross-project finding with post-repair recurrence in live-pg-a. No new evidence is supplied for live-pg-b, and no additional independent occurrence is established.",
         "runs": [
           "live-pg-a",
           "live-pg-b"
         ],
-        "title": "Empty-input failure persists after reviewer repair and reported merge"
+        "title": "Empty-input failure persisted after reviewer repair and reported merge"
       },
       "next_offset": null,
       "revisions": [
         {
-          "assessment": "Review reports indicate successful repair before approval; test execution, landing, and audit outcomes remain unverified.",
-          "at": "2026-09-20T05:06:57.208720Z",
+          "assessment": "Both approved runs report reviewer repair; independent verification and landing remain unestablished.",
+          "at": "2026-09-20T05:29:11.487585Z",
           "citations": [
             {
               "availability": "available",
-              "content_hash": "551F5033D617A64B0AB92898BFA0442EDA8A276FBC2F660BA1B20B21CBB0CE12",
+              "content_hash": "7AAD9AEAFEEDE425163F842CA7F1436B73214157414BC5CE58B56A24436AC407",
               "excerpt": "Reviewer fixed the missing empty-input validation and added a regression test.",
               "field": "record",
               "next_offset": null,
@@ -248,34 +235,8 @@
             },
             {
               "availability": "available",
-              "content_hash": "9BD7B0A2DA5B4AC0A355BD36EE09E21B864C2E62C07416648667F99025C16E7B",
+              "content_hash": "BAFCB1AEF9C024F4B7E5D213AFF3547D44A624DD9F49507A2F0437B88DD38490",
               "excerpt": "Reviewer again fixed the missing empty-input validation and added a regression test.",
-              "field": "record",
-              "next_offset": null,
-              "offset": 0,
-              "project": "insights-other",
-              "provisional": false,
-              "run_id": "live-pg-b",
-              "source_id": "live-pg-b/record",
-              "total_bytes": 1421
-            },
-            {
-              "availability": "available",
-              "content_hash": "551F5033D617A64B0AB92898BFA0442EDA8A276FBC2F660BA1B20B21CBB0CE12",
-              "excerpt": "landed_sha: nil, reviewer_diff_size: 18",
-              "field": "record",
-              "next_offset": null,
-              "offset": 0,
-              "project": "insights-pg",
-              "provisional": false,
-              "run_id": "live-pg-a",
-              "source_id": "live-pg-a/record",
-              "total_bytes": 1412
-            },
-            {
-              "availability": "available",
-              "content_hash": "9BD7B0A2DA5B4AC0A355BD36EE09E21B864C2E62C07416648667F99025C16E7B",
-              "excerpt": "landed_sha: nil, reviewer_diff_size: 21",
               "field": "record",
               "next_offset": null,
               "offset": 0,
@@ -286,12 +247,12 @@
               "total_bytes": 1421
             }
           ],
-          "contradictions": "Both runs were approved and marked done, which supports acceptance after reviewer intervention but does not establish that the initial implementations were complete or that the repairs passed tests.",
-          "explanation": "The same missing boundary validation required reviewer intervention in two projects. Approval therefore reflects reported reviewer repair as well as implementation work.",
-          "facts": "For live-pg-a and live-pg-b, review reports state that the reviewer fixed missing empty-input validation and added a regression test. Reviewer diff sizes were 18 and 21. Neither record supplies a landed SHA or test results.",
-          "hypothesis": "Implementation checks may be overlooking empty-input behavior, shifting validation and regression coverage to reviewers.",
-          "id": "eaa2c68e-b89e-49de-b699-eea4132dd610",
-          "improvement": "Include empty-input behavior in implementation acceptance checks and record regression-test execution results before approval.",
+          "contradictions": "Approval is consistent with repair before acceptance, but does not establish that the original implementation was complete. No test execution results or landed SHA are supplied.",
+          "explanation": "The successful verdicts conceal a repeated validation omission that reviewers report correcting before approval.",
+          "facts": "In live-pg-a for insights-pg and live-pg-b for insights-other, review reports state that reviewers fixed missing empty-input validation and added a regression test. Both records have an approve verdict and zero recovery attempts.",
+          "hypothesis": "Implementation-stage edge-case checks may be insufficient, leaving reviewers to supply validation and regression coverage.",
+          "id": "36a0b733-085f-4255-ad7f-da34a39b944e",
+          "improvement": "Include empty-input behavior and regression coverage during implementation, and retain test execution evidence alongside reviewer repair and approval.",
           "observer": {
             "agent": "codex",
             "model": "gpt-6-astra"
@@ -302,20 +263,20 @@
             "insights-other"
           ],
           "provisional": false,
-          "recurrence": "Observed in two supplied runs across insights-pg and insights-other. Shared task and batch identifiers limit conclusions about independent recurrence; no previous findings were supplied.",
+          "recurrence": "The same reported omission appears in two runs across different projects. Both share task-73 and batch-test, so independent causes are not established. No previous finding was supplied.",
           "runs": [
             "live-pg-a",
             "live-pg-b"
           ],
-          "title": "Empty-input validation repeatedly required reviewer repair"
+          "title": "Approved runs repeatedly required reviewer fixes for empty-input validation"
         },
         {
-          "assessment": "The later cold check reports failure after merge, overturning the earlier assessment of successful repair before approval. Resolution is not established.",
-          "at": "2026-09-20T05:07:12.601461Z",
+          "assessment": "The later failed check provides evidence that the reported reviewer repair did not establish resolution, despite approval.",
+          "at": "2026-09-20T05:29:25.522546Z",
           "citations": [
             {
               "availability": "available",
-              "content_hash": "0957E8A4330562992ABCB28B5FD33D389CEE532069579A11207C8EFF3AB1235B",
+              "content_hash": "FC66ED56C69D2698EE203C93438B1CEDBB399ADC735363F7837F1584C89B179D",
               "excerpt": "A later check still fails on empty input after merge. The earlier reviewer repair did not resolve the recurrence.",
               "field": "record",
               "next_offset": null,
@@ -328,21 +289,8 @@
             },
             {
               "availability": "available",
-              "content_hash": "0957E8A4330562992ABCB28B5FD33D389CEE532069579A11207C8EFF3AB1235B",
+              "content_hash": "FC66ED56C69D2698EE203C93438B1CEDBB399ADC735363F7837F1584C89B179D",
               "excerpt": "Reviewer fixed the missing empty-input validation and added a regression test.",
-              "field": "record",
-              "next_offset": null,
-              "offset": 0,
-              "project": "insights-pg",
-              "provisional": false,
-              "run_id": "live-pg-a",
-              "source_id": "live-pg-a/record",
-              "total_bytes": 1558
-            },
-            {
-              "availability": "available",
-              "content_hash": "0957E8A4330562992ABCB28B5FD33D389CEE532069579A11207C8EFF3AB1235B",
-              "excerpt": "landed_sha: nil, reviewer_diff_size: 18",
               "field": "record",
               "next_offset": null,
               "offset": 0,
@@ -353,12 +301,12 @@
               "total_bytes": 1558
             }
           ],
-          "contradictions": "The reviewer reported a fix and regression test, and the run was approved and marked done; the later cold check explicitly reports that empty-input failure persists. The report describes a post-merge check, but no landed SHA identifies the tested revision.",
-          "explanation": "Reviewer repair and approval did not establish durable resolution of the empty-input issue. The later check supplies adverse evidence that was absent from the previous assessment.",
-          "facts": "The live-pg-a record retains the reviewer repair report and an 18-line reviewer diff, while cold_check.passed is false. Its report says empty input still fails after merge. No landed SHA or regression-test execution details are supplied.",
-          "hypothesis": "The repair or regression coverage may not address the failing empty-input path; the available evidence cannot distinguish incomplete repair from a revision or integration mismatch.",
-          "id": "eaa2c68e-b89e-49de-b699-eea4132dd610",
-          "improvement": "Reproduce the cold-check failure against an identified landed revision, reconcile it with the reviewer-added regression test, and record passing results for the failing case before treating the issue as resolved.",
+          "contradictions": "The reviewer reports a fix and regression test, but the later check reports continued failure. Merge is reported in the check narrative; landed_sha remains nil, so the exact tested and landed revisions cannot be verified.",
+          "explanation": "New audit evidence revises the existing finding: reviewer repair and approval were followed by a reported empty-input failure after merge.",
+          "facts": "The live-pg-a record retains an approve verdict and zero recovery attempts. Its cold_check now has passed=false and reports that empty input still fails after merge.",
+          "hypothesis": "The repair or regression test may have missed the failing path, or the checked revision may differ from the repaired revision. The supplied evidence does not distinguish these causes.",
+          "id": "36a0b733-085f-4255-ad7f-da34a39b944e",
+          "improvement": "Reproduce the later failure against an identified revision, check whether the reviewer-added regression exercises that case, and retain passing results tied to the final landed revision before declaring resolution.",
           "observer": {
             "agent": "codex",
             "model": "gpt-6-astra"
@@ -369,12 +317,12 @@
             "insights-other"
           ],
           "provisional": false,
-          "recurrence": "This updates the existing finding about reviewer repairs across live-pg-a and live-pg-b. The new evidence establishes reported persistence within live-pg-a after repair, rather than an additional independent run.",
+          "recurrence": "This updates the existing cross-project finding with post-repair recurrence in live-pg-a. No new evidence is supplied for live-pg-b, and no additional independent occurrence is established.",
           "runs": [
             "live-pg-a",
             "live-pg-b"
           ],
-          "title": "Empty-input failure persists after reviewer repair and reported merge"
+          "title": "Empty-input failure persisted after reviewer repair and reported merge"
         }
       ]
     }
