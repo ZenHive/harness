@@ -17,9 +17,13 @@ defmodule Harness.Insights.Tick do
     end
   end
 
-  @spec due?(String.t()) :: boolean()
-  defp due?(next) do
-    {:ok, date, _} = DateTime.from_iso8601(next)
-    DateTime.compare(date, DateTime.utc_now()) != :gt
+  @spec due?(term()) :: boolean()
+  defp due?(next) when is_binary(next) do
+    case DateTime.from_iso8601(next) do
+      {:ok, date, _} -> DateTime.compare(date, DateTime.utc_now()) != :gt
+      _ -> false
+    end
   end
+
+  defp due?(_), do: false
 end

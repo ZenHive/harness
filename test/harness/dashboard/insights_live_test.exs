@@ -67,6 +67,12 @@ defmodule Harness.Dashboard.InsightsLiveTest do
     assert has_element?(detail, ~s(a[href="/harness/runs/ui-run"]))
     {:ok, _view, missing} = live(conn, "/harness/insights/unknown")
     assert missing =~ "Finding not found"
+    {:ok, _run, run_html} = live(conn, "/harness/runs/ui-run")
+    assert run_html =~ "Related Run Insights"
+    assert run_html =~ ~s(href="/harness/insights?run_id=ui-run")
+    {:ok, _related, related} = live(conn, "/harness/insights?run_id=ui-run")
+    assert related =~ "Findings related to run ui-run"
+    assert related =~ "Repeated reviewer repairs"
   end
 
   test "failure and partial status receive broadcasts", %{conn: conn} do

@@ -1334,6 +1334,19 @@ defmodule Harness.ObanDispatchTest do
       assert opts[:rescue_after] == to_timeout(minute: 30)
     end
 
+    test "oban_opts/0 serializes insights on its own queue and schedules an independent tick" do
+      opts = HarnessOban.oban_opts()
+      assert opts[:queues][:insights] == 1
+
+      crontab =
+        Enum.flat_map(opts[:plugins], fn
+          {Oban.Cron, cron_opts} -> Keyword.get(cron_opts, :crontab, [])
+          _other -> []
+        end)
+
+      assert {"* * * * *", Harness.Insights.Tick, [queue: :cron]} in crontab
+    end
+
     @tag :integration
     test "unfinished_run_job? detects non-terminal run jobs for a project task" do
       start_supervised!(Harness.Repo)

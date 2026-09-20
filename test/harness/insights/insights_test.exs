@@ -180,6 +180,38 @@ defmodule Harness.InsightsTest do
     assert Insights.findings("match")["next_offset"] == nil
   end
 
+  test "a full previous-finding page does not mark a complete evidence window as partial" do
+    enable()
+    Application.put_env(:harness, :insights_test_response, {:ok, %{"findings" => []}})
+
+    :ok =
+      Store.put_many(
+        for n <- 1..10 do
+          {"finding/prior-#{n}", "finding",
+           %{
+             "id" => "prior-#{n}",
+             "citations" => [],
+             "projects" => ["insights-test"],
+             "runs" => []
+           }}
+        end
+      )
+
+    :ok =
+      ResultStore.record_run(
+        record(
+          project_name: "insights-test",
+          run_id: "complete-window",
+          agent_output: "done",
+          reviewer_output: "approved"
+        )
+      )
+
+    assert :ok = Insights.observe("complete-window")
+    assert Insights.status()["state"] == "no_findings"
+    refute Insights.status()["last_pass"]["partial"]
+  end
+
   test "ephemeral scans also advance beyond a full page and detect later landing changes" do
     enable()
     Application.put_env(:harness, :insights_test_response, {:ok, %{"findings" => []}})

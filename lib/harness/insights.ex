@@ -140,9 +140,7 @@ defmodule Harness.Insights do
     with {:ok, batch} <- Evidence.batch(progress),
          {:ok, response} <- ask(batch, previous, config),
          {:ok, documents} <- Publication.prepare(response, batch.sources, previous, id, observer) do
-      partial = batch.partial or Enum.count_until(previous, 10) == 10 or Map.get(progress, "finding_offset", 0) > 0
-
-      state = pass_state(batch, partial, documents)
+      state = pass_state(batch, documents)
 
       next =
         Map.merge(batch.next, %{
@@ -158,7 +156,7 @@ defmodule Harness.Insights do
           "committed" => true,
           "changed_runs" => batch.changed,
           "sources" => batch.sources,
-          "partial" => partial,
+          "partial" => batch.partial,
           "pending" => batch.pending,
           "finding_context_count" => length(previous)
         })
@@ -173,11 +171,11 @@ defmodule Harness.Insights do
     end
   end
 
-  @spec pass_state(map(), boolean(), [tuple()]) :: String.t()
-  defp pass_state(_batch, true, _documents), do: "partial"
-  defp pass_state(%{changed: 0}, false, _documents), do: "no_new_evidence"
-  defp pass_state(_batch, false, []), do: "no_findings"
-  defp pass_state(_batch, false, _documents), do: "successful"
+  @spec pass_state(map(), [tuple()]) :: String.t()
+  defp pass_state(%{partial: true}, _documents), do: "partial"
+  defp pass_state(%{changed: 0}, _documents), do: "no_new_evidence"
+  defp pass_state(_batch, []), do: "no_findings"
+  defp pass_state(_batch, _documents), do: "successful"
 
   @spec ask(map(), [map()], map()) :: {:ok, map()} | {:error, term()}
   defp ask(%{changed: 0}, _previous, _settings), do: {:ok, %{"findings" => []}}
@@ -202,8 +200,17 @@ defmodule Harness.Insights do
   defp context_finding(finding) do
     finding
     |> Map.new(fn {key, value} -> {key, if(is_binary(value), do: String.slice(value, 0, 1000), else: value)} end)
-    |> Map.update!("citations", fn citations ->
-      citations |> Enum.take(2) |> Enum.map(&Map.update!(&1, "excerpt", fn text -> String.slice(text, 0, 500) end))
+    |> Map.update("citations", [], fn citations ->
+      citations
+      |> List.wrap()
+      |> Enum.take(2)
+      |> Enum.map(fn
+        %{"excerpt" => text} = citation when is_binary(text) ->
+          Map.put(citation, "excerpt", String.slice(text, 0, 500))
+
+        citation ->
+          citation
+      end)
     end)
   end
 
