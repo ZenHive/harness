@@ -20577,6 +20577,61 @@
       "created_at": "2026-09-20",
       "scored_at": "2026-09-20",
       "cross_repo": []
+    },
+    {
+      "id": "443",
+      "phase": 24,
+      "bundle": "operator-cockpit",
+      "status": "pending",
+      "title": "Add Run Insights to observe runs and track recurring problems",
+      "scores": {
+        "d": 8,
+        "b": 8,
+        "u": 5
+      },
+      "eff": 0.81,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-6-astra",
+      "acceptance_criteria": [
+        "A real configured AI observes active and completed runs across projects, cites source evidence, and performs a later pass using previous findings; an independent reviewer checks the claims against the cited evidence rather than accepting agent self-report.",
+        "A live-agent integration test is written before doubles and pins the observed invocation/output behavior, including a relevant real failure; missing credentials fail loudly with exact setup instructions. Observation access does not expose mutating Harness operations, and produced text/artifacts cannot trigger lifecycle or roadmap actions.",
+        "Observation passes, findings and revision history survive restart in Postgres; repo_enabled:false is supported and visibly ephemeral. Cited excerpts survive source transcript expiry, with missing/truncated evidence explicitly reported.",
+        "Disabled-by-default observation is independent of dispatch autonomy; hourly default, selectable cadence, explicit agent/model settings and Observe now work. Jobs are serialized, retried publication is idempotent, and successful progress advances only with committed observation results.",
+        "Seven-day bootstrap and bounded incremental evidence retrieval cover active runs, completed runs and later review/recovery/landing/audit changes. AI revisits existing findings without procedural semantic classifiers. No-new-evidence, no-findings, partial and failed passes remain distinguishable.",
+        "The MAIN NAVBAR includes Run Insights linking /harness/insights with subtitle AI observations across runs. Overview, project filters, latest-revision ordering and /harness/insights/:id revision/evidence views work; run detail links related findings and settings controls update live.",
+        "Findings distinguish source facts from AI hypotheses and mark conclusions about active runs provisional. Proposed improvements remain advisory; a merged fix alone cannot count as resolved evidence. Later contradictory or recurring evidence can revise an existing finding.",
+        "Context and LiveView tests cover persistence, revisions, restart progress, duplicate jobs, late audit updates, missing transcripts, malformed output, agent failure, absence of lifecycle/roadmap side effects, navbar/navigation, filters, evidence links, settings, manual observation and all empty/error states.",
+        "Existing-module coverage meets repository tiers before mutation. Reviewer runs mix check.dispatch plus focused tests, records live evidence and durable logs, and verifies canonical driver documentation. The orchestrator runs mix precommit.full on the integrated landed base and propagates the driver skill."
+      ],
+      "out_of_scope": [
+        "Automatic fixes, dispatch, intervention, routing changes or rmap task creation by the observer",
+        "Replacing Task 374 lifecycle history, Task 388 Inbox or Task 441 Activity",
+        "Computed severity/ranking or procedural interpretation of failures",
+        "Agent-initiated production restart, recompile or observer enablement"
+      ],
+      "touches": [
+        "lib/harness/insights/",
+        "lib/harness/insights.ex",
+        "lib/harness/application.ex",
+        "lib/harness/oban.ex",
+        "lib/harness/manifest.ex",
+        "lib/harness/dashboard/",
+        "lib/harness/result_store/",
+        "lib/harness/result_store.ex",
+        "priv/repo/migrations/",
+        "test/harness/insights/",
+        "test/harness/insights_test.exs",
+        "test/harness/dashboard/",
+        "skills/harness-driver/SKILL.md"
+      ],
+      "body": "Add Run Insights, an independently enabled AI witness that examines active and completed runs across registered projects and maintains evidence-backed observations of recurring problems. Include successful runs that repeatedly required reviewer fixes or recovery. The operator requested a learning loop: identify what recurs, explain the evidence and likely cause, propose improvements, and revisit findings when later evidence supports, contradicts or reopens them. Interpretations belong to the AI; code handles scheduling, bounded retrieval, persistence and counters only.\n\nDeliver the observer, persistent findings and usable dashboard together. Existing run status/transcript and ResultStore review/recovery/landing/audit surfaces are the evidence sources (see lib/harness/result_store/schema/run_record.ex and Harness.Dispatch). Do not wait for Task 374's lifecycle event history or duplicate its store; Task 388 owns the action Inbox and Task 441 owns Activity. Observation must capture late landing/audit changes as well as new runs, and must not present an incomplete evidence window as a complete review.\n\nDecisions approved by the operator: observe both active and completed runs; active-run conclusions are provisional. Ship disabled independently of dispatch autonomy. When enabled, observe hourly by default, with selectable cadence and Observe now. Observe all registered projects, with project filters in the dashboard. Bootstrap the last seven days, then consume new/changed evidence in bounded batches with durable progress; feed existing findings back into the AI for revision and deduplication. Failed passes do not advance successful progress. A dedicated serialized Oban job prevents overlapping passes; repeated delivery must not duplicate finding revisions. Persist observation passes, findings, revisions, cited excerpts/source references and observer agent/model in Postgres, following the existing visibly ephemeral repo_enabled:false convention. Preserve excerpts after source transcript retention; record unavailable/truncated evidence explicitly.\n\nThe observer only produces observations. Its evidence interface exposes no mutation operations, and its output must never execute dispatch, steering, recovery, routing changes, repository edits or roadmap writes. Inspect the real execution boundary: existing coding adapters use autonomous permission modes, so a scratch cwd or prompt alone is not proof of enforced read-only access. Deliver an execution path appropriate to the witness contract and verify it against the real configured agent before deriving doubles. No procedural failure classifiers, semantic deduplication, severity scores or ranking arithmetic.\n\nUI: add Run Insights to the MAIN NAVBAR linking /harness/insights, subtitle AI observations across runs. The overview shows enabled/paused, agent/model, last successful pass, next pass, current progress and findings newest-revision first with project filtering. Distinguish disabled, observing, no new evidence, successful/no findings, partial evidence and failure. Each finding displays title, short explanation, linked evidence count and current AI assessment. /harness/insights/:id shows explanation, proposed improvement, chronological revisions, linked runs and cited evidence; distinguish facts from hypotheses, expose contradictions and recurrence. A merge alone is not evidence of resolution. Run detail pages link related findings. Settings provides independent enablement, cadence and explicit agent/model selection. Match the existing dashboard design system and update through LiveView without full reloads.\n\nExpose bounded Elixir/MCP status, manual observation, finding-list and finding-history operations; update the canonical harness-driver skill. Implementer verifies in its isolated worktree. The orchestrator owns installed-skill propagation and production activation through the existing root autodeployer; no production restart/recompile or enablement by the implementer.\n",
+      "created_at": "2026-09-20",
+      "scored_at": "2026-09-20",
+      "cross_repo": []
     }
   ]
 }
