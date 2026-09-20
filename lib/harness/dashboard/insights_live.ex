@@ -108,10 +108,8 @@ defmodule Harness.Dashboard.InsightsLive do
             type="button"
             phx-click="observe"
             phx-disable-with="Queuing…"
-            disabled={
-              !@status["settings"]["enabled"] || @status["ephemeral"] ||
-                @status["selection_error"] != nil || @status["state"] == "observing"
-            }
+            disabled={observe_blocked?(@status)}
+            title={observe_block_reason(@status)}
           >Observe now</button>
           <.link
             :if={@live_action != :settings}
@@ -129,8 +127,13 @@ defmodule Harness.Dashboard.InsightsLive do
         {selection_message(@status["selection_error"])} Configure an available observer in settings.
       </p>
 
-      <section :if={@live_action == :index} class="insights-panel" aria-label="Observer status">
-        <h2 role="status">{state_label(@status["state"])}</h2>
+      <section
+        :if={@live_action == :index}
+        class="insights-panel"
+        data-state={@status["state"]}
+        aria-label="Observer status"
+      >
+        <h2>{state_label(@status["state"])}</h2>
         <dl class="insights-summary">
           <div>
             <dt>Observer</dt><dd>
@@ -296,15 +299,17 @@ defmodule Harness.Dashboard.InsightsLive do
         </div>
         <article :for={finding <- @page["items"]} class="insights-row">
           <h2><.link navigate={"/harness/insights/" <> finding["id"]}>{finding["title"]}</.link></h2>
-          <p>{finding["explanation"]}</p>
-          <p><strong>AI assessment:</strong> {finding["assessment"]}</p>
+          <p class="insights-prose">{finding["explanation"]}</p>
+          <p class="insights-prose"><strong>AI assessment:</strong> {finding["assessment"]}</p>
           <p :if={finding["provisional"]} class="insights-meta">
             Provisional — includes active-run evidence.
           </p>
           <p class="insights-meta">
-            {Enum.join(finding["projects"], ", ")} · {display_time(finding["at"], "")}
+            {Enum.join(finding["projects"], ", ")} · {display_time(finding["at"], "")} ·
+            <.link navigate={"/harness/insights/" <> finding["id"]}>
+              {length(finding["citations"])} linked evidence excerpts
+            </.link>
           </p>
-          <.link navigate={"/harness/insights/" <> finding["id"]}>{length(finding["citations"])} linked evidence excerpts</.link>
         </article>
         <.link
           :if={@page["next_offset"]}
@@ -318,9 +323,12 @@ defmodule Harness.Dashboard.InsightsLive do
         <p :if={!@history["finding"]}>Finding not found.</p>
         <div :if={@history["finding"]}>
           <section class="insights-panel" aria-label="Current assessment">
-            <h2>{@history["finding"]["title"]}</h2><p>{@history["finding"]["explanation"]}</p>
-            <h3>Current assessment</h3><p>{@history["finding"]["assessment"]}</p>
-            <h3>Proposed improvement</h3><p>{@history["finding"]["improvement"]}</p>
+            <h2>{@history["finding"]["title"]}</h2>
+            <p class="insights-prose">{@history["finding"]["explanation"]}</p>
+            <h3>Current assessment</h3>
+            <p class="insights-prose">{@history["finding"]["assessment"]}</p>
+            <h3>Proposed improvement</h3>
+            <p class="insights-prose">{@history["finding"]["improvement"]}</p>
             <p class="insights-meta">
               Advisory only. A merged fix alone does not establish resolution.
             </p>
@@ -331,7 +339,7 @@ defmodule Harness.Dashboard.InsightsLive do
           </p>
           <ol class="insights-history">
             <li :for={revision <- @history["revisions"]}>
-              <article>
+              <article class="insights-revision">
                 <p class="insights-meta">
                   <time datetime={revision["at"]}>{display_time(revision["at"], "")}</time>
                   · {revision["observer"]["agent"]} / {revision["observer"]["model"]}
@@ -339,22 +347,43 @@ defmodule Harness.Dashboard.InsightsLive do
                 <p :if={revision["provisional"]} class="insights-meta">
                   Provisional — active-run evidence
                 </p>
-                <h3>{revision["title"]}</h3><p>{revision["explanation"]}</p>
-                <h4>Source facts</h4><p>{revision["facts"]}</p>
-                <h4>AI hypothesis</h4><p>{revision["hypothesis"]}</p>
-                <h4>Assessment at this revision</h4><p>{revision["assessment"]}</p>
-                <h4>Contradictions</h4><p>{revision["contradictions"]}</p>
-                <h4>Recurrence</h4><p>{revision["recurrence"]}</p>
-                <h4>Proposed improvement</h4><p>{revision["improvement"]}</p>
+                <h3>{revision["title"]}</h3>
+                <p class="insights-prose">{revision["explanation"]}</p>
+                <dl class="insights-revision-facts">
+                  <div>
+                    <dt>Source facts</dt>
+                    <dd>{revision["facts"]}</dd>
+                  </div>
+                  <div>
+                    <dt>AI hypothesis</dt>
+                    <dd>{revision["hypothesis"]}</dd>
+                  </div>
+                  <div>
+                    <dt>Assessment at this revision</dt>
+                    <dd>{revision["assessment"]}</dd>
+                  </div>
+                  <div>
+                    <dt>Contradictions</dt>
+                    <dd>{revision["contradictions"]}</dd>
+                  </div>
+                  <div>
+                    <dt>Recurrence</dt>
+                    <dd>{revision["recurrence"]}</dd>
+                  </div>
+                  <div>
+                    <dt>Proposed improvement</dt>
+                    <dd>{revision["improvement"]}</dd>
+                  </div>
+                </dl>
                 <details :for={citation <- revision["citations"]}>
                   <summary>
                     {citation["run_id"]} · {citation["field"]} · {citation["availability"]}
                   </summary>
                   <blockquote>{citation["excerpt"]}</blockquote>
                   <p>
-                    <.link navigate={"/harness/runs/" <> citation["run_id"]}>Open run {citation[
-                      "run_id"
-                    ]}</.link>
+                    <.link navigate={"/harness/runs/" <> citation["run_id"]}>
+                      Open run {citation["run_id"]}
+                    </.link>
                   </p>
                 </details>
               </article>
@@ -406,4 +435,22 @@ defmodule Harness.Dashboard.InsightsLive do
   defp state_label("failed"), do: "Observation failed — successful progress was preserved"
   defp state_label("successful"), do: "Observation complete"
   defp state_label("ready"), do: "Ready to observe"
+  defp state_label(_other), do: "Ready to observe"
+
+  @spec observe_blocked?(map()) :: boolean()
+  defp observe_blocked?(status) do
+    !status["settings"]["enabled"] || status["ephemeral"] ||
+      status["selection_error"] != nil || status["state"] == "observing"
+  end
+
+  @spec observe_block_reason(map()) :: String.t() | nil
+  defp observe_block_reason(status) do
+    cond do
+      status["ephemeral"] -> "Scheduled observation requires Postgres."
+      status["selection_error"] != nil -> selection_message(status["selection_error"])
+      !status["settings"]["enabled"] -> "Observation is paused."
+      status["state"] == "observing" -> "An observation is already running."
+      true -> nil
+    end
+  end
 end

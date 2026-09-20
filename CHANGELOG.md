@@ -15,6 +15,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Dashboard: task board and Run Insights match the operator chrome.** The fleet Kanban on `/harness/roadmap` now uses the existing dispatch/hold/resume/land button vocabulary, lane-tinted headings, snap-scrolling full-bleed columns, and a compact empty-lane line instead of the page-level dashed empty state. Dead "Cost —" rows are gone; cards with a run link through to run detail. Run Insights keeps headings as headings (status is no longer a heading role), wraps each revision as a scanable panel, and shortens the navbar label to Insights.
+
 - **Oban 2.24: crontab plugin is `Oban.Cron`.** Every `Oban.Plugins.Cron` entry point is now a `defdelegate` shim; harness aliases and the Oban instance plugin pin the new module. Phoenix 1.8.13 and quackdb 0.5.20 locked alongside.
 
 - **`harness_agent_adapter` is a git dependency again (Task 418).** The Task 392 tree-scoped terminate is published on `ZenHive/harness_agent_adapter` and `mix.exs` pins that SHA; the temporary `vendor/harness_agent_adapter` path pin is deleted, so adapter work no longer forks between harness and other consumers.

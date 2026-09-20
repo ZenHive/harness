@@ -137,37 +137,45 @@ defmodule Harness.Dashboard.RoadmapLive do
   def render(assigns) do
     ~H"""
     <div class="topbar">
-      <strong>Roadmap</strong>
+      <h1>Roadmap</h1>
       <span class="count">{length(@projects)} projects</span>
       <form id="roadmap-project-filter" phx-change="select_project">
-        <label>
-          Project
-          <select name="project" aria-label="Project">
-            <option value="" selected={is_nil(@selected_project)}>All projects</option>
-            <option
-              :for={project <- @projects}
-              value={project.name}
-              selected={@selected_project == project.name}
-            >
-              {project.name}
-            </option>
-          </select>
-        </label>
+        <label for="roadmap-project">Project</label>
+        <select id="roadmap-project" name="project">
+          <option value="" selected={is_nil(@selected_project)}>All projects</option>
+          <option
+            :for={project <- @projects}
+            value={project.name}
+            selected={@selected_project == project.name}
+          >
+            {project.name}
+          </option>
+        </select>
       </form>
       <a href="/harness">← All runs</a>
     </div>
 
     <Components.operator_flash notice={@notice} include_persistent={false} />
 
-    <p :for={error <- @load_errors} role="alert">{error}</p>
-    <p :if={@record_error} role="alert">{@record_error}</p>
+    <p :for={error <- @load_errors} class="operator-notice" data-kind="error" role="alert">{error}</p>
+    <p :if={@record_error} class="operator-notice" data-kind="error" role="alert">{@record_error}</p>
     <p :if={@projects == []}>No projects registered.</p>
-    <div :if={@projects != []} class="task-board" aria-label="Fleet task board">
-      <section :for={lane <- TaskBoard.lanes()} class="task-lane" data-lane={lane}>
-        <h2>{TaskBoard.lane_label(lane)} <span class="count">{length(@lanes[lane])}</span></h2>
-        <p :if={@lanes[lane] == []} class="empty-state">{empty_lane_line(lane)}</p>
-        <.task_card :for={card <- @lanes[lane]} card={card} now={@now} />
-      </section>
+    <div :if={@projects != []} class="task-board-bleed">
+      <div class="task-board" role="region" aria-label="Fleet task board">
+        <section
+          :for={lane <- TaskBoard.lanes()}
+          class="task-lane"
+          data-lane={lane}
+          aria-labelledby={"lane-#{lane}"}
+        >
+          <h2 id={"lane-#{lane}"}>
+            {TaskBoard.lane_label(lane)}
+            <span class="count">{length(@lanes[lane])}</span>
+          </h2>
+          <p :if={@lanes[lane] == []} class="task-lane-empty">{empty_lane_line(lane)}</p>
+          <.task_card :for={card <- @lanes[lane]} card={card} now={@now} />
+        </section>
+      </div>
     </div>
     """
   end
@@ -191,7 +199,12 @@ defmodule Harness.Dashboard.RoadmapLive do
         <span>{@card.project_name}</span>
         <span>#{@card.task_id}</span>
       </p>
-      <p class="task-card-title">{@card.title || "—"}</p>
+      <p class="task-card-title">
+        <.link :if={@card.run_id} navigate={"/harness/runs/" <> @card.run_id}>
+          {@card.title || "—"}
+        </.link>
+        <span :if={is_nil(@card.run_id)}>{@card.title || "—"}</span>
+      </p>
       <dl class="task-card-facts">
         <div>
           <dt>Assignee / model</dt>
@@ -213,19 +226,17 @@ defmodule Harness.Dashboard.RoadmapLive do
           <dt>Tokens</dt>
           <dd>{tokens(@card)}</dd>
         </div>
-        <div>
-          <dt>Cost</dt>
-          <dd>—</dd>
-        </div>
       </dl>
       <p :if={@card.dependency} class="task-card-dep" data-dependency={@card.dependency}>
         {dependency_label(@card.dependency)}
       </p>
       <p :if={@card.held? or @card.failed?} class="task-card-badges">
-        <span :if={@card.held?} class="task-badge" data-badge="held">held</span>
-        <span :if={@card.failed?} class="task-badge" data-badge="failed">failed</span>
+        <span :if={@card.held?} class="bucket bucket-repairing" data-badge="held">held</span>
+        <span :if={@card.failed?} class="bucket bucket-red" data-badge="failed">failed</span>
       </p>
-      <p :if={@card.run_id} class="task-card-attempt">attempt {@card.run_id}</p>
+      <p :if={@card.run_id} class="task-card-attempt">
+        <.link navigate={"/harness/runs/" <> @card.run_id}>attempt {@card.run_id}</.link>
+      </p>
       <div :if={@card.actions != []} class="task-card-actions">
         <.card_action :for={action <- @card.actions} action={action} card={@card} />
       </div>
@@ -241,6 +252,7 @@ defmodule Harness.Dashboard.RoadmapLive do
     ~H"""
     <button
       type="button"
+      class="btn-dispatch"
       phx-click="dispatch_task"
       phx-value-project={@card.project_name}
       phx-value-task_id={@card.task_id}
@@ -255,6 +267,7 @@ defmodule Harness.Dashboard.RoadmapLive do
     ~H"""
     <button
       type="button"
+      class="kill-btn"
       phx-click="hold_run"
       phx-value-run_id={@card.run_id}
       data-confirm={"Hold run #{@card.run_id}?"}
@@ -268,6 +281,7 @@ defmodule Harness.Dashboard.RoadmapLive do
     ~H"""
     <button
       type="button"
+      class="resume-btn"
       phx-click="resume_held"
       phx-value-run_id={@card.run_id}
       data-confirm={"Resume held run #{@card.run_id}?"}
@@ -281,6 +295,7 @@ defmodule Harness.Dashboard.RoadmapLive do
     ~H"""
     <button
       type="button"
+      class="resume-btn"
       phx-click="resume_failed"
       phx-value-run_id={@card.run_id}
       data-confirm={"Resume failed run #{@card.run_id}?"}
@@ -294,6 +309,7 @@ defmodule Harness.Dashboard.RoadmapLive do
     ~H"""
     <button
       type="button"
+      class="resume-btn"
       phx-click="rereview_run"
       phx-value-run_id={@card.run_id}
       data-confirm={"Re-review run #{@card.run_id}?"}
@@ -307,6 +323,7 @@ defmodule Harness.Dashboard.RoadmapLive do
     ~H"""
     <button
       type="button"
+      class="reland-btn"
       phx-click="land_run"
       phx-value-run_id={@card.run_id}
       data-confirm={"Land run #{@card.run_id}?"}
@@ -320,6 +337,7 @@ defmodule Harness.Dashboard.RoadmapLive do
     ~H"""
     <button
       type="button"
+      class="reland-btn"
       phx-click="land_run"
       phx-value-run_id={@card.run_id}
       data-confirm={"Re-land run #{@card.run_id}?"}
@@ -381,7 +399,7 @@ defmodule Harness.Dashboard.RoadmapLive do
 
         {failure, project}, {acc, errors} ->
           {Map.put(acc, project.name, Map.get(previous, project.name, [])),
-           ["#{project.name}: roadmap unavailable: #{inspect(failure)}" | errors]}
+           [{project.name, :roadmap, stream_reason(failure)} | errors]}
       end)
 
     ready_results =
@@ -396,10 +414,10 @@ defmodule Harness.Dashboard.RoadmapLive do
           {MapSet.union(acc, ids), errors}
 
         {failure, project}, {acc, errors} ->
-          {acc, ["#{project.name}: dispatch readiness unavailable: #{inspect(failure)}" | errors]}
+          {acc, [{project.name, :ready, stream_reason(failure)} | errors]}
       end)
 
-    {tasks, ready, Enum.reverse(errors)}
+    {tasks, ready, summarize_load_errors(Enum.reverse(errors))}
   end
 
   @spec list_tasks(Project.t()) :: {:ok, [map()]} | {:error, term()}
@@ -542,4 +560,31 @@ defmodule Harness.Dashboard.RoadmapLive do
   @spec blank_to_nil(String.t() | nil) :: String.t() | nil
   defp blank_to_nil(value) when value in [nil, ""], do: nil
   defp blank_to_nil(value), do: value
+
+  @spec stream_reason(term()) :: term()
+  defp stream_reason({:ok, {:error, reason}}), do: reason
+  defp stream_reason({:ok, reason}), do: reason
+  defp stream_reason({:exit, :kill}), do: :timeout
+  defp stream_reason({:exit, reason}), do: reason
+  defp stream_reason(reason), do: reason
+
+  @spec summarize_load_errors([{String.t(), :roadmap | :ready, term()}]) :: [String.t()]
+  defp summarize_load_errors(errors) do
+    errors
+    |> Enum.group_by(fn {_name, kind, reason} -> {kind, reason} end)
+    |> Enum.sort_by(fn {{kind, reason}, _items} -> {kind, inspect(reason)} end)
+    |> Enum.map(fn {{kind, reason}, items} ->
+      names = items |> Enum.map(&elem(&1, 0)) |> Enum.sort() |> Enum.join(", ")
+      "#{names}: #{load_error_kind(kind)} (#{format_reason(reason)})"
+    end)
+  end
+
+  @spec load_error_kind(:roadmap | :ready) :: String.t()
+  defp load_error_kind(:roadmap), do: "roadmap unavailable"
+  defp load_error_kind(:ready), do: "dispatch readiness unavailable"
+
+  @spec format_reason(term()) :: String.t()
+  defp format_reason(:roadmap_not_found), do: "no local roadmap"
+  defp format_reason(reason) when is_atom(reason), do: Atom.to_string(reason)
+  defp format_reason(reason), do: inspect(reason)
 end

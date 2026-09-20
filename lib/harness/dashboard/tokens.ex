@@ -429,6 +429,12 @@ defmodule Harness.Dashboard.Tokens do
         outline-offset: 2px;
       }
       .count { font-size: var(--text-sm); color: var(--text-subtle); }
+      .topbar h1 {
+        margin: 0;
+        font-size: var(--text-md);
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
       .history-toggle-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
       /* Task-facet pivot (Harness.Dashboard.KPILive, Task 225) — facet filter
@@ -1672,35 +1678,68 @@ defmodule Harness.Dashboard.Tokens do
         border-radius: 0.4rem;
         font-size: var(--text-sm);
         color: var(--text);
+        overflow-wrap: anywhere;
       }
       .operator-notice[data-persistent="true"] { font-weight: 650; }
       .operator-notice[data-kind="ok"] { border-color: var(--verdict-pass); background: var(--surface-2); }
       .operator-notice[data-kind="error"],
       .operator-notice[data-kind="warning"] { border-color: var(--accent); background: var(--accent-soft); }
 
-      /* Fleet task board (`/harness/roadmap`) */
+      /* Fleet task board (`/harness/roadmap`) — full-bleed so six factual lanes
+         can sit side-by-side; narrow viewports snap-scroll instead of stacking. */
+      .task-board-bleed {
+        width: 100vw;
+        margin-left: calc(50% - 50vw);
+        padding-inline: var(--space-5);
+        box-sizing: border-box;
+      }
       .task-board {
         display: grid;
-        grid-template-columns: repeat(6, minmax(14rem, 1fr));
+        grid-template-columns: repeat(6, minmax(16rem, 1fr));
         gap: var(--space-3);
         overflow-x: auto;
+        overscroll-behavior-x: contain;
+        scroll-snap-type: x proximity;
         align-items: start;
         margin-top: var(--space-4);
+        padding-bottom: var(--space-3);
+        scrollbar-color: var(--rule-strong) var(--surface);
+      }
+      .task-board::-webkit-scrollbar { height: 0.5rem; }
+      .task-board::-webkit-scrollbar-thumb {
+        background: var(--rule-strong);
+        border-radius: 999px;
       }
       .task-lane {
+        scroll-snap-align: start;
         background: var(--surface);
         border: 1px solid var(--rule);
         border-radius: 0.4rem;
         padding: var(--space-3);
         min-height: 12rem;
+        min-width: 0;
       }
       .task-lane h2 {
         display: flex;
         justify-content: space-between;
+        align-items: baseline;
         gap: var(--space-2);
         margin: 0 0 var(--space-3);
         font-size: var(--text-sm);
         font-weight: 650;
+        color: var(--text);
+      }
+      .task-lane[data-lane="implementing"] h2 { color: var(--verdict-info); }
+      .task-lane[data-lane="reviewing"] h2 { color: var(--accent); }
+      .task-lane[data-lane="landing"] h2 { color: var(--verdict-pass); }
+      .task-lane[data-lane="blocked"] h2 { color: var(--verdict-fail); }
+      .task-lane[data-lane="done"] h2 { color: var(--text-muted); }
+      .task-lane h2 .count { color: inherit; opacity: 0.7; font-family: var(--font-mono); }
+      .task-lane-empty {
+        margin: 0;
+        padding: var(--space-4) var(--space-1);
+        color: var(--text-muted);
+        font-size: var(--text-sm);
       }
       .task-card {
         background: var(--surface-2);
@@ -1718,23 +1757,32 @@ defmodule Harness.Dashboard.Tokens do
         font-size: var(--text-xs);
         color: var(--text-subtle);
       }
-      .task-card-title { margin: 0 0 var(--space-2); font-size: var(--text-sm); }
-      .task-card-facts { display: grid; gap: var(--space-1); margin: 0 0 var(--space-2); }
-      .task-card-facts div { display: grid; grid-template-columns: 7rem 1fr; gap: var(--space-2); font-size: var(--text-xs); }
-      .task-card-facts dt { color: var(--text-muted); font-weight: 500; }
-      .task-card-facts dd { margin: 0; color: var(--text); }
-      .task-card-dep, .task-card-attempt { margin: 0 0 var(--space-2); font-size: var(--text-xs); color: var(--text-subtle); }
-      .task-card-badges { display: flex; gap: var(--space-2); margin: 0 0 var(--space-2); }
-      .task-badge {
-        display: inline-block;
-        padding: 0.1rem 0.4rem;
-        border: 1px solid var(--rule-strong);
-        border-radius: 0.25rem;
-        font-size: var(--text-xs);
-        color: var(--text);
+      .task-card-title {
+        margin: 0 0 var(--space-2);
+        font-size: var(--text-sm);
+        overflow-wrap: anywhere;
       }
+      .task-card-title a { text-decoration: none; }
+      .task-card-title a:hover { color: var(--accent); }
+      .task-card-facts { display: grid; gap: var(--space-1); margin: 0 0 var(--space-2); }
+      .task-card-facts div {
+        display: grid;
+        grid-template-columns: 7.5rem minmax(0, 1fr);
+        gap: var(--space-2);
+        font-size: var(--text-xs);
+      }
+      .task-card-facts dt { color: var(--text-muted); font-weight: 500; }
+      .task-card-facts dd { margin: 0; color: var(--text); overflow-wrap: anywhere; }
+      .task-card-dep, .task-card-attempt {
+        margin: 0 0 var(--space-2);
+        font-size: var(--text-xs);
+        color: var(--text-subtle);
+        overflow-wrap: anywhere;
+      }
+      .task-card-attempt a { color: inherit; }
+      .task-card-badges { display: flex; flex-wrap: wrap; gap: var(--space-2); margin: 0 0 var(--space-2); }
       .task-card-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
-      .task-card-actions button { font-size: var(--text-xs); }
+      .task-card-actions button { font-size: var(--text-xs); min-height: 2rem; }
 
       /* Cron schedule preset picker (boot-applied; Task 111). */
       .setting-schedule { display: flex; align-items: center; gap: var(--space-3); margin-top: var(--space-4); flex-wrap: wrap; }
@@ -1956,7 +2004,7 @@ defmodule Harness.Dashboard.Tokens do
         .page-shell { grid-template-rows: auto 1fr auto; }
         .navbar { height: auto; min-height: var(--navbar-height); flex-wrap: wrap; gap: var(--space-2); padding: var(--space-2) var(--space-3); }
         .navbar-links { flex: 1 1 100%; justify-content: flex-start; max-width: 100%; }
-        .navbar-links a { padding: var(--space-2); }
+        .navbar-links a { padding: var(--space-2); white-space: nowrap; flex: 0 0 auto; }
         .page-main { padding-inline: var(--space-3); }
         .run-table-scroll { overflow: visible; }
         .run-table, .run-table tbody, .run-table tr, .run-table td { display: block; width: 100%; box-sizing: border-box; }
@@ -1989,6 +2037,9 @@ defmodule Harness.Dashboard.Tokens do
         }
         .run-detail-disclosure, .run-detail-disclosure summary { max-width: 100%; min-width: 0; }
         .row-actions button, .row-actions a { min-height: 44px; }
+        .task-board-bleed { padding-inline: var(--space-3); }
+        .task-board { grid-template-columns: repeat(6, minmax(15.5rem, 15.5rem)); }
+        .task-card-actions button { min-height: 44px; }
       }
 
       @media (prefers-reduced-motion: reduce) {
