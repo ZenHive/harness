@@ -83,5 +83,195 @@
     },
     "seed": 776659
   },
-  "note": "The Postgres run passed 11 database tests; its live Codex call failed under the local sandbox. The isolated live test passed outside that sandbox. Full gate ran before the audit fixes and is not green. Independent static second opinion checked landed behavior and the audit fixes."
+  "note": "The Postgres run passed 11 database tests; its live Codex call failed under the local sandbox. The isolated live test passed outside that sandbox. Full gate ran before the audit fixes and is not green. Independent static second opinion checked landed behavior and the audit fixes.",
+  "failed_only": {
+    "summary": {
+      "invalid": 0,
+      "total": 28,
+      "failed": 23,
+      "result": "failed",
+      "excluded": 4,
+      "passed": 1,
+      "skipped": 0,
+      "duration_us": 53747603
+    },
+    "failures": [
+      {
+        "file": "test/harness/agent_adapter/os_process_test.exs",
+        "line": 19,
+        "name": "test default adapter termination gracefully escalates and quiesces the descendant tree",
+        "message": "no match of right hand side value:\n\n    {\"\", 1}\n"
+      },
+      {
+        "file": "test/harness/agent_adapter/os_process_test.exs",
+        "line": 42,
+        "name": "test fixture cleanup reaps the tree when an assertion interrupts termination",
+        "message": "no match of right hand side value:\n\n    {\"\", 1}\n"
+      },
+      {
+        "file": "test/harness/dashboard/live_mount_test.exs",
+        "line": 70,
+        "name": "test index mount + render empty states report the fleet's condition, not a list's length",
+        "message": "\n\nAssertion with =~ failed\ncode:  assert html =~ \"The fleet is idle \u2014 no run is executing.\"\nleft:  \"<html lang=\\\"en\\\"><head><meta charset=\\\"utf-8\\\"/><meta name=\\\"viewport\\\" content=\\\"width=device-width, initial-scale=1\\\""
+      },
+      {
+        "file": "test/harness/project_cache/command_test.exs",
+        "line": 134,
+        "name": "test startup honors short deadlines and owner cancellation before running user code",
+        "message": "\n\nstartup did not reach barrier\n"
+      },
+      {
+        "file": "test/harness/run/external_cancellation_test.exs",
+        "line": 5,
+        "name": "test external cancellation cancel/1 kills the agent and settles :failed",
+        "message": "\n\nOS process 38040 was not killed\n"
+      },
+      {
+        "file": "test/harness/run/external_cancellation_test.exs",
+        "line": 28,
+        "name": "test external cancellation REGRESSION (Task 201): cancel during :reviewing terminates the reviewer's spawned tree",
+        "message": "\n\nOS process 37034 was not killed\n"
+      },
+      {
+        "file": "test/harness/run/failure_isolation_test.exs",
+        "line": 14,
+        "name": "test failure isolation a driver crash after the agent spawned still kills the agent",
+        "message": "\n\nOS process 36625 was not killed\n"
+      },
+      {
+        "file": "test/harness/run/memory_guard_test.exs",
+        "line": 52,
+        "name": "test tree_rss_kb/1 counts the whole tree, not just the root process",
+        "message": "no match of right hand side value:\n\n    {\"\", 1}\n"
+      },
+      {
+        "file": "test/harness/run/memory_guard_test.exs",
+        "line": 75,
+        "name": "test kill_tree/1 reaps the entire descendant tree \u2014 no orphan grandchild survives",
+        "message": "no match of right hand side value:\n\n    {\"\", 1}\n"
+      },
+      {
+        "file": "test/harness/run/memory_guard_test.exs",
+        "line": 148,
+        "name": "test host pressure substrate (Task 202) host_rss_kb sums resident memory across the process table",
+        "message": "\n\nAssertion with > failed, both sides are exactly equal\ncode: assert MemoryGuard.host_rss_kb() > 0\nleft: 0\n"
+      },
+      {
+        "file": "test/harness/run/memory_guard_test.exs",
+        "line": 153,
+        "name": "test host pressure substrate (Task 202) host_rss_kb out-weighs any single spawned tree (it is the aggregate, not one tree)",
+        "message": "no match of right hand side value:\n\n    {\"\", 1}\n"
+      },
+      {
+        "file": "test/harness/run/memory_guard_test.exs",
+        "line": 159,
+        "name": "test host pressure substrate (Task 202) host_total_kb probes physical RAM \u2014 positive on unix, 0 on unknown platforms",
+        "message": "\n\nAssertion with > failed, both sides are exactly equal\ncode: assert total > 0\nleft: 0\n"
+      },
+      {
+        "file": "test/harness/run/memory_watchdog_test.exs",
+        "line": 5,
+        "name": "test memory watchdog (Task 200) REGRESSION: a run whose spawned tree exceeds the ceiling is force-killed and settles :failed, node survives",
+        "message": "\n\nAssertion failed, no matching message after 5000ms\n     The process mailbox is empty.\ncode: assert_receive {:harness_run, ^run_id, %Result{} = result}\n"
+      },
+      {
+        "file": "test/harness/run/memory_watchdog_test.exs",
+        "line": 29,
+        "name": "test memory watchdog (Task 200) a runaway reviewer check tree is force-killed and settles :failed (role: :reviewer)",
+        "message": "\n\nAssertion failed, no matching message after 8000ms\n     The process mailbox is empty.\ncode: assert_receive {:harness_run, ^run_id, %Result{} = result}\n"
+      },
+      {
+        "file": "test/harness/run/observable_state_test.exs",
+        "line": 5,
+        "name": "test observable state status/1 reports the running state and resolves an unknown id",
+        "message": "\n\nOS process 36667 was not killed\n"
+      },
+      {
+        "file": "test/harness/run/operator_recovery_test.exs",
+        "line": 26,
+        "name": "test operator recovery \u2014 hold / steer / resume interrupt hold kills the agent and parks immediately",
+        "message": "\n\nOS process 36645 was not killed\n"
+      },
+      {
+        "file": "test/harness/run/process_tree_termination_test.exs",
+        "line": 21,
+        "name": "test process-tree termination (Task 392) dispatch-cancel reaps a TERM-ignoring grandchild before settle",
+        "message": "\n\nexpected pid 62864 to be dead once termination returned\n"
+      },
+      {
+        "file": "test/harness/run/process_tree_termination_test.exs",
+        "line": 31,
+        "name": "test process-tree termination (Task 392) interrupt hold reaps a TERM-ignoring grandchild before :held",
+        "message": "\n\nexpected pid 58140 to be dead once termination returned\n"
+      },
+      {
+        "file": "test/harness/run/process_tree_termination_test.exs",
+        "line": 41,
+        "name": "test process-tree termination (Task 392) lifetime expiry reaps a TERM-ignoring grandchild before worktree teardown",
+        "message": "\n\nexpected pid 63107 to be dead once termination returned\n"
+      },
+      {
+        "file": "test/harness/run/process_tree_termination_test.exs",
+        "line": 57,
+        "name": "test process-tree termination (Task 392) implementer idle timeout quiesces the grandchild before the reviewer reuses the worktree",
+        "message": "\n\nAssertion failed, no matching message after 8000ms\n     Showing 2 of 2 messages in the mailbox\ncode: assert_receive {:grandchild_alive_at_reuse?, false}\nmailbox:\n       pattern: {:grandchild_alive_at_reuse?, false}\n   "
+      },
+      {
+        "file": "test/harness/run/process_tree_termination_test.exs",
+        "line": 76,
+        "name": "test process-tree termination (Task 392) Driver total timeout quiesces the grandchild before the reviewer reuses the worktree",
+        "message": "\n\nAssertion failed, no matching message after 8000ms\n     Showing 2 of 2 messages in the mailbox\ncode: assert_receive {:grandchild_alive_at_reuse?, false}\nmailbox:\n       pattern: {:grandchild_alive_at_reuse?, false}\n   "
+      },
+      {
+        "file": "test/harness/run/process_tree_termination_test.exs",
+        "line": 97,
+        "name": "test process-tree termination (Task 392) memory watchdog reaps a TERM-ignoring grandchild",
+        "message": "\n\nAssertion failed, no matching message after 8000ms\n     The process mailbox is empty.\ncode: assert_receive {:harness_run, ^run_id, %Result{} = result}\n"
+      },
+      {
+        "file": "test/harness/run/process_tree_termination_test.exs",
+        "line": 117,
+        "name": "test process-tree termination (Task 392) reviewer idle rotation quiesces the grandchild before the next reviewer spawns",
+        "message": "\n\nAssertion failed, no matching message after 8000ms\n     Showing 2 of 2 messages in the mailbox\ncode: assert_receive {:grandchild_alive_at_reuse?, false}\nmailbox:\n       pattern: {:grandchild_alive_at_reuse?, false}\n   "
+      }
+    ]
+  },
+  "failed_only_outside_sandbox": {
+    "summary": {
+      "invalid": 0,
+      "total": 27,
+      "failed": 2,
+      "result": "failed",
+      "excluded": 4,
+      "passed": 21,
+      "skipped": 0,
+      "duration_us": 13864947
+    },
+    "failures": [
+      {
+        "file": "test/harness/dashboard/live_mount_test.exs",
+        "line": 70,
+        "name": "test index mount + render empty states report the fleet's condition, not a list's length",
+        "message": "\n\nAssertion with =~ failed\ncode:  assert html =~ \"The fleet is idle \u2014 no run is executing.\"\nleft:  \"<html lang=\\\"en\\\"><head><meta charset=\\\"utf-8\\\"/><meta name=\\\"viewport\\\" content=\\\"width=device-width, initial-scale=1\\\""
+      },
+      {
+        "file": "test/harness/project_cache/command_test.exs",
+        "line": 134,
+        "name": "test startup honors short deadlines and owner cancellation before running user code",
+        "message": "\n\nstartup did not reach barrier\n"
+      }
+    ]
+  },
+  "live_runtime": {
+    "id": 5,
+    "result": {
+      "content": [
+        {
+          "type": "text",
+          "text": "IO:\n\n%{\n  pid: \"1744703\",\n  modules: [\n    {Harness.Insights, true},\n    {Harness.Insights.CodexWitness, true},\n    {Harness.Insights.Consultation, true},\n    {Harness.Insights.Attempt, true},\n    {Harness.Dashboard.InsightsLive, true},\n    {Harness.Dashboard.InsightsStyles, true},\n    {Harness.AgentAdapter.Codex.Observer, true}\n  ],\n  observer_command: true\n}\n\n\nResult:\n\n%{\n  pid: \"1744703\",\n  modules: [\n    {Harness.Insights, true},\n    {Harness.Insights.CodexWitness, true},\n    {Harness.Insights.Consultation, true},\n    {Harness.Insights.Attempt, true},\n    {Harness.Dashboard.InsightsLive, true},\n    {Harness.Dashboard.InsightsStyles, true},\n    {Harness.AgentAdapter.Codex.Observer, true}\n  ],\n  observer_command: true\n}"
+        }
+      ]
+    },
+    "jsonrpc": "2.0"
+  }
 }

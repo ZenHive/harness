@@ -39,6 +39,14 @@ failure prevented clone, architecture and Dialyzer stages from running. Original
 log: `/tmp/insights-445-architect-full.log`. Failed-test-only triage is separate;
 focused passing results do not turn the full gate green.
 
+Failed-test-only triage outside the local OS sandbox passed 21 tests, excluded the
+four correctly tagged database tests, and retained two failures:
+`dashboard/live_mount_test.exs:70` (fleet idle text) and
+`project_cache/command_test.exs:134` (startup barrier). These untouched paths remain
+reported; process-inspection and signal failures under the sandbox were not
+production defect evidence. The same isolated Codex/Postgres test passed with
+normal OS access.
+
 The original task-443 evidence/memory/truncation defects are covered by maintained
 memory and Postgres contracts. Inspection confirms AI-directed retrieval, complete
 record snapshots, full-content change hashes, publication-only checkpoints,
@@ -53,6 +61,19 @@ secondary, long history readable and excerpts collapsible. The independent Harne
 reviewer rendered desktop/mobile states and exercised keyboard controls. The
 live server browser was still showing the older UI when first checked; screenshots
 alone do not establish which version is loaded on that server.
+
+After the user's explicit authorization for hot reload, synchronized the audit
+commit and adapter dependency, then recompiled through Tidewave. Verified the
+loaded md5 against disk for Insights, CodexWitness, Consultation, Attempt,
+InsightsLive, InsightsStyles and Codex.Observer: all match. The adapter exports
+`command/3`. Server PID stayed 1744703 and service start stayed 05:36:51 UTC;
+no restart was issued. Personally inspected the updated live desktop settings,
+390px mobile settings and real multi-revision history, including an expanded
+evidence excerpt. Restored the browser viewport afterwards.
+
+The persisted enabled Claude/Sonnet selection is now visibly unavailable because
+Claude is disabled in the agent roster. Codex is offered. No implicit provider
+switch or observer-setting change was made during this review.
 
 The Codex invocation explicitly requests a read-only sandbox with shell, hooks,
 apps, skills, multi-agent, web and inherited MCP configuration disabled. Its live
