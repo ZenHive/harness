@@ -13294,7 +13294,7 @@ shipped_in = "4fb9118867fae739d0b31ce31be210c455717fcd"
 id = "427"
 phase = 25
 bundle = "core-loop"
-status = "pending"
+status = "in_progress"
 title = "Persist recoverable run outcomes during graceful node shutdown"
 scores = { d = 6, b = 9, u = 8 }
 markers = ["bug"]
@@ -13310,6 +13310,7 @@ September 13–14 incident evidence recorded committed run branches with no Resu
 2026-09-20 scope refinement: Score rationale: Recoverable shutdown protects already-committed work; supervisor/store ordering and spawn races require integrated tests even after separating Lifeline and SSE.
 '''
 created_at = "2026-09-13"
+started_at = "2026-09-20"
 scored_at = "2026-09-20"
 
 [[task]]
