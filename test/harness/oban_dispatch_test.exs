@@ -27,8 +27,8 @@ defmodule Harness.ObanDispatchTest do
   alias Harness.Run.Supervisor, as: RunSupervisor
   alias Harness.Run.Worker
   alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
+  alias Oban.Lifeline
   alias Oban.Notifiers.Isolated
-  alias Oban.Plugins.Lifeline
 
   @lifeline_rescue_after_ms to_timeout(second: 5)
   @lifeline_interval_ms 20
@@ -1343,7 +1343,7 @@ defmodule Harness.ObanDispatchTest do
       assert {Lifeline, opts} =
                Enum.find(plugins, &match?({Lifeline, _opts}, &1))
 
-      assert opts[:rescue_after] == Harness.Config.get({:run, :lifetime_timeout}) + to_timeout(minute: 5)
+      assert opts[:rescue_after] == HarnessOban.lifeline_rescue_after()
     end
 
     test "an old explicit Lifeline window cannot override the run lifetime bound" do
@@ -1352,7 +1352,17 @@ defmodule Harness.ObanDispatchTest do
       Application.put_env(:harness, Oban, plugins: [{Lifeline, rescue_after: 1_000}])
 
       assert HarnessOban.oban_opts()[:plugins][Lifeline][:rescue_after] ==
-               Harness.Config.get({:run, :lifetime_timeout}) + to_timeout(minute: 5)
+               HarnessOban.lifeline_rescue_after()
+    end
+
+    test "a deprecated Plugins.Lifeline entry is replaced by the lifetime bound" do
+      previous = Application.get_env(:harness, Oban)
+      on_exit(fn -> Application.put_env(:harness, Oban, previous) end)
+      Application.put_env(:harness, Oban, plugins: [{Oban.Plugins.Lifeline, rescue_after: 1_000}])
+
+      plugins = HarnessOban.oban_opts()[:plugins]
+      refute Keyword.has_key?(plugins, Oban.Plugins.Lifeline)
+      assert plugins[Lifeline][:rescue_after] == HarnessOban.lifeline_rescue_after()
     end
 
     test "oban_opts/0 serializes insights on its own queue and schedules an independent tick" do

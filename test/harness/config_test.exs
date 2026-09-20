@@ -155,11 +155,11 @@ defmodule Harness.ConfigTest do
         effective = Config.get({:run, :lifetime_timeout})
         assert :ok = Config.put({:run, :lifetime_timeout}, requested, "test")
         assert Config.get({:run, :lifetime_timeout}) == effective
-        assert rescue_bound() == effective + to_timeout(minute: 5)
+        assert rescue_bound() == Harness.Oban.lifeline_rescue_after()
 
         assert :ok = Config.load_into_env()
         assert Config.get({:run, :lifetime_timeout}) == requested
-        assert rescue_bound() == requested + to_timeout(minute: 5)
+        assert rescue_bound() == Harness.Oban.lifeline_rescue_after()
       end
     end
 
@@ -336,6 +336,6 @@ defmodule Harness.ConfigTest do
   defp restore(key, value), do: Application.put_env(:harness, key, value)
 
   defp rescue_bound do
-    Harness.Oban.oban_opts()[:plugins][Oban.Plugins.Lifeline][:rescue_after]
+    Harness.Oban.oban_opts()[:plugins][Oban.Lifeline][:rescue_after]
   end
 end

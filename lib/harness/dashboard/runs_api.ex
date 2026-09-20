@@ -3,12 +3,11 @@ defmodule Harness.Dashboard.RunsAPI do
   `GET /harness/api/runs` — the live run roster as JSON, for operator-side
   scripts that must not restart the node while work is in flight.
 
-  Oban is the wrong oracle for that question: `Oban.Plugins.Lifeline` rescues a
-  run's job after 30 minutes and the re-attempt is cancelled as
-  `duplicate_run_in_flight`, so a run older than half an hour has no
-  `executing` job while its `gen_statem` keeps working. Runs resumed through
-  `dispatch-resume_failed` never had a job at all. The run registry is the only
-  source of truth, and this endpoint exposes it mechanically — every registered
+  Oban is the wrong oracle for that question: a run's job is not the run.
+  `dispatch-resume_failed` never had a job; a held run can outlive Lifeline's
+  age bound (configured lifetime plus a five-minute margin); exhausted jobs are
+  discarded rather than left `executing`. The run registry is the only source of
+  truth, and this endpoint exposes it mechanically — every registered
   `Harness.Run` status, with `in_flight` counting the ones not yet settled.
 
   Unauthenticated like the rest of the dashboard: the standalone endpoint binds

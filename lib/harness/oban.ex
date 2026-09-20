@@ -31,7 +31,7 @@ defmodule Harness.Oban do
   alias Harness.Lander.PRPoller
   alias Harness.Project
   alias Harness.ProjectRegistry
-  alias Oban.Plugins.Lifeline
+  alias Oban.Lifeline
 
   @default_queue_limit 1
   @lifeline_margin_ms to_timeout(minute: 5)
@@ -276,6 +276,12 @@ defmodule Harness.Oban do
   end
 
   @doc false
+  @spec lifeline_rescue_after() :: non_neg_integer()
+  def lifeline_rescue_after do
+    Config.get({:run, :lifetime_timeout}) + @lifeline_margin_ms
+  end
+
+  @doc false
   @spec queue_headroom?(Project.t()) :: boolean()
   def queue_headroom?(%Project{} = project) do
     if queues_enabled?() and oban_running?() do
@@ -419,12 +425,17 @@ defmodule Harness.Oban do
 
   @spec enable_lifeline_plugin(keyword()) :: keyword()
   defp enable_lifeline_plugin(opts) do
-    rescue_after = Config.get({:run, :lifetime_timeout}) + @lifeline_margin_ms
+    rescue_after = lifeline_rescue_after()
     plugin = {Lifeline, rescue_after: rescue_after}
 
     Keyword.update(opts, :plugins, [plugin], fn
-      plugins when is_list(plugins) -> Keyword.put(plugins, Lifeline, rescue_after: rescue_after)
-      _other -> [plugin]
+      plugins when is_list(plugins) ->
+        plugins
+        |> Keyword.delete(Oban.Plugins.Lifeline)
+        |> Keyword.put(Lifeline, rescue_after: rescue_after)
+
+      _other ->
+        [plugin]
     end)
   end
 

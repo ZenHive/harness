@@ -9,7 +9,7 @@ defmodule Harness.ObanLifelineTest do
   alias Harness.ProjectFixture
   alias Harness.Run.Supervisor, as: RunSupervisor
   alias Harness.Run.Worker
-  alias Oban.Plugins.Lifeline
+  alias Oban.Lifeline
 
   defmodule BlockingAdapter do
     @moduledoc false
@@ -43,15 +43,16 @@ defmodule Harness.ObanLifelineTest do
     opts = HarnessOban.oban_opts()
     {Lifeline, rescue_opts} = List.keyfind(opts[:plugins], Lifeline, 0)
     lifetime = Config.get({:run, :lifetime_timeout})
-    bound = lifetime + to_timeout(minute: 5)
+    bound = HarnessOban.lifeline_rescue_after()
     assert rescue_opts[:rescue_after] == bound
+    assert bound == lifetime + to_timeout(minute: 5)
 
     start_supervised!(
       {Oban,
        name: __MODULE__,
        repo: Harness.Repo,
        queues: false,
-       plugins: [{Oban.Lifeline, Keyword.put(rescue_opts, :interval, to_timeout(day: 1))}],
+       plugins: [{Lifeline, Keyword.put(rescue_opts, :interval, to_timeout(day: 1))}],
        notifier: Oban.Notifiers.Isolated,
        peer: Oban.Peers.Isolated,
        stage_interval: :infinity}
@@ -89,7 +90,7 @@ defmodule Harness.ObanLifelineTest do
         executing!(worker.new(%{run_id: "abandoned"}, queue: queue), now, bound + 1_000)
       end
 
-    plugin = Oban.Registry.whereis(__MODULE__, {:plugin, Oban.Lifeline})
+    plugin = Oban.Registry.whereis(__MODULE__, {:plugin, Lifeline})
     assert is_pid(plugin)
     assert Oban.Peer.leader?(Oban.config(__MODULE__))
     send(plugin, :rescue)
