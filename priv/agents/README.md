@@ -21,7 +21,7 @@ Captured 2026-09-20 for Task 430:
 | `ZenHive/claude-marketplace`, revision `9dad443e4bdcc0f8a566713b499afa0c3fbb9333`, `scripts/sync-agents-md.sh` | Exact upstream copy: `test/fixtures/agents/upstream-sync-agents-md.sh` | `ee88cd995b4c9da7b4e7206c80584dcbf73ca6902933f4af43a97c6aa3c80068` |
 | Installed `~/.claude/includes/critical-rules.md` | `priv/agents/includes/critical-rules.md` | `8a24599a092433332cfdcd8004986c0949825d70263f789303811ca5302b2081` |
 | Installed `~/.claude/includes/verification-policy.md` | `priv/agents/includes/verification-policy.md` | `6843473a65179908c28da6ce22649a9ce9d5da3ea88dfc1b23dd6df911d05b69` |
-| Canonical harness source at revision `6211e63e76e2abff1afda71449670b89c8e87189` | `priv/includes/harness-workflow.md` (read directly, no duplicate) | `26ee8d1c8b48e8e0ec78fb78fd6f8f8c0154162b754b6ef4e35a4c8429e36613` |
+| Canonical harness source at revision `6211e63e76e2abff1afda71449670b89c8e87189`, reviewed Task 430 wording for the in-repo generator | `priv/includes/harness-workflow.md` (read directly, no duplicate) | `1dc5bf180881bcc8e99be09f2db694c6b274857ef62247791acf4d17f5bf396d` |
 
 The generator was obtained from the installed marketplace cache checkout.
 The installed include files had no upstream revision metadata; their exact
