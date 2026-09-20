@@ -55,6 +55,8 @@ defmodule Harness.Dashboard.InboxLive do
 
   @impl true
   @spec handle_async(term(), term(), Socket.t()) :: {:noreply, Socket.t()}
+  def handle_async(_name, {:exit, {:shutdown, :cancel}}, socket), do: {:noreply, socket}
+
   def handle_async(:facts, {:ok, {:ok, rows}}, socket) do
     {:noreply,
      socket
@@ -66,6 +68,14 @@ defmodule Harness.Dashboard.InboxLive do
        projects: rows |> Enum.map(& &1.project) |> Enum.uniq() |> Enum.sort()
      )
      |> show_rows()}
+  end
+
+  def handle_async(:facts, {:ok, {:error, reason}}, socket) do
+    {:noreply, socket |> assign(loading: false, error: inspect(reason)) |> show_rows()}
+  end
+
+  def handle_async(:facts, {:exit, reason}, socket) do
+    {:noreply, socket |> assign(loading: false, error: inspect(reason)) |> show_rows()}
   end
 
   def handle_async(:facts, result, socket) do
@@ -88,6 +98,14 @@ defmodule Harness.Dashboard.InboxLive do
      |> refresh()}
   end
 
+  def handle_async(:operation, {:ok, {:error, reason}}, socket) do
+    {:noreply, socket |> assign(busy: nil, operation_error: inspect(reason), notice: nil) |> show_rows()}
+  end
+
+  def handle_async(:operation, {:exit, reason}, socket) do
+    {:noreply, socket |> assign(busy: nil, operation_error: inspect(reason), notice: nil) |> show_rows()}
+  end
+
   def handle_async(:operation, result, socket) do
     {:noreply, socket |> assign(busy: nil, operation_error: inspect(result), notice: nil) |> show_rows()}
   end
@@ -95,7 +113,13 @@ defmodule Harness.Dashboard.InboxLive do
   @impl true
   @spec handle_event(String.t(), map(), Socket.t()) :: {:noreply, Socket.t()}
   def handle_event("select_project", %{"project" => project}, socket) do
-    {:noreply, push_patch(socket, to: "/harness/inbox?" <> URI.encode_query(%{"project" => project}))}
+    target =
+      case project do
+        "" -> "/harness/inbox"
+        name -> "/harness/inbox?project=#{URI.encode_www_form(name)}"
+      end
+
+    {:noreply, push_patch(socket, to: target)}
   end
 
   def handle_event("refresh", _params, socket), do: {:noreply, refresh(socket)}
@@ -122,7 +146,7 @@ defmodule Harness.Dashboard.InboxLive do
     ~H"""
     <a href="/harness/inbox" id="inbox-navigation">
       Inbox
-      <span class="count" style="margin-left: 0.35em;" aria-live="polite">{if @loading or @error,
+      <span class="count" style="margin-left: 0.35em;">{if @loading or @error,
         do: "—",
         else: @count}</span>
     </a>
@@ -150,7 +174,7 @@ defmodule Harness.Dashboard.InboxLive do
           </option>
         </select>
       </form>
-      <button class="resume-btn" style="min-height: 44px; color: var(--text);" phx-click="refresh">Refresh</button>
+      <button class="resume-btn" style="min-height: 44px;" phx-click="refresh">Refresh</button>
     </div>
     <p>
       Current approvals, held runs, recovery and landing actions. Each row names the exact attempt.
@@ -200,7 +224,7 @@ defmodule Harness.Dashboard.InboxLive do
             :for={action <- row.actions}
             type="button"
             class="resume-btn"
-            style="min-height: 44px; color: var(--text);"
+            style="min-height: 44px;"
             phx-click="act"
             phx-value-id={row.id}
             phx-value-action={action}

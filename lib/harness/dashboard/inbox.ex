@@ -39,17 +39,22 @@ defmodule Harness.Dashboard.Inbox do
     end
   end
 
-  @spec tasks([Harness.Project.t()]) :: {:ok, map()} | {:error, term()}
+  # A missing or timed-out rmap for one project must not hide fleet-wide
+  # pending approvals or held runs. Recovery/land rows for that project stay
+  # off the board until its task list is readable again — same degrade as
+  # RoadmapLive, without a new warning store.
+  @spec tasks([Harness.Project.t()]) :: {:ok, map()}
   defp tasks(projects) do
-    projects
-    |> Task.async_stream(fn project -> {project.name, Roadmap.list(project.name)} end,
-      timeout: 5_000,
-      on_timeout: :kill_task
-    )
-    |> Enum.reduce_while({:ok, %{}}, fn
-      {:ok, {name, {:ok, tasks}}}, {:ok, acc} -> {:cont, {:ok, Map.put(acc, name, tasks)}}
-      failure, _acc -> {:halt, {:error, {:roadmap_unavailable, failure}}}
-    end)
+    listed =
+      projects
+      |> Task.async_stream(&Roadmap.list(&1.name), timeout: 5_000, on_timeout: :kill_task)
+      |> Enum.zip(projects)
+
+    {:ok,
+     Enum.reduce(listed, %{}, fn
+       {{:ok, {:ok, tasks}}, project}, acc -> Map.put(acc, project.name, tasks)
+       {_failure, project}, acc -> Map.put(acc, project.name, [])
+     end)}
   end
 
   @doc "One unresolved row per approval or selected run attempt; action alternatives do not inflate counts."
@@ -74,12 +79,14 @@ defmodule Harness.Dashboard.Inbox do
         if actions == [] do
           []
         else
+          status = card.status
+
           [
             row(card.project_name, card.task_id, card.run_id, nil, actions, %{
               title: card.title,
               state: card.run_state,
-              reason: card.status.reason,
-              hold_reason: card.status.hold_reason
+              reason: status && status.reason,
+              hold_reason: status && status.hold_reason
             })
           ]
         end
@@ -109,18 +116,24 @@ defmodule Harness.Dashboard.Inbox do
   end
 
   @spec available?(atom(), map(), map()) :: boolean()
-  defp available?(action, card, facts) when action in [:resume_failed, :rereview] do
-    card.run_state == :failed and is_integer(card.status.agent_diff_size) and
-      card.status.landed_sha in [nil, ""] and not match?([_, _ | _], card.status.task_ids) and
+  defp available?(action, %{status: status} = card, facts)
+       when action in [:resume_failed, :rereview] and is_map(status) do
+    card.run_state == :failed and is_integer(status.agent_diff_size) and
+      status.landed_sha in [nil, ""] and not match?([_, _ | _], status.task_ids) and
       card.task_id not in Map.get(facts.queued_tasks, card.project_name, [])
   end
 
-  defp available?(action, card, facts) when action in [:land, :reland] do
-    project = Enum.find(facts.projects, &(&1.name == card.project_name))
+  defp available?(action, _card, _facts) when action in [:resume_failed, :rereview], do: false
 
-    is_binary(project.target_branch) and project.target_branch != "" and
-      "harness/#{card.run_id}" not in Map.get(facts.landing_branches, card.project_name, []) and
-      card.task_id not in Map.get(facts.queued_tasks, card.project_name, [])
+  defp available?(action, card, facts) when action in [:land, :reland] do
+    case Enum.find(facts.projects, &(&1.name == card.project_name)) do
+      %{target_branch: branch} when is_binary(branch) and branch != "" ->
+        "harness/#{card.run_id}" not in Map.get(facts.landing_branches, card.project_name, []) and
+          card.task_id not in Map.get(facts.queued_tasks, card.project_name, [])
+
+      _missing ->
+        false
+    end
   end
 
   @spec row(String.t(), String.t(), String.t() | nil, map() | nil, [atom()], map()) :: map()
@@ -134,16 +147,22 @@ defmodule Harness.Dashboard.Inbox do
   @spec perform(map(), String.t()) :: {:ok, map()} | {:error, term()}
   def perform(row, action) do
     # Serialize Inbox submissions for the same task, including submissions from other tabs.
-    :global.trans({{__MODULE__, row.project, row.task_id}, self()}, fn ->
-      with {:ok, rows} <- load(),
-           current when not is_nil(current) <- Enum.find(rows, &(&1.id == row.id)),
-           name when not is_nil(name) <- Enum.find(current.actions, &(Atom.to_string(&1) == action)) do
-        dispatch(name, current)
-      else
-        nil -> {:error, :stale_action}
-        {:error, _reason} = error -> error
-      end
-    end)
+    case :global.trans({{__MODULE__, row.project, row.task_id}, self()}, fn -> claim(row, action) end) do
+      :aborted -> {:error, :busy}
+      result -> result
+    end
+  end
+
+  @spec claim(map(), String.t()) :: {:ok, map()} | {:error, term()}
+  defp claim(row, action) do
+    with {:ok, rows} <- load(),
+         current when not is_nil(current) <- Enum.find(rows, &(&1.id == row.id)),
+         name when not is_nil(name) <- Enum.find(current.actions, &(Atom.to_string(&1) == action)) do
+      dispatch(name, current)
+    else
+      nil -> {:error, :stale_action}
+      {:error, _reason} = error -> error
+    end
   end
 
   @doc false

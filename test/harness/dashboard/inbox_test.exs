@@ -110,9 +110,12 @@ defmodule Harness.Dashboard.InboxTest do
 
   test "project filter, current count, empty state and source errors", %{conn: conn, source: source} do
     {:ok, view, _} = live(conn, "/harness/inbox")
-    assert render_async(view) =~ "5 unresolved"
-    render_patch(view, "/harness/inbox?project=other")
-    assert render(view) =~ "No unresolved actions"
+    html = render_async(view)
+    assert html =~ "5 unresolved"
+    assert html =~ "Hold: interrupt"
+    assert html =~ "parked for operator"
+    assert render_change(view, "select_project", %{"project" => "other"}) =~ "No unresolved actions"
+    assert render_change(view, "select_project", %{"project" => ""}) =~ "5 unresolved"
     render_patch(view, "/harness/inbox")
     Agent.update(source, &%{&1 | pending: []})
     send(view.pid, :inbox_tick)
@@ -175,12 +178,14 @@ defmodule Harness.Dashboard.InboxTest do
     end
   end
 
-  test "loads real current stores and reports unavailable roadmaps" do
+  test "loads real current stores; a missing roadmap does not hide parked approvals" do
     Application.delete_env(:harness, :inbox_facts)
     original = ProjectRegistry.list()
     Enum.each(original, &ProjectRegistry.unregister(&1.name))
+    PendingDispatch.reset()
 
     on_exit(fn ->
+      PendingDispatch.reset()
       ProjectRegistry.unregister("inbox-loader")
       Enum.each(original, &ProjectRegistry.register/1)
     end)
@@ -192,7 +197,16 @@ defmodule Harness.Dashboard.InboxTest do
     assert is_list(rows)
     :ok = ProjectRegistry.unregister(project.name)
     :ok = ProjectRegistry.register(%{project | roadmap_path: Path.join(sample, "absent")})
-    assert {:error, {:roadmap_unavailable, _}} = Inbox.load()
+    {:parked, pending} = PendingDispatch.park(project.name, "7", Codex, %{})
+    assert {:ok, loaded} = Inbox.load()
+    assert Enum.any?(loaded, &(&1.pending && &1.pending.id == pending.id))
+  end
+
+  test "perform surfaces a source error instead of invoking" do
+    row = hd(Inbox.compose(facts()))
+    Application.put_env(:harness, :inbox_facts, fn -> {:error, :store_unavailable} end)
+    Application.put_env(:harness, :inbox_action, fn _, _ -> flunk("invoked on a source error") end)
+    assert {:error, :store_unavailable} = Inbox.perform(row, "approve")
   end
 
   test "refresh retries a source failure and lifecycle messages update counts", %{conn: conn, source: source} do
@@ -201,12 +215,48 @@ defmodule Harness.Dashboard.InboxTest do
     Agent.update(source, &%{&1 | pending: []})
     send(view.pid, {:harness_run_settled, nil})
     assert render_async(view) =~ "4 unresolved"
+    send(view.pid, :ignored_lifecycle)
+    assert render(view) =~ "4 unresolved"
     Application.put_env(:harness, :inbox_facts, fn -> {:error, :unavailable} end)
     render_click(view, "refresh")
     assert render_async(view) =~ "Use Refresh to retry"
     Application.put_env(:harness, :inbox_facts, fn -> {:ok, Agent.get(source, & &1)} end)
     render_click(view, "refresh")
     refute render_async(view) =~ "Inbox unavailable"
+  end
+
+  test "malformed or crashing fact loads stay visible as errors", %{conn: conn} do
+    {:ok, view, _} = live(conn, "/harness/inbox")
+    render_async(view)
+    Application.put_env(:harness, :inbox_facts, fn -> :not_a_result end)
+    render_click(view, "refresh")
+    assert render_async(view) =~ "Inbox unavailable"
+    Application.put_env(:harness, :inbox_facts, fn -> raise "inbox facts crashed" end)
+    render_click(view, "refresh")
+    assert render_async(view) =~ "Inbox unavailable"
+  end
+
+  test "a crashing operation keeps the row and shows the error", %{conn: conn} do
+    Application.put_env(:harness, :inbox_action, fn _, _ -> raise "provider crashed" end)
+    {:ok, view, _} = live(conn, "/harness/inbox")
+    render_async(view)
+    row = Enum.find(Inbox.compose(facts()), &(:approve in &1.actions))
+    render_click(view, "act", %{"id" => row.id, "action" => "approve"})
+    html = render_async(view)
+    assert html =~ "Action failed"
+    assert has_element?(view, "button[phx-value-id='#{row.id}']")
+  end
+
+  test "an unexpected operation result stays visible without implying success", %{conn: conn} do
+    Application.put_env(:harness, :inbox_action, fn _, _ -> :not_a_result end)
+    {:ok, view, _} = live(conn, "/harness/inbox")
+    render_async(view)
+    row = Enum.find(Inbox.compose(facts()), &(:approve in &1.actions))
+    render_click(view, "act", %{"id" => row.id, "action" => "approve"})
+    html = render_async(view)
+    assert html =~ "Action failed"
+    refute html =~ "Request accepted"
+    assert has_element?(view, "button[phx-value-id='#{row.id}']")
   end
 
   test "real Dispatch guards reject missing runs and approvals" do
@@ -226,7 +276,8 @@ defmodule Harness.Dashboard.InboxTest do
       task_id: "5",
       adapter: Codex,
       env: %{},
-      parked_at: ~U[2026-09-20 00:00:00Z]
+      parked_at: ~U[2026-09-20 00:00:00Z],
+      opts: [dispatch_decision: %{"action" => "fresh", "reason" => "parked for operator"}]
     }
 
     %{
