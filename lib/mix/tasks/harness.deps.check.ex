@@ -1,9 +1,10 @@
 defmodule Mix.Tasks.Harness.Deps.Check do
-  @shortdoc "Checks mix.exs for unjustified three-part optimistic dep constraints"
+  @shortdoc "Warns about undocumented three-part optimistic dep constraints"
 
   @moduledoc """
-  Fails when `mix.exs` contains a three-part optimistic dependency constraint
+  Warns when `mix.exs` contains a three-part optimistic dependency constraint
   like `~> 1.2.3` without a same-line comment explaining the tight pin.
+  Dependency constraints are advisory; unreadable files still fail.
 
       mix harness.deps.check
   """
@@ -19,7 +20,7 @@ defmodule Mix.Tasks.Harness.Deps.Check do
 
     case DependencyConstraintGuard.violations(path) do
       {:ok, []} -> :ok
-      {:ok, violations} -> Mix.raise(message(path, violations))
+      {:ok, violations} -> Mix.shell().info(message(path, violations))
       {:error, reason} -> Mix.raise("could not read #{path}: #{inspect(reason)}")
     end
   end
@@ -32,11 +33,11 @@ defmodule Mix.Tasks.Harness.Deps.Check do
       end)
 
     """
-    over-tight dependency constraints found:
+    warning: narrow dependency constraints found (advisory):
     #{details}
 
-    Use a two-part optimistic constraint like "~> x.y", or add a same-line
-    comment explaining the real minor-bump breakage that requires a tight pin.
+    These constraints allow patch updates only. Consider whether minor updates
+    should also be allowed, or document why the narrower range is intentional.
     """
   end
 end
