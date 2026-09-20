@@ -20942,7 +20942,7 @@
       "id": "448",
       "phase": 24,
       "bundle": "audit-agent",
-      "status": "in_progress",
+      "status": "pending",
       "title": "Roll out focused dispatch checks and full audit QA across all registered projects",
       "scores": {
         "d": 6,
