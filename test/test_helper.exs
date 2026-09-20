@@ -53,5 +53,6 @@ ExUnit.after_suite(&GitFixture.cleanup_suite_root(fixture_root, &1))
 
 # Integration tests drive real external agent CLIs (e.g. `claude`) — slow,
 # networked, and not present in every environment. Excluded by default; run them
-# with `mix test --include integration`.
-ExUnit.configure(exclude: [:integration])
+# with `mix test --include integration`. The two-agent landing smoke test is also
+# tagged :live_agent; opt in with `mix test.json --include live_agent`.
+ExUnit.configure(exclude: [:integration, :live_agent])
