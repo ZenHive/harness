@@ -343,7 +343,7 @@
 | Task 411 | ✅ | 🎁 **agent-gate** · 🐛 run_records read path discards a whole row when one persisted atom is absent from the reading node [D:3/B:6/U:5 → Eff:1.83] 🚀 |
 | Task 415 | ✅ | 🎁 **agent-gate** · 🐛 Close the last AgentAdapter.Driver bypass and make the single-entry-point invariant a test [D:4/B:7/U:7 → Eff:1.75] 🚀 |
 | Task 418 | ✅ | 🎁 **contract** · Publish Task 392 tree-kill in harness_agent_adapter and restore the git dependency pin [D:4/B:7/U:7 → Eff:1.75] 🚀 |
-| Task 433 | ⬜ | 🎁 **operator-surface** · 🐛 Suite-health check leaks its test database on every successful run [D:3/B:7/U:6 → Eff:2.17] 🎯 |
+| Task 433 | 🔄 | 🎁 **operator-surface** · 🐛 Suite-health check leaks its test database on every successful run [D:3/B:7/U:6 → Eff:2.17] 🎯 |
 | Task 434 | ⬜ | 🎁 **operator-surface** · Orphan test-database sweeper — the Worktree.Sweeper equivalent for scratch DBs [D:7/B:7/U:6 → Eff:0.93] ⚠️ |
 | Task 437 | ✅ | 🎁 **operator-surface** · 🐛 Suite-health never runs deps.get — its guard is unreachable because warm paths always seed deps/ [D:3/B:7/U:6 → Eff:2.17] 🎯 |
 | Task 438 | ⬜ | 🎁 **operator-surface** · 🐛 A failed suite-health bootstrap is silently dropped — inspect(reason) overflows skip_reason varchar(255) [D:4/B:8/U:7 → Eff:1.88] 🚀 |

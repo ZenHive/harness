@@ -20195,7 +20195,7 @@
       "id": "433",
       "phase": 22,
       "bundle": "operator-surface",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Suite-health check leaks its test database on every successful run",
       "scores": {
         "d": 3,
@@ -20233,6 +20233,7 @@
       ],
       "body": "`Harness.SuiteHealth` creates a test database and never drops it. Not on failure — on the **green** path, by construction, once per project per day.\n\nEvidence:\n\n- `SuiteHealth.Bootstrap.ensure_test_database/3` (`bootstrap.ex:55-60`) runs `mix ecto.create` + `mix ecto.migrate` with `MIX_TEST_PARTITION=_h_suite_health`.\n- `SuiteHealth.Runner.run_suite/4` (`runner.ex:16-34`) runs the suite, builds the `Result`, returns `{:ok, _}`. There is no teardown call, no `try/after`.\n- `grep -rn \"TestDbIsolation.teardown\" lib` returns exactly one call site: `lib/harness/run/actions/worktree.ex:94`. That is the agent-run path. The suite-health path has none.\n- `Runner` aliases `TestDbIsolation` but uses it only for `env_name/1` (`runner.ex:100`) — to *set* the partition, never to reclaim it.\n\nThis is not the orphan class `docs/test-db-templates.md:109` documents. That paragraph excuses orphans from \"cancellation/process death\" and states there is no automatic sweep. Here a fully successful daily cron leaks by design.\n\nWhy it was probably never wired: `TestDbIsolation.teardown/4` derives the partition internally from the run id via `partition_suffix(run_id)`. Suite-health uses the *fixed* `@health_partition = \"_h_suite_health\"`. No run id maps to that string, so the existing API cannot express the drop. The fix needs either a teardown variant taking an explicit partition, or a `Bootstrap.cleanup/3` as the counterpart to `Bootstrap.prepare/3`.\n\nObserved on the production box 2026-09-18: 28 leaked `_h_suite_health` databases across four projects, 21 of them for `tapakly` alone (~381 MB). The multiplier is project-side — tapakly's `config/test.exs` (T337) derives its base name from a sha256 of the checkout path, so every fresh cron worktree yields a new base name under the same fixed partition suffix, i.e. one new never-dropped database per day.\n\nharness already holds itself to this standard for the sibling resource: \"A crashed run does not leak an orphan worktree\" is an acceptance criterion of the worktree task, delivered with `Harness.Worktree.Sweeper`. Databases got the create half and not the destroy half.\n\n2026-09-20 operator refinement: confirmed against server checkout c6d42bc and live PostgreSQL inventory. Cleaned 85 attributable historical scratch databases without terminating sessions; preserved primary databases, retained-worktree databases and ambiguous names. This task remains pending; no dispatch authorized by this refinement. Implement the immediate suite-health lifecycle fix; task 434 supplies durable crash recovery.\n\n2026-09-20 scope refinement: The fixed suffix does not imply one shared physical database: project configuration can derive a worktree-specific base. Verify exact resolved database identity in cleanup. Keep this deterministic lifecycle fix independent of the crash sweeper.\n",
       "created_at": "2026-09-18",
+      "started_at": "2026-09-20",
       "scored_at": "2026-09-18",
       "cross_repo": []
     },
