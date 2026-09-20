@@ -17755,7 +17755,7 @@
       "phase": 24,
       "bundle": "operator-cockpit",
       "milestone": "v0_18",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Add an operator Action Inbox over existing recovery and approval contracts",
       "scores": {
         "d": 5,
@@ -17787,6 +17787,7 @@
       ],
       "body": "Deliver a current-action Inbox over existing Harness operations, independently of historical event storage. Show pending manual approvals, held runs, failed committed work eligible for recovery and approved unlanded work. Reuse operation guards and the Dispatch facade. Historical Activity is Task 441; no event-log or actor-trail dependency is required for current actionable state.\n\n2026-09-20 scope refinement: Score rationale: Current recovery/approval actions have direct operator value; separating Activity removes historical-query implementation from this scope.\n",
       "created_at": "2026-08-15",
+      "started_at": "2026-09-20",
       "scored_at": "2026-09-20",
       "cross_repo": []
     },
