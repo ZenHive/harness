@@ -13892,7 +13892,7 @@ shipped_in = "dcc89175fda7f129c1599eb0490e435f12356e19"
 id = "447"
 phase = 24
 bundle = "audit-agent"
-status = "pending"
+status = "in_progress"
 title = "Extend post-merge audit into durable full-project QA independent of dispatch checks"
 scores = { d = 7, b = 9, u = 8 }
 acceptance_criteria = ["Persist a separate qa_command beside check_command through project registry, settings UI and public driver APIs. Existing projects retain current behavior until explicitly migrated.", "Reuse the audit worker and pending-job coalescing. The audit AI performs hygiene review AND every configured full-project check on an exact integrated SHA/range. Harness persists facts; AI judges output.", "Persist project, revision, agent/model, commands, durable evidence and honest queued/running/passed/failed/incomplete states, exposed in dashboard and bounded MCP/Elixir interfaces. Missing reports, unavailable prerequisites and interrupted agents never mean passed.", "New lands during QA get a subsequent pass; restart, duplicate jobs and failed attempts preserve pending work without advancing successful QA progress. Coalesced evidence covers every included landing, including clean audits.", "QA is non-blocking after landing: no deployment gate, revert or restart. Failures are witnessed and enter AI-owned repair with semantic dedupe. Substantial refactors use normal implementation and independent review; undisclosed vulnerability details stay private.", "A real audit agent checks a disposable repository successfully and reports a deliberately failing check. Write live integration evidence before doubles; reviewer independently verifies commands, revision and outcomes. Missing credentials fail loudly.", "Tests cover settings/UI, persistence, compatibility, command separation, concurrent lands, coalescing, restart, duplicates and failed/missing artifacts. Meet module coverage tiers before mutation; update canonical driver/workflow docs. Orchestrator owns skill propagation and activation."]
@@ -13902,6 +13902,7 @@ assignee = "codex"
 model = "gpt-6-astra"
 body = "Approved 2026-09-20: existing audit becomes combined audit/QA for ALL complete project checks after accepted runs land; landing/deployment never wait. Full suites, coverage, Dialyzer, Reach, Sobelow, Credo, Doctor and clone checks belong here where applicable. All projects including aave_sim follow the same rule: no mandatory full Dialyzer per implementation/review. Focused tests and risk-relevant security/live verification remain with the independent reviewer. Current Audit.audit_prompt uses project.check_command for cold checks; Audit.Worker coalesces waiting jobs. Extend these mechanisms, not a competing QA loop. Task 394 owns runner mechanics and Task 444 periodic maintenance/refactor discovery. Do not switch production check settings in the implementer. D7 reflects durable lifecycle/UI/API work; B9 is the requested reduction of repeated full checks while retaining integrated QA."
 created_at = "2026-09-20"
+started_at = "2026-09-20"
 scored_at = "2026-09-20"
 
 [[task]]
