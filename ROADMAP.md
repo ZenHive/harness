@@ -200,7 +200,7 @@
 | Task 168 | ⛔ | 🎁 **reviewer-pair** · Worktree/branch collision wedges Oban retries — clean up retained worktree+branch before a same-run_id re-attempt [D:3/B:8/U:8 → Eff:2.67?] 🎯 |
 | Task 169 | ⛔ | 🎁 **reviewer-pair** · Agent compile errors surfacing in verification SETUP are misclassified as environment failures — route them to the reviewer [D:4/B:8/U:8 → Eff:2.0?] 🎯 |
 | Task 173 | ✅ | 🎁 **reviewer-pair** · 🚀 **v0_11** · Deterministic full-pipeline E2E test: roadmap task → Oban dispatch → run → verify → review → land → writeback in one flow [D:4/B:7/U:7 → Eff:1.75?] 🚀 |
-| Task 174 | ⬜ | 🎁 **reviewer-pair** · Live-agent E2E smoke test: one real headless agent CLI through the full pipeline, :integration/:live_agent tagged [D:4/B:7/U:6 → Eff:1.62] 🚀 |
+| Task 174 | 🔄 | 🎁 **reviewer-pair** · Live-agent E2E smoke test: one real headless agent CLI through the full pipeline, :integration/:live_agent tagged [D:4/B:7/U:6 → Eff:1.62] 🚀 |
 | Task 179 | ⛔ | 🎁 **reviewer-pair** · SMOKE: add a one-sentence summary line to Harness.LineBuffer @moduledoc [D:1/B:1/U:1 → Eff:1.0?] 📋 |
 | Task 183 | ⛔ | 🎁 **agent-gate** · Smoke test (throwaway): add Harness.LineBuffer.empty?/1 predicate + test [D:1/B:1/U:1 → Eff:1.0?] 📋 |
 | Task 186 | ✅ | 🎁 **agent-gate** · 🔒 Neuter the push remote in harness-created worktrees so in-run agents can't push/PR past landing_policy [D:3/B:6/U:5 → Eff:1.83?] 🚀 |

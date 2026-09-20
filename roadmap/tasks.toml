@@ -5525,7 +5525,7 @@ shipped_in = "ecbf37e"
 id = "174"
 phase = 15
 bundle = "reviewer-pair"
-status = "pending"
+status = "in_progress"
 title = "Live-agent E2E smoke test: one real headless agent CLI through the full pipeline, :integration/:live_agent tagged"
 scores = { d = 4, b = 7, u = 6 }
 markers = []
@@ -5534,14 +5534,15 @@ acceptance_criteria = ["Tagged both :integration and :live_agent — excluded fr
 out_of_scope = ["Running in the default suite or unattended CI.", "A cross-adapter benchmark matrix.", "Grading generated code quality independently of the reviewer; pipeline mechanics still require assertions."]
 touches = ["test/harness/pipeline_live_agent_test.exs"]
 assignee = "codex"
+model = "gpt-6-astra"
 body = '''
 Add an on-demand integration test for the seam Task 173 cannot prove with scripted agents: real headless implementer and reviewer CLIs complete the pipeline and land into an isolated local bare origin. The test is excluded from routine suites because it consumes authenticated agent capacity; this does not make its implementation human-only. Default to codex/gpt-6-astra with an explicitly configured cross-family reviewer, allowing environment overrides for both adapter/model pairs. Resolve supported model pins at execution rather than inheriting CLI defaults. Tests must distinguish a reviewer approval from a completed landing.
 
 2026-09-20 scope refinement: Score rationale: The live CLI-to-landing seam protects adapter upgrades and new-host setup; two authenticated agents and isolated landing make D3 too small.
 '''
 created_at = "2026-06-03"
+started_at = "2026-09-20"
 scored_at = "2026-09-20"
-model = "gpt-6-astra"
 
 [[task]]
 id = "175"
