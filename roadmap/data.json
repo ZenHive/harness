@@ -19852,7 +19852,7 @@
       "id": "427",
       "phase": 25,
       "bundle": "core-loop",
-      "status": "in_progress",
+      "status": "pending",
       "title": "Persist recoverable run outcomes during graceful node shutdown",
       "scores": {
         "d": 6,

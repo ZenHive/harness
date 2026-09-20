@@ -422,7 +422,7 @@
 | Task 395 | ⬜ | 🎁 **doc-governance** · Move settled rationale and postmortems out of the eager floor into decision records, with a portable word-ceiling gate [D:4/B:7/U:7 → Eff:1.75] 🚀 |
 | Task 419 | ✅ | 🎁 **core-loop** · 🐛 Dispatch reads a local checkout the lander never syncs, so a landed task stays pending and re-dispatches forever [D:5/B:9/U:9 → Eff:1.8] 🚀 |
 | Task 420 `[P]` | ✅ | 🎁 **core-loop** · Every ready-set consumer syncs the roadmap checkout before selecting work, the cron poller included, and refuses only when the sync skips; display reads never sync [D:4/B:6/U:5 → Eff:1.38] 📋 |
-| Task 427 | 🔄 | 🎁 **core-loop** · 🐛 Persist recoverable run outcomes during graceful node shutdown [D:6/B:9/U:8 → Eff:1.42] 📋 |
+| Task 427 | ⬜ | 🎁 **core-loop** · 🐛 Persist recoverable run outcomes during graceful node shutdown [D:6/B:9/U:8 → Eff:1.42] 📋 |
 | Task 431 | ✅ | 🎁 **core-loop** · 🐛 Cron orchestrator counts in-flight from rmap in_progress, so a manual-landing project deadlocks permanently at its concurrency cap [D:3/B:8/U:8 → Eff:2.67] 🎯 |
 | Task 436 | ⬜ | 🎁 **core-loop** · 🐛 Make the host-local dependency bootstrap fix reproducible from version control [D:4/B:7/U:6 → Eff:1.62] 🚀 |
 | Task 439 | ✅ | 🎁 **core-loop** · 🐛 Keep legitimate long-running jobs anchored while retaining crash rescue [D:4/B:8/U:7 → Eff:1.88] 🚀 |

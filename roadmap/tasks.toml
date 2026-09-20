@@ -13296,7 +13296,7 @@ shipped_in = "4fb9118867fae739d0b31ce31be210c455717fcd"
 id = "427"
 phase = 25
 bundle = "core-loop"
-status = "in_progress"
+status = "pending"
 title = "Persist recoverable run outcomes during graceful node shutdown"
 scores = { d = 6, b = 9, u = 8 }
 markers = ["bug"]
