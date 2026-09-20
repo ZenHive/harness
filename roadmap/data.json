@@ -20426,7 +20426,7 @@
       "id": "439",
       "phase": 25,
       "bundle": "core-loop",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Keep legitimate long-running jobs anchored while retaining crash rescue",
       "scores": {
         "d": 4,
@@ -20461,6 +20461,7 @@
       ],
       "body": "Extracted from Task 427: the September 13–14 incident record attributes duplicate attempt-2 dispatches to Lifeline rescuing jobs while their original runs were still alive. Current lib/harness/oban.ex uses a fixed 30-minute rescue window. Correct the job-rescue contract independently of shutdown settlement; do not change duplicate-dispatch identity or replace recovery judgment with automatic redispatch. Use the configured run lifetime plus an explicit margin as the default solution unless the installed provider contract demonstrates queue-scoped rescue that safely excludes live dispatch jobs. Verify the actual plugin behavior and preserve rescue of abandoned landing/audit jobs.",
       "created_at": "2026-09-20",
+      "started_at": "2026-09-20",
       "scored_at": "2026-09-20",
       "cross_repo": []
     },
