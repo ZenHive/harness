@@ -13792,7 +13792,7 @@ scored_at = "2026-09-20"
 id = "445"
 phase = 24
 bundle = "operator-cockpit"
-status = "in_progress"
+status = "done"
 title = "Correct Run Insights evidence and finding memory, support Codex, and finish its dashboard UX"
 scores = { d = 8, b = 9, u = 8 }
 depends_on = [443]
@@ -13812,9 +13812,16 @@ UI decision: retain the existing dark dashboard visual system and main-navbar Ru
 
 Verification: move the adjacent audit probes into normal regression tests, add process termination/final-write/scheduler tests, and run real Codex success, rejected invocation and no-mutation evidence before deriving doubles. Both implementer and reviewer must inspect the rendered UI against these criteria. Include screenshots and precise live invocation evidence in the existing verification area. The orchestrator owns deployment and skill propagation; no production restart, recompile or enabling by the implementer. Report any unavailable agent path as a failed criterion, not a successful narrowed implementation.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1789878990023-c5bad025, 60a4dd022a7fcc8ed13cbe737246ebc7b09de7b8)."
+delivered_by = "codex"
+verified = true
+verified_by = "cursor"
+verification_ref = "harness-run:run-1789878990023-c5bad025"
 created_at = "2026-09-20"
 started_at = "2026-09-20"
 scored_at = "2026-09-20"
+done_at = "2026-09-20"
+shipped_in = "60a4dd022a7fcc8ed13cbe737246ebc7b09de7b8"
 
 [[task]]
 id = "446"

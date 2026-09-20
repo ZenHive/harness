@@ -20709,7 +20709,7 @@
       "id": "445",
       "phase": 24,
       "bundle": "operator-cockpit",
-      "status": "in_progress",
+      "status": "done",
       "title": "Correct Run Insights evidence and finding memory, support Codex, and finish its dashboard UX",
       "scores": {
         "d": 8,
@@ -20753,10 +20753,17 @@
         "skills/harness-driver/SKILL.md",
         "docs/verification/run-insights/"
       ],
+      "shipped_in": "60a4dd022a7fcc8ed13cbe737246ebc7b09de7b8",
       "body": "Converge task 443 on its accepted intent. The orchestrator's own post-land review found real defects despite the prior approval. Read .audit/116d146-run-insights.md and run its adjacent regression probe: all three expected-behavior tests fail on the reviewed base. Correct the class of incomplete evidence and lost finding context, not just these fixture values. Preserve task 443 history. The user also explicitly rejected the Claude-only observer and the unfinished UI; deliver usable Codex selection and a dashboard-quality experience in this same coherent Run Insights correction.\n\nObserved failures: (1) Only ten independently rotating prior findings are supplied before fresh evidence is marked seen; with eleven findings, a relevant older finding never sees the new evidence and later passes skip the AI as unchanged. (2) Historical evidence omits structured reviewer concerns/checks and run reasons; those changes cannot trigger observation. (3) inspect/2 and SQL slicing silently lose review content while sources claim availability. (4) last_success-only scheduling creates new retry groups every minute after exhaustion even with Daily selected. (5) timeout/death/exception/final-publication failures can leave durable passes Observing forever. Required outcome: the AI can inspect the relevant prior findings and source evidence through bounded pagination/read-only retrieval before the mechanical checkpoint consumes it; no procedural semantic relevance filters or classifiers. Preserve all provider-owned run facts as accessible evidence and keep excerpt/cursor/availability claims honest.\n\nAgent/model decision: Codex is required, selected explicitly, using an observation-only execution path verified against the live CLI and official contract. Retain Claude only as an explicit supported choice; never silently fall back to it or another model. Honor configured enabled agents and selected available model catalogs; do not hardcode Sonnet or enable observation during implementation. Default an unconfigured installation to the enabled Codex standing model; preserve an operator's explicit existing selection or visibly require reconfiguration if unavailable. The normal autonomous coding adapter is not proof of a read-only observer. Build on the owning adapter package when its contract needs changing and pin the verified dependency revision rather than bypassing the execution boundary.\n\nUI decision: retain the existing dark dashboard visual system and main-navbar Run Insights route. Replace raw controls and the inline settings row with the existing styled buttons, labelled stacked fields in a responsive settings panel, consistent spacing and keyboard focus. Overview has a compact status/action header, a clearly grouped observation summary, a findings toolbar/project filter and readable findings rows. A paused/never-run empty state explains how to configure/enable observation with a clear settings action; a filtered-empty state offers clearing the filter. Finding details separate current assessment and improvement from a readable chronological evidence/revision history, with long prose wrapping and collapsible excerpts. Keep metadata secondary. Scope styles to this feature or reuse existing components; do not redesign other dashboard pages. Render and inspect desktop and mobile plus populated/error states; screenshot/text fixtures alone are not a visual verdict.\n\nVerification: move the adjacent audit probes into normal regression tests, add process termination/final-write/scheduler tests, and run real Codex success, rejected invocation and no-mutation evidence before deriving doubles. Both implementer and reviewer must inspect the rendered UI against these criteria. Include screenshots and precise live invocation evidence in the existing verification area. The orchestrator owns deployment and skill propagation; no production restart, recompile or enabling by the implementer. Report any unavailable agent path as a failed criterion, not a successful narrowed implementation.\n",
       "created_at": "2026-09-20",
       "started_at": "2026-09-20",
+      "done_at": "2026-09-20",
       "scored_at": "2026-09-20",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1789878990023-c5bad025, 60a4dd022a7fcc8ed13cbe737246ebc7b09de7b8).",
+      "delivered_by": "codex",
+      "verified": true,
+      "verified_by": "cursor",
+      "verification_ref": "harness-run:run-1789878990023-c5bad025",
       "cross_repo": []
     },
     {
