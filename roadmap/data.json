@@ -20994,7 +20994,7 @@
       "id": "449",
       "phase": 24,
       "bundle": "audit-agent",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Provide a unified QA dashboard with evidence, start/retry and rollout visibility",
       "scores": {
         "d": 5,
@@ -21035,6 +21035,7 @@
       ],
       "body": "Operator-requested 2026-09-20: provide one coherent QA operator surface using the existing dashboard design system. Code evidence: SettingsLive.qa_state/1 and the project settings components already expose qa_command, pending jobs and five attempts with raw evidence; Task 447 supplies durable QA lifecycle facts. Make this usable across registered projects: a navigable QA overview, readable results and evidence drill-down, explicit start/retry actions, and visibility into focused-dispatch adoption. Reuse the existing audit queue and durable facts; this is not a second execution engine. Show agent-authored check results when supplied and honestly identify absent per-check evidence; Task 394's future structured gate runner is not a prerequisite. Rollout visibility consumes Task 448's live settings and evidence without performing its fleet migration. No production settings changes or service restart from the implementing run. D5 reflects coupled LiveView, queue actions and integration tests; B8 reflects the operator's need to operate the newly configured 16-project QA fleet without ad-hoc eval; U6 reflects that rollout already has live QA jobs. Routing is codex at the observed available standing model; existing dashboard tokens/components are the visual specification.\n",
       "created_at": "2026-09-20",
+      "started_at": "2026-09-20",
       "scored_at": "2026-09-20",
       "cross_repo": []
     }
