@@ -13935,3 +13935,22 @@ body = "Operator-approved 2026-09-20: all 16 projects, not only Elixir, adopt fo
 created_at = "2026-09-20"
 started_at = "2026-09-20"
 scored_at = "2026-09-20"
+
+[[task]]
+id = "449"
+phase = 24
+bundle = "audit-agent"
+status = "pending"
+title = "Provide a unified QA dashboard with evidence, start/retry and rollout visibility"
+scores = { d = 5, b = 8, u = 6 }
+depends_on = [447]
+acceptance_criteria = ["A navigable QA overview lists registered projects with configured/not-configured, queued/running and latest passed/failed/incomplete facts, revision and time; project/status filters and empty, loading and error states are usable. Historical success is not presented as proof for a newer revision or changed command.", "A project drill-down shows bounded attempt history, exact command, revision/range, agent/model and readable agent-authored check outcomes with access to durable evidence. Missing check detail is explicitly unavailable, never inferred as passed from a summary or parsed into a new verdict.", "Start QA and retry failed/incomplete QA enqueue through the existing audit worker contract and visibly acknowledge the job or error. Double-clicks and concurrent requests do not duplicate equivalent active work; a request covering newer work is not silently discarded. An unchanged revision can be explicitly rechecked rather than silently becoming an empty-range no-op.", "The overview distinguishes full-QA configuration from focused-dispatch adoption using actual persisted/effective settings and command/revision-bound evidence. It shows retained checks and unresolved rollout reasons honestly, including landing overrides, without automatically changing project settings or introducing a deployment/next-wave gate.", "Status updates appear without a manual page reload, with bounded evidence fetching and no full-transcript or whole-fleet inventory loads on every refresh. Existing QA command editing remains accessible and the UI follows current dashboard components/tokens, keyboard navigation and responsive layouts.", "Focused LiveView and database/queue integration tests cover status transitions, filtering, evidence gaps, failed queries, action errors, duplicate submissions, retry of an unchanged revision and command/revision drift. Verify the enqueue behavior against the real isolated Oban/Postgres boundary; no production jobs/settings are modified by tests. Full-project analyzers remain the post-merge QA responsibility."]
+out_of_scope = ["Task 448's consumer instruction/alias changes and production fleet activation.", "Task 394's parallel gate runner or a new check execution engine.", "New visual identity, general Activity/Inbox redesign, automatic repair dispatch, verdict classifiers or landing/deployment gates."]
+touches = ["lib/harness/dashboard/", "lib/harness/audit/", "lib/harness/audit.ex", "lib/harness/projects/dispatch_qa.ex", "test/harness/dashboard/", "test/harness/audit/", "test/harness/projects/dispatch_qa/", "skills/harness-driver/SKILL.md"]
+assignee = "codex"
+model = "gpt-6-astra"
+body = """
+Operator-requested 2026-09-20: provide one coherent QA operator surface using the existing dashboard design system. Code evidence: SettingsLive.qa_state/1 and the project settings components already expose qa_command, pending jobs and five attempts with raw evidence; Task 447 supplies durable QA lifecycle facts. Make this usable across registered projects: a navigable QA overview, readable results and evidence drill-down, explicit start/retry actions, and visibility into focused-dispatch adoption. Reuse the existing audit queue and durable facts; this is not a second execution engine. Show agent-authored check results when supplied and honestly identify absent per-check evidence; Task 394's future structured gate runner is not a prerequisite. Rollout visibility consumes Task 448's live settings and evidence without performing its fleet migration. No production settings changes or service restart from the implementing run. D5 reflects coupled LiveView, queue actions and integration tests; B8 reflects the operator's need to operate the newly configured 16-project QA fleet without ad-hoc eval; U6 reflects that rollout already has live QA jobs. Routing is codex at the observed available standing model; existing dashboard tokens/components are the visual specification.
+"""
+created_at = "2026-09-20"
+scored_at = "2026-09-20"

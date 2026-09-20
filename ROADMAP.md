@@ -407,6 +407,7 @@
 | Task 445 | ✅ | 🎁 **operator-cockpit** · Correct Run Insights evidence and finding memory, support Codex, and finish its dashboard UX [D:8/B:9/U:8 → Eff:1.06] 📋 |
 | Task 447 | ✅ | 🎁 **audit-agent** · Extend post-merge audit into durable full-project QA independent of dispatch checks [D:7/B:9/U:8 → Eff:1.21] 📋 |
 | Task 448 | 🔄 | 🎁 **audit-agent** · Roll out focused dispatch checks and full audit QA across all registered projects [D:6/B:8/U:7 → Eff:1.25] 📋 |
+| Task 449 | ⬜ | 🎁 **audit-agent** · Provide a unified QA dashboard with evidence, start/retry and rollout visibility [D:5/B:8/U:6 → Eff:1.4] 📋 |
 <!-- TASKS:END -->
 
 ---
