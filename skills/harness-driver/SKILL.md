@@ -48,7 +48,7 @@ Four setup steps the consuming repo needs:
 
 `check_command` is a free-text dispatch-scale hint handed to the reviewer AI — the reviewer runs the project's checks itself and judges the output; harness never executes this command. For Elixir projects, prefer explicit `mix format --check-formatted` and `mix compile --warnings-as-errors` plus focused `mix test.json ...` checks for touched behavior and risk-relevant security/live verification. Keep `mix precommit.full` / `mix ci` on `Project.qa_command` for post-merge audit QA. Capture the first dispatch run to a unique tmp log (`LOG=$(mktemp -t harness-check-dispatch.XXXXXX.log)` then `mix check.dispatch > "$LOG" 2>&1`) and inspect that file instead of re-running. For a multi-language monorepo, describe each component's dispatch-scale command. `language` is an optional atom (`nil`/`:elixir` keeps Elixir injected rules; other atoms suppress Elixir-specific rule sections).
 
-Operator rollout of the fleet split is `mix harness.projects.rollout_dispatch_qa` (dry-run by default; `--apply` after deployed QA support and an evidenced complete QA pass). Every reduction requires a passed QA attempt matching the command, target branch and current revision. Captures include actual alias sources and active hook/plugin configuration; hook inventory is read-only and never installs or wraps hooks. Persisted readback and rollback failures are explicit errors. Settings-only edits do not complete consumer alias/instruction work; those stay on each repo's normal review/landing path. After editing this skill or `priv/includes/harness-workflow.md`, run `scripts/sync-harness-skills.sh`.
+Operator rollout of the fleet split is `mix harness.projects.rollout_dispatch_qa` (dry-run by default; `--apply` after deployed QA support). Focused dispatch and full QA commands are installed together; prior QA outcomes never gate the switch. Captures include actual alias sources and active hook/plugin configuration; hook inventory is read-only and never installs or wraps hooks. Persisted readback and rollback failures are explicit errors. Settings-only edits do not complete consumer alias/instruction work; those stay on each repo's normal review/landing path. The operator dashboard at `/harness/qa` lists fleet QA status, evidence, start/retry, and rollout visibility. After editing this skill or `priv/includes/harness-workflow.md`, run `scripts/sync-harness-skills.sh`.
 
 `roadmap_target_branch` on `%Harness.Project{}` names the git branch for durable `mark_*` writes when `roadmap_path` lives in a different repository than `source` (the split-repo case). It is required in that case; omitting it on a split-repo project falls back to a local rmap write and origin never advances. Same-repo registrations omit it — durable writes then derive the branch from `target_branch`. Set it from `dispatch-register_project`, the `/harness/settings` create/edit form (blank stays `nil`), or `ProjectRegistry.upsert/1`.
 
@@ -860,6 +860,10 @@ to 32000 characters of durable report/transcript per call. Elixir equivalents
 are `Harness.Dispatch.qa_status/2` and `qa_evidence/3`. Evidence includes clean
 passes and failed/incomplete attempts, with exact revisions and commands.
 Database unavailability is an explicit error, never a passing result.
+
+QA agents have a one-hour absolute budget, including silent tool calls. Attempt
+evidence retains the driver termination reason. Rejected audit pushes retain
+`audit/recovery/<sha>` branches for operator recovery.
 
 Full suites, coverage, Dialyzer, Reach, Sobelow, Credo, Doctor and clone checks
 belong here where applicable, including aave_sim. The independent reviewer keeps

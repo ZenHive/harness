@@ -2,12 +2,11 @@ defmodule Harness.Projects.DispatchQA do
   @moduledoc """
   Operator-invoked rollout of focused dispatch checks and post-merge audit QA.
 
-  Default is dry-run. `--apply` installs `qa_command` without reducing
-  `check_command`. Dispatch switches only after an evidenced complete QA pass
-  for that project. Failed upserts restore captured prior settings.
+  Default is dry-run. `--apply` installs focused dispatch and full QA commands
+  together. QA outcomes never gate this separation. Failed upserts restore
+  captured prior settings.
   """
 
-  alias Harness.Audit.QA
   alias Harness.Project
   alias Harness.ProjectRegistry
   alias Harness.ProjectRegistry.Schema.Project, as: ProjectSchema
@@ -55,9 +54,8 @@ defmodule Harness.Projects.DispatchQA do
   @spec plan(keyword()) :: [project_result()]
   def plan(opts \\ []) do
     lookup = Keyword.get(opts, :lookup, &persisted_lookup/1)
-    qa_lookup = Keyword.get(opts, :qa_lookup, &qa_status/1)
 
-    Enum.map(catalog_entries(opts), &plan_project(&1, lookup, qa_lookup))
+    Enum.map(catalog_entries(opts), &plan_project(&1, lookup))
   end
 
   @doc """
@@ -71,18 +69,9 @@ defmodule Harness.Projects.DispatchQA do
     apply? = Keyword.get(opts, :apply, false)
     planned = plan(opts)
 
-    with {:ok, capture_path} <- write_capture(capture_dir, planned, inventory(opts)) do
-      results = if apply?, do: Enum.map(planned, &apply_project(&1, opts)), else: planned
-      result = %{capture_path: capture_path, applied?: apply?, projects: results}
-
-      with :ok <-
-             File.write(capture_path <> ".result.json", Jason.encode!(json_safe(result), pretty: true) <> "\n", [
-               :exclusive
-             ]) do
-        if apply? and Enum.any?(results, &(&1.status in [:failed, :unavailable])),
-          do: {:error, result},
-          else: {:ok, result}
-      end
+    with {:ok, capture_path} <- write_capture(capture_dir, planned, inventory(opts)),
+         {:ok, result} <- persist_result(capture_path, planned, apply?, opts) do
+      activation_outcome(result)
     end
   end
 
@@ -134,7 +123,7 @@ defmodule Harness.Projects.DispatchQA do
           persisted: settings_snapshot(project),
           desired: %{check_command: entry.dispatch, qa_command: entry.qa},
           repo: repo_surface(project),
-          hooks: Hooks.inventory(project_root: Project.repo_path(project)),
+          hooks: Hooks.inventory(project_root: Project.repo_path(project), include_global: false),
           write_set: entry.write_set,
           notes: entry.notes
         }
@@ -146,24 +135,22 @@ defmodule Harness.Projects.DispatchQA do
 
   @spec plan_project(
           Catalog.entry(),
-          (String.t() -> {:ok, Project.t()} | {:error, term()}),
-          (String.t() -> {:ok, map()} | {:error, term()})
+          (String.t() -> {:ok, Project.t()} | {:error, term()})
         ) :: project_result()
-  defp plan_project(entry, lookup, qa_lookup) do
+  defp plan_project(entry, lookup) do
     case if(is_nil(entry.qa), do: {:error, :unknown_catalog_project}, else: lookup.(entry.name)) do
-      {:ok, project} -> plan_registered(entry, project, qa_lookup)
+      {:ok, project} -> plan_registered(entry, project)
       {:error, _reason} -> unavailable(entry, "unregistered")
     end
   end
 
-  @spec plan_registered(Catalog.entry(), Project.t(), (String.t() -> {:ok, map()} | {:error, term()})) ::
+  @spec plan_registered(Catalog.entry(), Project.t()) ::
           project_result()
-  defp plan_registered(entry, project, qa_lookup) do
+  defp plan_registered(entry, project) do
     prior = settings_snapshot(project)
     desired = %{check_command: entry.dispatch, qa_command: entry.qa}
-    passed? = project.qa_command == entry.qa and qa_passed?(project, entry.qa, qa_lookup)
 
-    {status, reason} = plan_status(project, entry, passed?)
+    {status, reason} = plan_status(project, entry)
 
     %{
       name: entry.name,
@@ -176,17 +163,14 @@ defmodule Harness.Projects.DispatchQA do
     }
   end
 
-  @spec plan_status(Project.t(), Catalog.entry(), boolean()) :: {status(), String.t() | nil}
-  defp plan_status(project, entry, passed?) do
+  @spec plan_status(Project.t(), Catalog.entry()) :: {status(), String.t() | nil}
+  defp plan_status(project, entry) do
     cond do
-      project.qa_command == entry.qa and project.check_command == entry.dispatch and passed? ->
+      project.qa_command == entry.qa and project.check_command == entry.dispatch ->
         {:unchanged, nil}
 
       project.qa_command != entry.qa ->
-        {:qa_installed, "install qa_command; keep current check_command until a QA pass"}
-
-      not passed? ->
-        {:retained, "dispatch retained until evidenced complete QA pass for #{entry.qa}"}
+        {:qa_installed, "install full QA and focused dispatch commands together"}
 
       project.check_command != entry.dispatch ->
         {:dispatch_switched, nil}
@@ -202,31 +186,42 @@ defmodule Harness.Projects.DispatchQA do
   defp apply_project(result, opts) do
     lookup = Keyword.get(opts, :lookup, &persisted_lookup/1)
     upsert = Keyword.get(opts, :upsert, &ProjectRegistry.upsert/1)
-    qa_lookup = Keyword.get(opts, :qa_lookup, &qa_status/1)
 
     with {:ok, prior} <- lookup.(result.name),
          true <- settings_snapshot(prior) == result.prior || {:error, :settings_changed} do
-      fresh = plan_registered(Catalog.entry(result.name), prior, qa_lookup)
-
-      updated =
-        case fresh.status do
-          :qa_installed -> %{prior | qa_command: fresh.desired.qa_command}
-          :dispatch_switched -> %{prior | check_command: fresh.desired.check_command}
-          _ -> prior
-        end
-
-      case if(updated == prior, do: :ok, else: upsert.(updated)) do
-        :ok ->
-          case verify_readback(updated, lookup) do
-            {:ok, actual} -> %{fresh | readback: settings_snapshot(actual)}
-            {:error, reason} -> rollback(fresh, prior, upsert, lookup, reason)
-          end
-
-        {:error, reason} ->
-          rollback(fresh, prior, upsert, lookup, reason)
-      end
+      persist_plan(prior, lookup, upsert)
     else
       {:error, reason} -> %{result | status: :failed, reason: inspect(reason), readback: nil}
+    end
+  end
+
+  @spec persist_plan(Project.t(), function(), function()) :: project_result()
+  defp persist_plan(prior, lookup, upsert) do
+    fresh = plan_registered(Catalog.entry(prior.name), prior)
+    updated = apply_desired(fresh.status, prior, fresh.desired)
+
+    case write_if_changed(prior, updated, upsert) do
+      :ok -> confirm_or_rollback(fresh, prior, updated, upsert, lookup)
+      {:error, reason} -> rollback(fresh, prior, upsert, lookup, reason)
+    end
+  end
+
+  @spec apply_desired(status(), Project.t(), map()) :: Project.t()
+  defp apply_desired(:qa_installed, prior, desired),
+    do: %{prior | qa_command: desired.qa_command, check_command: desired.check_command}
+
+  defp apply_desired(:dispatch_switched, prior, desired), do: %{prior | check_command: desired.check_command}
+  defp apply_desired(_status, prior, _desired), do: prior
+
+  @spec write_if_changed(Project.t(), Project.t(), function()) :: :ok | {:error, term()}
+  defp write_if_changed(prior, prior, _upsert), do: :ok
+  defp write_if_changed(_prior, updated, upsert), do: upsert.(updated)
+
+  @spec confirm_or_rollback(project_result(), Project.t(), Project.t(), function(), function()) :: project_result()
+  defp confirm_or_rollback(fresh, prior, updated, upsert, lookup) do
+    case verify_readback(updated, lookup) do
+      {:ok, actual} -> %{fresh | readback: settings_snapshot(actual)}
+      {:error, reason} -> rollback(fresh, prior, upsert, lookup, reason)
     end
   end
 
@@ -255,10 +250,9 @@ defmodule Harness.Projects.DispatchQA do
          true <- Application.get_env(:harness, :repo_enabled, true) || {:error, :persistence_disabled},
          %ProjectSchema{payload: payload, warm_paths: warm_paths} <- Repo.get(ProjectSchema, name),
          {:ok, %{__struct__: Project, name: ^name} = stored} <- SafeTerm.decode(payload),
-         true <-
-           live == struct(Project, Map.put(Map.from_struct(stored), :warm_paths, warm_paths || [])) ||
-             {:error, :persistence_mismatch} do
-      {:ok, live}
+         persisted = struct(Project, Map.put(Map.from_struct(stored), :warm_paths, warm_paths || [])),
+         true <- registration_fields(live) == registration_fields(persisted) || {:error, :persistence_mismatch} do
+      {:ok, persisted}
     else
       nil -> {:error, :not_persisted}
       {:error, _} = error -> error
@@ -269,27 +263,8 @@ defmodule Harness.Projects.DispatchQA do
       {:error, {:persistence_unavailable, Exception.message(error)}}
   end
 
-  @spec qa_passed?(Project.t(), String.t(), function()) :: boolean()
-  defp qa_passed?(project, command, qa_lookup) do
-    with {:ok, head} <- Harness.Git.run(["rev-parse", "HEAD"], Project.repo_path(project)),
-         {:ok, %{attempts: attempts}} <- qa_lookup.(project.name) do
-      Enum.any?(attempts, fn attempt ->
-        fields = Map.new(attempt, fn {key, value} -> {to_string(key), value} end)
-
-        fields["status"] == "passed" and fields["command"] == command and
-          fields["revision"] == String.trim(head) and fields["target_branch"] == project.target_branch
-      end)
-    else
-      _ -> false
-    end
-  end
-
-  @spec qa_status(String.t()) :: {:ok, map()} | {:error, term()}
-  defp qa_status(name) do
-    QA.list(name, 20)
-  rescue
-    error -> {:error, {:qa_unavailable, Exception.message(error)}}
-  end
+  @spec registration_fields(Project.t()) :: map()
+  defp registration_fields(project), do: Map.drop(Map.from_struct(project), [:landing_policy, :target_branch, :reviewer])
 
   @spec settings_snapshot(Project.t()) :: map()
   defp settings_snapshot(project) do
@@ -346,8 +321,29 @@ defmodule Harness.Projects.DispatchQA do
     }
   end
 
+  @spec persist_result(String.t(), [project_result()], boolean(), keyword()) :: {:ok, map()} | {:error, term()}
+  defp persist_result(capture_path, planned, apply?, opts) do
+    results = if apply?, do: Enum.map(planned, &apply_project(&1, opts)), else: planned
+    result = %{capture_path: capture_path, applied?: apply?, projects: results}
+    encoded = Jason.encode!(json_safe(result), pretty: true) <> "\n"
+
+    # sobelow_skip ["Traversal.FileModule"] — capture_path is written under capture_dir (tmp or caller).
+    case File.write(capture_path <> ".result.json", encoded, [:exclusive]) do
+      :ok -> {:ok, result}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @spec activation_outcome(map()) :: {:ok, map()} | {:error, map()}
+  defp activation_outcome(%{applied?: true, projects: results} = result) do
+    if Enum.any?(results, &(&1.status in [:failed, :unavailable])), do: {:error, result}, else: {:ok, result}
+  end
+
+  defp activation_outcome(result), do: {:ok, result}
+
   @spec write_capture(String.t(), [project_result()], map()) :: {:ok, String.t()} | {:error, term()}
   defp write_capture(dir, planned, inventory) do
+    # sobelow_skip ["Traversal.FileModule"] — dir is System.tmp_dir! or an explicit capture_dir.
     File.mkdir_p!(dir)
     path = Path.join(dir, "dispatch-qa-capture-#{Ecto.UUID.generate()}.json")
 
@@ -357,6 +353,7 @@ defmodule Harness.Projects.DispatchQA do
       inventory: json_safe(inventory)
     }
 
+    # sobelow_skip ["Traversal.FileModule"] — path is capture_dir plus a generated UUID filename.
     case File.write(path, Jason.encode!(payload, pretty: true) <> "\n", [:exclusive]) do
       :ok -> {:ok, path}
       {:error, reason} -> {:error, reason}

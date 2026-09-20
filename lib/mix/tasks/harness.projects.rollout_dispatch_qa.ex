@@ -9,8 +9,8 @@ defmodule Mix.Tasks.Harness.Projects.RolloutDispatchQa do
       mix harness.projects.rollout_dispatch_qa --apply --name aave_sim
 
   Dry-run (default) inventories live settings, writes a prior-settings capture,
-  and prints the plan. `--apply` installs `qa_command` without reducing
-  `check_command`. Dispatch switches only after an evidenced complete QA pass.
+  and prints the plan. `--apply` installs focused dispatch and full QA commands
+  together. Prior QA outcomes do not gate the switch.
   Failed upserts restore captured prior check/qa commands.
 
   This mutates the harness project registry only. Consumer repositories are not

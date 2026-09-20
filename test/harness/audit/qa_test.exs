@@ -144,6 +144,35 @@ defmodule Harness.Audit.QATest do
     assert QA.base(attempt) == ctx.base
   end
 
+  test "a rejected audit push retains the committed repair after worktree cleanup", ctx do
+    revision = land(ctx.repo, "audited")
+
+    discovery = fn path ->
+      File.mkdir_p!(Path.join(path, "roadmap"))
+      File.write!(Path.join(path, "roadmap/qa-repair.txt"), "retained repair")
+    end
+
+    assert {:push_rejected, _} =
+             run(ctx, report(ctx.project, revision, "failed"),
+               on_invoke: fn -> land(ctx.repo, "concurrent-land") end,
+               in_worktree: discovery
+             )
+
+    [ref] =
+      ctx.repo
+      |> GitFixture.git!(["for-each-ref", "--format=%(refname)", "refs/heads/audit/recovery/"])
+      |> String.split("\n", trim: true)
+
+    assert GitFixture.git!(ctx.repo, ["show", ref <> ":roadmap/qa-repair.txt"]) == "retained repair"
+  end
+
+  test "incomplete evidence retains the actual driver termination", ctx do
+    assert {:ok, attempt} = QA.start(%{project: ctx.project, base_sha: ctx.base})
+    assert {:ok, saved} = QA.finish(attempt, %{}, {:timed_out, :idle}, "last tool call")
+    assert saved.status == "incomplete"
+    assert saved.report["termination"] == "{:timed_out, :idle}"
+  end
+
   test "a newer executing job attempt cannot revive an interrupted QA attempt", ctx do
     job = Repo.insert!(Worker.new(%{"project_name" => ctx.project.name, "base_sha" => ctx.base}))
     Repo.update!(Ecto.Changeset.change(job, state: "executing", attempt: 1))

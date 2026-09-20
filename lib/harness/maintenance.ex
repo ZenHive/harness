@@ -18,7 +18,7 @@ defmodule Harness.Maintenance do
     "deadline_seconds" => 1800
   }
 
-  @doc "Returns saved pins without adopting changes to standing models."
+  @doc false
   @spec settings(String.t()) :: map()
   def settings(project), do: Map.merge(@defaults, Store.get("settings/" <> project) || %{})
 
@@ -161,7 +161,7 @@ defmodule Harness.Maintenance do
     }
   end
 
-  @doc "Runs a stable pass identity; completed passes are idempotent."
+  @doc false
   @spec sweep(String.t(), String.t()) :: :ok | {:error, term()}
   def sweep(project, id) do
     Store.serialized(fn ->
@@ -182,7 +182,7 @@ defmodule Harness.Maintenance do
     with :ok <- Store.put_many([{"progress/" <> project, "progress", pass}]), do: broadcast()
   end
 
-  @doc "Subscribes to maintenance changes."
+  @doc false
   @spec subscribe() :: :ok | {:error, term()}
   def subscribe, do: Phoenix.PubSub.subscribe(Harness.PubSub, "harness:maintenance")
 

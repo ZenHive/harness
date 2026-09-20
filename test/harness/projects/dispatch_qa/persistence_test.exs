@@ -12,7 +12,7 @@ defmodule Harness.Projects.DispatchQA.PersistenceTest do
     previous = Application.get_env(:harness, :repo_enabled)
     Application.put_env(:harness, :repo_enabled, true)
     on_exit(fn -> Application.put_env(:harness, :repo_enabled, previous) end)
-    project = ProjectFixture.from_repo("/tmp/qa-readback", name: "qa-readback")
+    project = ProjectFixture.from_repo("/tmp/qa-readback", name: "qa-readback-#{System.unique_integer([:positive])}")
     assert :ok = ProjectRegistry.upsert(project)
     on_exit(fn -> ProjectRegistry.unregister(project.name) end)
     %{project: project}
@@ -24,6 +24,14 @@ defmodule Harness.Projects.DispatchQA.PersistenceTest do
     Repo.delete!(row)
     assert {:ok, ^project} = ProjectRegistry.lookup(project.name)
     assert {:error, :not_persisted} = DispatchQA.persisted_lookup(project.name)
+  end
+
+  test "landing overrides do not corrupt registration readback", %{project: project} do
+    assert :ok = Harness.Landing.Settings.set(project.name, :auto, "release", "test")
+    assert {:ok, %{landing_policy: :auto, target_branch: "release"}} = ProjectRegistry.lookup(project.name)
+    assert {:ok, ^project} = DispatchQA.persisted_lookup(project.name)
+    assert :ok = ProjectRegistry.upsert(%{project | check_command: "focused checks"})
+    assert {:ok, %{target_branch: "release", check_command: "focused checks"}} = ProjectRegistry.lookup(project.name)
   end
 
   test "readback detects settings drift and treats warm_paths column as authoritative", %{project: project} do

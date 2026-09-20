@@ -35,7 +35,7 @@ defmodule Harness.Projects.DispatchQATest do
     assert live.check_command == Catalog.entry("aave_sim").before_check_command
   end
 
-  test "apply installs qa_command without reducing check_command until a QA pass", %{
+  test "apply installs both commands without a prior QA pass", %{
     capture_dir: capture_dir
   } do
     before = Catalog.entry("aave_sim").before_check_command
@@ -46,18 +46,18 @@ defmodule Harness.Projects.DispatchQATest do
 
     assert first.status == :qa_installed
     assert first.readback.qa_command == "mix precommit.full"
-    assert first.readback.check_command == before
+    assert first.readback.check_command == Catalog.entry("aave_sim").dispatch
     assert first.readback.landing_policy == :auto
     assert first.readback.concurrency_cap == 4
 
     assert {:ok, %{projects: [held]}} =
              DispatchQA.activate(activate_opts(store, capture_dir, apply: true))
 
-    assert held.status == :retained
-    assert held.readback.check_command == before
+    assert held.status == :unchanged
+    assert held.readback.check_command == Catalog.entry("aave_sim").dispatch
   end
 
-  test "dispatch switches only after a matching passed QA attempt", %{capture_dir: capture_dir} do
+  test "dispatch switches with historical QA evidence", %{capture_dir: capture_dir} do
     entry = Catalog.entry("aave_sim")
     store = start_store([%{project("aave_sim", entry.before_check_command) | qa_command: entry.qa}])
 
@@ -166,7 +166,7 @@ defmodule Harness.Projects.DispatchQATest do
              DispatchQA.activate(activate_opts(store, capture_dir, apply: false))
   end
 
-  test "a mismatched QA command does not unlock a dispatch switch", %{capture_dir: capture_dir} do
+  test "historical QA command mismatches do not block focused dispatch", %{capture_dir: capture_dir} do
     entry = Catalog.entry("ccxt-distill")
     store = start_store([%{project("ccxt-distill", entry.before_check_command) | qa_command: entry.qa}])
 
@@ -180,11 +180,11 @@ defmodule Harness.Projects.DispatchQATest do
                )
              )
 
-    assert held.status == :retained
-    assert held.readback.check_command == entry.before_check_command
+    assert held.status == :dispatch_switched
+    assert held.readback.check_command == entry.dispatch
   end
 
-  test "an Elixir project whose live check is still a full gate retains it until a QA pass", %{
+  test "an Elixir full gate is replaced by focused dispatch without waiting for QA", %{
     capture_dir: capture_dir
   } do
     entry = Catalog.entry("harness")
@@ -193,8 +193,8 @@ defmodule Harness.Projects.DispatchQATest do
     assert {:ok, %{projects: [held]}} =
              DispatchQA.activate(activate_opts(store, capture_dir, apply: true))
 
-    assert held.status == :retained
-    assert held.readback.check_command == "mix precommit.full"
+    assert held.status == :dispatch_switched
+    assert held.readback.check_command == entry.dispatch
   end
 
   test "capture files never collide and retain JSON booleans", %{capture_dir: dir} do
@@ -224,7 +224,7 @@ defmodule Harness.Projects.DispatchQATest do
     assert failed.readback == nil
   end
 
-  test "an old QA revision does not unlock the current checkout", %{capture_dir: dir} do
+  test "an old QA revision does not block focused dispatch", %{capture_dir: dir} do
     entry = Catalog.entry("harness")
     store = start_store([%{project("harness", "mix check.dispatch") | qa_command: entry.qa}])
 
@@ -237,8 +237,8 @@ defmodule Harness.Projects.DispatchQATest do
       )
 
     assert {:ok, %{projects: [held]}} = DispatchQA.activate(opts)
-    assert held.status == :retained
-    assert held.readback.check_command == "mix check.dispatch"
+    assert held.status == :dispatch_switched
+    assert held.readback.check_command == entry.dispatch
   end
 
   test "unknown project selections fail visibly", %{capture_dir: dir} do

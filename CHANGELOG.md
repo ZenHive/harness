@@ -9,11 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **QA operator dashboard at `/harness/qa` (Task 449).** Registered projects show configured/not-configured, queued/running, and latest passed/failed/incomplete facts with revision, command, and bounded evidence. Start/retry enqueue through the existing audit worker; rollout rows distinguish installed QA from focused-dispatch adoption without mutating settings. Command-match copy is hidden on unconfigured rows.
+
 - **Cron dispatch mode is settable from the dashboard.** The per-project autonomy card on `/harness/settings` now carries a dispatch-mode picker (`Automatic starts` | `Manual approval`) alongside the existing on/off toggle, writing through `Harness.Cron.Settings.set_dispatch_mode/3` with `dashboard` as the audit actor. An unknown project or an out-of-vocabulary mode is refused and nothing is persisted. The project pill resolves all three dimensions at once: `paused` when master or project autonomy is off, then `manual approval` or `automatic starts`. Parked decisions are still listed and released through `dispatch-pending` / `dispatch-approve`, which the card now names.
 
 - **A ready task nothing can dispatch now reaches the operator.** `Harness.Cron.RoadmapPoller` drops every ready task whose `assignee` is `human`, missing, or unknown — correct, since a missing assignee must never be defaulted to an agent — but it dropped them behind a `Logger.debug` line, so a task could sit at the head of the queue indefinitely with nobody aware it was waiting. The poller now fires a `:dispatch_unroutable` witness event (task id, raw assignee, title) through `Harness.Notification`, and logs at warning instead of debug. `Harness.Cron.UnroutableNotice` makes it transition-only — the same contract `PendingDispatch.park/4` gives a parked decision — so a standing unroutable task announces once, not once per tick; re-routing it to an agent, or a change of assignee, is a new fact that announces again.
 
 ### Changed
+
+- **QA rollout hook inventory is read-only (Task 448 rescue).** `mix harness.projects.use_dispatch_check` is retired. `mix harness.projects.rollout_dispatch_qa` never installs, wraps, or bypasses hooks; failed apply restores captured settings and surfaces restoration failures. QA eligibility pins to matching command, target branch, and current revision.
 
 - **Dashboard: task board and Run Insights match the operator chrome.** The fleet Kanban on `/harness/roadmap` now uses the existing dispatch/hold/resume/land button vocabulary, lane-tinted headings, snap-scrolling full-bleed columns, and a compact empty-lane line instead of the page-level dashed empty state. Dead "Cost —" rows are gone; cards with a run link through to run detail. Run Insights keeps headings as headings (status is no longer a heading role), wraps each revision as a scanable panel, and shortens the navbar label to Insights.
 

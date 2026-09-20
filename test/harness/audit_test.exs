@@ -190,6 +190,17 @@ defmodule Harness.AuditTest do
     %{origin: origin, repo: repo, project: project, base_sha: sha(repo, "HEAD")}
   end
 
+  test "full QA permits silent tool calls within its absolute budget", ctx do
+    assert Audit.driver_options(%{ctx.project | qa_command: "mix ci"}) ==
+             [
+               total_timeout: to_timeout(hour: 1),
+               idle_timeout: to_timeout(hour: 1),
+               progress_timeout: to_timeout(hour: 1)
+             ]
+
+    assert Audit.driver_options(%{ctx.project | qa_command: nil}) == []
+  end
+
   describe "run/1 — skip routing (projects that can't be audited)" do
     test "a GitHub-sourced project is skipped", ctx do
       project = %{ctx.project | source: {:github, "https://github.com/zenhive/demo"}}

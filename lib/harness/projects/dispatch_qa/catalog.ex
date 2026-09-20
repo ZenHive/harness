@@ -88,7 +88,7 @@ defmodule Harness.Projects.DispatchQA.Catalog do
 
   @doc "True when switching check_command requires an evidenced QA pass."
   @spec requires_qa_pass?(entry()) :: boolean()
-  def requires_qa_pass?(_entry), do: true
+  def requires_qa_pass?(_entry), do: false
 
   @spec elixir(String.t(), String.t()) :: entry()
   defp elixir(name, qa) do

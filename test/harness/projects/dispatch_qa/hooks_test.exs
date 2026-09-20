@@ -32,6 +32,9 @@ defmodule Harness.Projects.DispatchQA.HooksTest do
     assert settings.settings["enabledPlugins"]["elixir@zenhive"]
     refute Map.has_key?(settings.settings, "env")
     refute File.exists?(Path.join(root, ".claude/settings.local.json"))
+    scoped = Hooks.inventory(home: home, project_root: root, include_global: false)
+    assert scoped.installed_plugins == []
+    assert Enum.all?(scoped.settings, &String.starts_with?(&1.path, root))
     assert File.read!(script) == "#!/bin/sh\necho formatting\n"
   end
 

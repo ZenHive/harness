@@ -20963,11 +20963,11 @@
         447
       ],
       "acceptance_criteria": [
-        "Inventory actual aliases, hooks, agent instructions and persisted settings for all 16 registered projects, including Rust rmap, TypeScript ccxt-distill and all onchain_stack packages; record exact before/after command mappings.",
+        "Inventory actual aliases, hooks, agent instructions and persisted settings for all currently registered projects, including Rust rmap and all onchain_stack packages; ccxt-distill was removed by the operator; record exact before/after command mappings.",
         "Implementer/reviewer retain formatting, compilation, focused behavior tests and risk-relevant security/live verification. Full suites, coverage, Dialyzer, Reach, Sobelow, Credo, Doctor and clone checks belong in audit QA where applicable. Preserve assertions, thresholds and required live integration evidence.",
         "aave_sim has no mandatory full Dialyzer exception before approval: its full Dialyzer belongs in QA. onchain_stack dispatch follows touched packages while QA covers the entire project; Rust/TypeScript use actual native commands.",
         "Remove contradictory repeated full-gate requirements from affected aliases/hooks/instructions; synchronize canonical workflow/driver docs and generated AGENTS. Settings-only edits cannot establish completion.",
-        "Deliver explicit operator-invoked idempotent rollout tooling/contracts with prior-settings capture and per-project readback. Switch dispatch requirements only after deployed QA support and an evidenced complete QA pass for that project; failed activation visibly retains prior checks.",
+        "Deliver explicit operator-invoked idempotent rollout tooling/contracts with prior-settings capture and per-project readback. Install focused dispatch and full QA commands together after QA support is deployed; prior QA outcomes do not gate the switch. Failed persistence visibly restores prior settings.",
         "Consumer changes use each repo normal independent review/landing; no sibling live-checkout mutation from this harness run. The orchestrator coordinates fleet deliveries and persisted settings after tooling lands. Preserve landing/deployment policies, concurrency, models and Task 444 hold.",
         "Tests verify command separation, project-specific requirements, idempotency, rollback/retention on failure and readback. Report unavailable projects honestly; update write sets before any consumer dispatch.",
         "Operator revision 2026-09-20: remove ZenHive plugins and their enabled references completely; do not rebuild seat wrappers or plugin installation/update machinery. Preserve unrelated safety hooks. Inventory configured external hook scripts and inherited instruction imports, exposing unresolved shell/scope interpretation honestly. Canonical includes and generated AGENTS carry focused verification policy. The orchestrator verifies deployed plugin removal and owns consumer adoption and QA activation."
@@ -20988,7 +20988,7 @@
         "test/mix/tasks/",
         "priv/"
       ],
-      "body": "Operator-approved 2026-09-20: all 16 projects, not only Elixir, adopt focused dispatch and complete post-land audit QA. aave_sim explicitly has no full-Dialyzer-before-approval exception. Current live inventory: twelve mix check.dispatch projects, aave_sim full-precommit plus Dialyzer hint, onchain_stack per-package hint, ccxt-distill npm run check, rmap fmt/clippy/test. Re-read actual commands and live settings before rollout. Task 447 provides the prerequisite QA contract. Deliver reusable adoption tooling/contracts here; orchestrator owns consumer reviewer-gated changes and actual fleet activation after landing. Never reduce current checks before replacement QA is demonstrated. Task 394 retains runner mechanics; Task 444 retains periodic maintenance/refactor discovery and its explicit hold. D6 reflects fleet/hooks/instruction consistency; B8 reflects removing redundant complete checks across the requested portfolio.",
+      "body": "Operator-approved 2026-09-20: all 16 projects, not only Elixir, adopt focused dispatch and complete post-land audit QA. aave_sim explicitly has no full-Dialyzer-before-approval exception. Current live inventory: twelve mix check.dispatch projects, aave_sim full-precommit plus Dialyzer hint, onchain_stack per-package hint, ccxt-distill npm run check, rmap fmt/clippy/test. Re-read actual commands and live settings before rollout. Task 447 provides the prerequisite QA contract. Deliver reusable adoption tooling/contracts here; orchestrator owns consumer reviewer-gated changes and actual fleet activation after landing. QA support must be deployed; no green-QA prerequisite applies to focused dispatch. Task 394 retains runner mechanics; Task 444 retains periodic maintenance/refactor discovery and its explicit hold. D6 reflects fleet/hooks/instruction consistency; B8 reflects removing redundant complete checks across the requested portfolio.",
       "created_at": "2026-09-20",
       "started_at": "2026-09-20",
       "scored_at": "2026-09-20",
@@ -21048,6 +21048,55 @@
       "verified": true,
       "verified_by": "cursor",
       "verification_ref": "harness-run:run-1789904814276-331965f2",
+      "cross_repo": []
+    },
+    {
+      "id": "450",
+      "phase": 22,
+      "bundle": "audit-hygiene",
+      "status": "pending",
+      "title": "Clear the 10 ex_dna clones that fail mix precommit.full",
+      "scores": {
+        "d": 5,
+        "b": 7,
+        "u": 6
+      },
+      "eff": 1.3,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-6-astra",
+      "acceptance_criteria": [
+        "mix ex_dna --max-clones 0 exits 0 on the landed base with the clone budget still 0",
+        "The Insights/Maintenance store, tick, and response_schema duplication is gone without changing persistence or scheduler behaviour",
+        "The Dispatch await/register_project clones between dispatch.ex, observation.ex and admin.ex are gone without changing public signatures",
+        "landable_project_names lives in one place (TaskBoard or a shared helper); Dashboard.Live does not keep a copy",
+        "Focused tests cover the extracted helpers; mix check.dispatch plus mix ex_dna --max-clones 0 are recorded"
+      ],
+      "out_of_scope": [
+        "Raising the clone budget",
+        "Dialyzer unused_fun warnings (likely cold-PLT; re-measure on a warmed PLT)",
+        "Task 448 HEAD-vs-origin QA eligibility (still in_progress)"
+      ],
+      "files_to_modify": [
+        "lib/harness/insights/store.ex",
+        "lib/harness/maintenance/store.ex",
+        "lib/harness/dispatch.ex",
+        "lib/harness/dashboard/task_board.ex"
+      ],
+      "touches": [
+        "lib/harness/insights/",
+        "lib/harness/maintenance/",
+        "lib/harness/dispatch.ex",
+        "lib/harness/dispatch/",
+        "lib/harness/dashboard/task_board.ex",
+        "lib/harness/dashboard/live.ex"
+      ],
+      "body": "Post-merge audit of 58893e2 ran mix precommit.full on a cold tree. ex_dna --max-clones 0 failed with 10 clones (~470 duplicated lines), none introduced by the Task 449/448-rescue range:\n\n- 7 clones, 767 nodes: lib/harness/insights/{store,tick,response_schema}.ex duplicated in lib/harness/maintenance/ (Task 443/444 sibling stores).\n- 2 clones: Dispatch.await/5 between dispatch.ex:169 and observation.ex:34; register_project/… between admin.ex:51 and dispatch.ex:678.\n- 1 renamed clone: landable_project_names/1 in dashboard/task_board.ex:172 and dashboard/live.ex:1843.\n\nTask 401 already cleared a different clone (Run.Worker enqueue) and is done. No pending task owns this set. Do not raise the budget. Extract shared store/tick/schema helpers and one landable_project_names definition; keep public Dispatch signatures.\n\nObserved 2026-09-20, audit worktree run-1789907903600-82913e20, log /tmp/harness-audit-precommit-rest.VMEZDU.log.\n",
+      "created_at": "2026-09-20",
+      "scored_at": "2026-09-20",
       "cross_repo": []
     }
   ]

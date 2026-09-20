@@ -7,41 +7,24 @@ defmodule Harness.Projects.DispatchQA.Hooks do
     home = Keyword.get(opts, :home, System.user_home!())
     root = Keyword.get(opts, :project_root)
     installed_path = Path.join(home, ".claude/plugins/installed_plugins.json")
-    installed = read_json(installed_path)
+    global? = Keyword.get(opts, :include_global, true)
+    installed = if global?, do: read_json(installed_path), else: {:ok, %{}}
 
     config_paths =
-      [
-        Path.join(home, ".claude/settings.json"),
-        Path.join(home, ".claude/settings.local.json"),
-        Path.join(home, ".cursor/hooks.json"),
-        "/etc/claude-code/managed-settings.json"
-      ] ++ project_paths(root)
+      if(global?,
+        do: [
+          Path.join(home, ".claude/settings.json"),
+          Path.join(home, ".claude/settings.local.json"),
+          Path.join(home, ".cursor/hooks.json"),
+          "/etc/claude-code/managed-settings.json"
+        ],
+        else: []
+      ) ++ project_paths(root)
 
     plugins =
       case installed do
-        {:ok, %{"plugins" => plugins}} ->
-          Enum.flat_map(plugins, fn {name, entries} ->
-            Enum.map(List.wrap(entries), fn entry ->
-              path = entry["installPath"]
-
-              sources =
-                if is_binary(path) do
-                  [Path.join(path, "hooks/hooks.json")] ++
-                    Path.wildcard(Path.join(path, "hooks/**/*")) ++ Path.wildcard(Path.join(path, "scripts/**/*"))
-                else
-                  []
-                end
-
-              %{
-                plugin: name,
-                installation: entry,
-                files: Enum.map(Enum.filter(Enum.uniq(sources), &File.regular?/1), &read_file/1)
-              }
-            end)
-          end)
-
-        _ ->
-          []
+        {:ok, %{"plugins" => plugins}} -> plugin_entries(plugins)
+        _ -> []
       end
 
     settings = Enum.map(config_paths, &settings_file/1)
@@ -59,14 +42,18 @@ defmodule Harness.Projects.DispatchQA.Hooks do
       installed_plugins: plugins,
       inherited_instructions:
         instruction_files(
-          Enum.map(
-            [
-              ".claude/CLAUDE.md",
-              ".claude/includes/verification-policy.md",
-              ".claude/includes/critical-rules.md",
-              ".claude/includes/harness-workflow.md"
-            ],
-            &Path.join(home, &1)
+          if(global?,
+            do:
+              Enum.map(
+                [
+                  ".claude/CLAUDE.md",
+                  ".claude/includes/verification-policy.md",
+                  ".claude/includes/critical-rules.md",
+                  ".claude/includes/harness-workflow.md"
+                ],
+                &Path.join(home, &1)
+              ),
+            else: []
           ) ++ if(root, do: [Path.join(root, "CLAUDE.md")], else: []),
           home,
           MapSet.new()
@@ -74,9 +61,33 @@ defmodule Harness.Projects.DispatchQA.Hooks do
     }
   end
 
+  @spec plugin_entries(map()) :: [map()]
+  defp plugin_entries(plugins) do
+    Enum.flat_map(plugins, fn {name, entries} ->
+      Enum.map(List.wrap(entries), &plugin_entry(name, &1))
+    end)
+  end
+
+  @spec plugin_entry(term(), map()) :: map()
+  defp plugin_entry(name, entry) do
+    %{plugin: name, installation: entry, files: Enum.map(plugin_files(entry["installPath"]), &read_file/1)}
+  end
+
+  @spec plugin_files(term()) :: [String.t()]
+  defp plugin_files(path) when is_binary(path) do
+    sources =
+      [Path.join(path, "hooks/hooks.json")] ++
+        Path.wildcard(Path.join(path, "hooks/**/*")) ++ Path.wildcard(Path.join(path, "scripts/**/*"))
+
+    Enum.filter(Enum.uniq(sources), &File.regular?/1)
+  end
+
+  defp plugin_files(_), do: []
+
   @doc "Reads source bytes with their digest; absence and invalid text stay visible."
   @spec read_file(String.t()) :: map()
   def read_file(path) do
+    # sobelow_skip ["Traversal.FileModule"] — path is a configured hook/plugin/instruction file.
     case File.read(path) do
       {:ok, text} ->
         if String.valid?(text),
@@ -145,6 +156,7 @@ defmodule Harness.Projects.DispatchQA.Hooks do
 
   @spec read_json(String.t()) :: {:ok, map()} | {:error, term()}
   defp read_json(path) do
+    # sobelow_skip ["Traversal.FileModule"] — path is a configured settings or plugin-registry file.
     with {:ok, content} <- File.read(path), do: Jason.decode(content)
   end
 

@@ -52,6 +52,9 @@
       # mix harness.worktree.reclaim drives the worktree/branch reclaimer.
       "Harness.DependencyConstraintGuard",
       "Harness.Worktree.Reclaim",
+      # mix harness.projects.rollout_dispatch_qa drives fleet QA settings.
+      "Harness.Projects.DispatchQA",
+      "Harness.Projects.DispatchQA.*",
       # The dashboard's template-facing render surface: heex layouts/templates
       # (lowered by Reach's HEEx plugin to Reach.Templates.* pseudo-modules)
       # legitimately render through these. Not external driver API — internal

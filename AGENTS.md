@@ -715,7 +715,7 @@ Toolchain: **Elixir 1.20.3 / OTP 29** (asdf) — pinned by the repo-local `.tool
 | Tests | `mix test.json` — AI-friendly JSON output; **use over bare `mix test`** (load `elixir:ex-unit-json` for flags/jq). `:integration` tests (real agent CLIs, live DB) are **excluded by default** — add `--include integration`. |
 | Single test | `mix test.json test/harness/run_test.exs:42` · re-run only failures: `mix test.json --failed` · coverage: `--cover`. |
 | Fast gate | `mix check.fast` — `format --check-formatted` + `compile --warnings-as-errors` + `credo --strict`. Local inner loop, not the dispatch hint. |
-| Dispatch checks | Explicit `mix format --check-formatted` + `mix compile --warnings-as-errors` and focused tests after rollout. The legacy `mix check.dispatch` still includes Credo, Doctor and Sobelow. |
+| Dispatch checks | `mix check.dispatch` runs format and compile; select focused behavior and risk-relevant tests separately. |
 | QA command inventory | `mix precommit` — format, compile, Credo, Doctor, `test.json` coverage ≥80% excluding integration, Sobelow. Used by audit QA via `precommit.full`. |
 | Post-merge audit + QA | `mix precommit.full` (alias `mix ci`) — `precommit` + `ex_dna --max-clones 0` + `reach.check --arch --smells` + `dialyzer.json`. Full-project QA on the landed base; not an implementer/reviewer gate. |
 | Ecosystem entry point | `mix ci` — vibe_kit-convention name; delegates to `precommit.full` (one gate, not two). |
@@ -754,7 +754,7 @@ appears that is not one of the four ids above.
 
 Self-contained so it reaches `AGENTS.md` (and the cross-family reviewer) even after the eager floor slimmed `code-style`/`rmap` to skills.
 
-- **Command inventory:** `mix check.dispatch` retains format, compile, Credo, Doctor and Sobelow. The rollout uses explicit format/compile commands rather than reducing a shared alias before replacement QA. `mix precommit` adds coverage tests. `mix precommit.full` / `mix ci` additionally runs clone detection, Reach and Dialyzer. Select scoped commands according to the imported verification policy; these alias definitions do not determine when to run them.
+- **Command inventory:** `mix check.dispatch` runs format and compile. `mix precommit` contains Credo, Doctor, Sobelow and coverage tests. `mix precommit.full` / `mix ci` additionally runs clone detection, Reach and Dialyzer. Select scoped commands according to the imported verification policy; these alias definitions do not determine when to run them.
 - **Capture dispatch-gate output on the first run.** Use a unique tmp log per run, e.g. `LOG=$(mktemp -t harness-check-dispatch.XXXXXX.log)` then `mix check.dispatch > "$LOG" 2>&1`; inspect with `tail -200 "$LOG"` / `rg "error|failed|warning" "$LOG"`. Report the log path in the reviewer's `checks` entry. Do not re-run only to recover truncated output.
 - **Fleet rollout:** `mix harness.projects.rollout_dispatch_qa` (dry-run by default) inventories live settings, writes a prior-settings capture, and prints write-sets. `--apply` is operator-invoked after this tooling is deployed; it never reduces `check_command` until a matching QA attempt has passed. Failed activation restores captured prior check/qa commands. Consumer repo alias/instruction edits stay orchestrator-owned.
 - **QA evidence:** the post-merge audit + QA records full-project results; the orchestrator consumes those results and handles findings.

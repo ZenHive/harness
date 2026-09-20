@@ -75,7 +75,7 @@ defmodule Harness.Audit.QA do
   def finish(attempt, report, termination, transcript) do
     qa = Map.get(report, "qa", %{})
     status = report_status(attempt, qa, termination)
-    pin(attempt, %{status: status, report: report, transcript: transcript})
+    pin(attempt, %{status: status, report: Map.put(report, "termination", inspect(termination)), transcript: transcript})
   end
 
   @doc "Records an unfinished attempt without advancing successful QA progress."

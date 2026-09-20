@@ -26,7 +26,6 @@ defmodule Harness.Projects.DispatchQA.CatalogTest do
     entries = Catalog.all()
 
     assert Enum.map(entries, & &1.name) == @names
-    assert length(entries) == 16
     assert Enum.all?(entries, &(&1.write_set != []))
   end
 
@@ -36,7 +35,7 @@ defmodule Harness.Projects.DispatchQA.CatalogTest do
     assert entry.before_check_command =~ "mix dialyzer.json"
     refute entry.dispatch =~ "dialyzer"
     assert entry.qa == "mix precommit.full"
-    assert Catalog.requires_qa_pass?(entry)
+    refute Catalog.requires_qa_pass?(entry)
   end
 
   test "onchain_stack dispatch stays per-package while QA covers the whole project" do
@@ -45,7 +44,7 @@ defmodule Harness.Projects.DispatchQA.CatalogTest do
     refute entry.dispatch == entry.before_check_command
     assert entry.dispatch =~ "packages/<name>"
     assert entry.qa == "mix ci"
-    assert Catalog.requires_qa_pass?(entry)
+    refute Catalog.requires_qa_pass?(entry)
     assert "packages/hieroglyph/mix.exs" in entry.write_set
     assert "packages/onchain_tempo/AGENTS.md" in entry.write_set
   end
@@ -58,12 +57,12 @@ defmodule Harness.Projects.DispatchQA.CatalogTest do
     assert rmap.dispatch =~ "cargo clippy"
     refute rmap.dispatch =~ "&& cargo test"
     assert rmap.qa =~ "cargo test"
-    assert Catalog.requires_qa_pass?(rmap)
+    refute Catalog.requires_qa_pass?(rmap)
 
     assert distill.before_check_command == "npm run check"
     assert distill.dispatch =~ "npm run typecheck"
     assert distill.qa == "npm run check"
-    assert Catalog.requires_qa_pass?(distill)
+    refute Catalog.requires_qa_pass?(distill)
   end
 
   test "Elixir projects use explicit focused commands and record a full QA command" do
@@ -72,7 +71,7 @@ defmodule Harness.Projects.DispatchQA.CatalogTest do
       assert entry.before_check_command == "mix check.dispatch"
       assert entry.dispatch =~ "mix format --check-formatted"
       assert String.starts_with?(entry.qa, ["mix precommit.full", "mix ci"])
-      assert Catalog.requires_qa_pass?(entry)
+      refute Catalog.requires_qa_pass?(entry)
     end
   end
 end

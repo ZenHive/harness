@@ -319,7 +319,7 @@ defmodule Harness.Audit do
            AgentDriver.run(
              auditor,
              invocation(worktree, repo, target, project, request, range, auditor_model(auditor)),
-             []
+             driver_options(project)
            ) do
       finalize_after_run(worktree, repo, target, project, Map.put(request, :termination, kind), range, agent, output)
     else
@@ -351,6 +351,17 @@ defmodule Harness.Audit do
       false -> {qa_result, meta}
       {:error, reason} -> {{:error, reason}, meta}
     end
+  end
+
+  @doc false
+  @spec driver_options(Project.t()) :: keyword()
+  def driver_options(%Project{qa_command: nil}), do: []
+
+  def driver_options(%Project{}) do
+    # Full QA can be silent while a cold build or live suite is inside one tool call.
+    # Keep the absolute one-hour bound without a shorter output/progress deadline.
+    budget = to_timeout(hour: 1)
+    [total_timeout: budget, idle_timeout: budget, progress_timeout: budget]
   end
 
   # Display name for the chosen auditor adapter. A module the registry can't
@@ -988,7 +999,9 @@ defmodule Harness.Audit do
         {:audited, head}
 
       {:error, {:git_failed, _args, _status, output}} ->
-        Logger.warning("harness audit: push rejected (target advanced); dropping audit work: #{output}")
+        # Preserve paid work before the detached worktree is removed.
+        {:ok, _} = Git.run(["update-ref", "refs/heads/audit/recovery/" <> head, head], repo)
+        Logger.warning("harness audit: push rejected; retained audit/recovery/#{head}: #{output}")
 
         {:push_rejected, output}
     end
