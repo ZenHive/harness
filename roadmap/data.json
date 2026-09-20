@@ -20935,7 +20935,7 @@
       "id": "448",
       "phase": 24,
       "bundle": "audit-agent",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Roll out focused dispatch checks and full audit QA across all registered projects",
       "scores": {
         "d": 6,
@@ -20979,6 +20979,7 @@
       ],
       "body": "Operator-approved 2026-09-20: all 16 projects, not only Elixir, adopt focused dispatch and complete post-land audit QA. aave_sim explicitly has no full-Dialyzer-before-approval exception. Current live inventory: twelve mix check.dispatch projects, aave_sim full-precommit plus Dialyzer hint, onchain_stack per-package hint, ccxt-distill npm run check, rmap fmt/clippy/test. Re-read actual commands and live settings before rollout. Task 447 provides the prerequisite QA contract. Deliver reusable adoption tooling/contracts here; orchestrator owns consumer reviewer-gated changes and actual fleet activation after landing. Never reduce current checks before replacement QA is demonstrated. Task 394 retains runner mechanics; Task 444 retains periodic maintenance/refactor discovery and its explicit hold. D6 reflects fleet/hooks/instruction consistency; B8 reflects removing redundant complete checks across the requested portfolio.",
       "created_at": "2026-09-20",
+      "started_at": "2026-09-20",
       "scored_at": "2026-09-20",
       "cross_repo": []
     }
