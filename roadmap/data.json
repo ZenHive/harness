@@ -18277,7 +18277,7 @@
       "id": "399",
       "phase": 22,
       "bundle": "core-loop",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Agent-initiated question channel — implementer parks the run with .harness/question.json, orchestrator answers via steer/resume",
       "scores": {
         "d": 5,
@@ -18320,6 +18320,7 @@
       ],
       "body": "Today a headless implementer has no way to ask back: it guesses on ambiguous acceptance criteria, and the miss surfaces only post-hoc as reviewer concerns or a reject — a full run's tokens spent on a wrong guess. The operator asked for a Rueckfrage channel (2026-08-24 session).\n\nAll building blocks exist; only the agent-side trigger is missing. Premises, each verified against the harness-driver SKILL and CLAUDE.md (documented shipped surfaces): the :held state plus dispatch-steer (stash guidance for the next agent boundary) and dispatch-resume (re-enter :running in the same worktree) shipped in v0_9 (Task 150); the write-a-json-artifact-harness-reads-it-mechanically pattern is established (review.json, audit.json, recovery.json); Harness.Notification sinks (FileSink/CommandSink) are the shipped push channel for witness events.\n\nSuggested direction, not binding: avoid mid-turn file watching entirely — the natural detection point is the agent-invocation boundary. The agent writes .harness/question.json and ends its invocation; harness, before treating the run as complete, checks for the file and routes to :held + notification instead of commit/review. The answer rides the existing steer note; resume re-invokes the agent in the same worktree with question + answer injected (the resume_failed report-injection pattern). Whatever is chosen must keep judgment out of harness: parking, notifying, and threading text are mechanics; deciding what the question means and what to answer belongs to the orchestrator AI.\n\nDispatch trigger: harness runtime / run-lifecycle change (gen_statem states, notification surface) — per the routing gate this earns the full implement-review-land cycle rather than inline work.\n\n2026-09-20 scope refinement: The chosen timeout policy keeps the existing lifetime budget inclusive of question-held time; it bounds resource retention and preserves recoverable expiry. This task must make question consumption/idempotency explicit, not rely on deleting a file by convention.\n",
       "created_at": "2026-08-24",
+      "started_at": "2026-09-20",
       "scored_at": "2026-08-24",
       "cross_repo": []
     },
