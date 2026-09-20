@@ -1,0 +1,87 @@
+{
+  "pause_before": {
+    "summary": {
+      "invalid": 0,
+      "total": 4,
+      "failed": 1,
+      "result": "failed",
+      "excluded": 0,
+      "passed": 3,
+      "skipped": 0,
+      "duration_us": 51020
+    },
+    "failures": [
+      {
+        "file": "test/harness/insights/selection_test.exs",
+        "name": "test an unavailable observer can be paused without changing its selection",
+        "message": "\n\nmatch (=) failed\ncode:  assert :ok = Insights.configure(Map.put(chosen, \"enabled\", false))\nleft:  :ok\nright: {:error, :model_unavailable}\n"
+      }
+    ]
+  },
+  "focused_after": {
+    "summary": {
+      "invalid": 0,
+      "total": 55,
+      "failed": 0,
+      "result": "passed",
+      "excluded": 17,
+      "passed": 38,
+      "skipped": 0,
+      "duration_us": 968387
+    },
+    "failures": []
+  },
+  "postgres": {
+    "summary": {
+      "invalid": 0,
+      "total": 12,
+      "failed": 1,
+      "result": "failed",
+      "excluded": 0,
+      "passed": 11,
+      "skipped": 0,
+      "duration_us": 765473
+    },
+    "failures": [
+      {
+        "file": "test/harness/insights/postgres_test.exs",
+        "name": "test live configured witness publishes and revises Postgres observations from collected run evidence",
+        "message": "no match of right hand side value:\n\n    {:error, {:agent_failed, 1, \"\"}}\n"
+      }
+    ]
+  },
+  "postgres_live_retry": {
+    "summary": {
+      "invalid": 0,
+      "total": 12,
+      "failed": 0,
+      "result": "passed",
+      "excluded": 11,
+      "passed": 1,
+      "skipped": 0,
+      "duration_us": 38571207
+    },
+    "failures": []
+  },
+  "full_gate": {
+    "summary": {
+      "duration_us": 424158025,
+      "excluded": 112,
+      "failed": 28,
+      "invalid": 0,
+      "passed": 2421,
+      "result": "failed",
+      "skipped": 0,
+      "total": 2561
+    },
+    "coverage": {
+      "covered_lines": 10733,
+      "threshold": 80.0,
+      "threshold_met": true,
+      "total_lines": 12779,
+      "total_percentage": 83.99
+    },
+    "seed": 776659
+  },
+  "note": "The Postgres run passed 11 database tests; its live Codex call failed under the local sandbox. The isolated live test passed outside that sandbox. Full gate ran before the audit fixes and is not green. Independent static second opinion checked landed behavior and the audit fixes."
+}

@@ -6,6 +6,7 @@ defmodule Harness.Dashboard.InsightsLiveTest do
   alias Harness.Insights.Evidence
   alias Harness.Insights.Publication
   alias Harness.Insights.Store
+  alias Harness.ModelAvailability
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
   alias Harness.SettingsStore
@@ -58,6 +59,20 @@ defmodule Harness.Dashboard.InsightsLiveTest do
     assert Insights.settings()["cadence_minutes"] == 15
     assert render(view) =~ "Ready to observe"
     assert render(settings) =~ "Observer settings saved"
+  end
+
+  test "paused settings save even when the selected model becomes unavailable", %{conn: conn} do
+    chosen = Map.put(Insights.settings(), "enabled", true)
+    assert :ok = Insights.configure(chosen)
+    assert :ok = ModelAvailability.record_block(:codex, chosen["model"], reason: "pause regression")
+    on_exit(fn -> ModelAvailability.clear_block(:codex, chosen["model"]) end)
+    {:ok, view, _} = live(conn, "/harness/insights/settings")
+
+    params = Map.merge(chosen, %{"enabled" => "false", "cadence_minutes" => "60"})
+    assert render_submit(view, "save", params) =~ "Observer settings saved"
+    refute Insights.settings()["enabled"]
+    assert Insights.settings()["model"] == chosen["model"]
+    assert {:error, :disabled} = Insights.observe_now()
   end
 
   test "project filtering, evidence navigation, revisions and escaped text", %{conn: conn} do

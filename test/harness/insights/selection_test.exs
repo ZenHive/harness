@@ -67,4 +67,15 @@ defmodule Harness.Insights.SelectionTest do
     assert Insights.settings() == chosen
     assert Insights.status()["selection_error"] == "agent_disabled"
   end
+
+  test "an unavailable observer can be paused without changing its selection" do
+    chosen = Map.put(Insights.settings(), "enabled", true)
+    assert :ok = Insights.configure(chosen)
+    assert :ok = ModelAvailability.record_block(:codex, chosen["model"], reason: "test")
+    assert :ok = Insights.configure(Map.put(chosen, "enabled", false))
+    assert Insights.settings() == Map.put(chosen, "enabled", false)
+    assert Insights.status()["next_pass"] == nil
+    assert {:error, :disabled} = Insights.observe_now()
+    assert {:error, :model_unavailable} = Insights.configure(chosen)
+  end
 end

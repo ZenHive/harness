@@ -48,13 +48,22 @@ defmodule Harness.Insights do
   @spec configure(map()) :: :ok | {:error, term()}
   def configure(%{"enabled" => enabled, "cadence_minutes" => cadence} = settings)
       when is_boolean(enabled) and cadence in [15, 60, 360, 1440] do
-    with :ok <- Selection.validate(settings),
+    with :ok <- validate_configuration(settings),
          :ok <- Store.put_many([{"settings", "settings", Map.take(settings, Map.keys(@defaults))}]) do
       broadcast()
     end
   end
 
   def configure(_), do: {:error, :invalid_settings}
+
+  @spec validate_configuration(map()) :: :ok | {:error, term()}
+  defp validate_configuration(%{"enabled" => false} = settings) do
+    if Map.take(settings, ["agent", "model"]) == Map.take(settings(), ["agent", "model"]),
+      do: :ok,
+      else: Selection.validate(settings)
+  end
+
+  defp validate_configuration(settings), do: Selection.validate(settings)
 
   api(:observe_now, "Enqueue a serialized advisory observation when enabled; never dispatches or edits repositories.",
     returns: %{type: :tuple, description: "{:ok, job_id} or {:error, reason}."}

@@ -1,12 +1,13 @@
 defmodule Harness.Test.InsightsEvidenceContract do
   @moduledoc false
-  defmacro __using__(_) do
+  defmacro __using__(opts) do
     quote do
       alias Harness.Insights
       alias Harness.Insights.Evidence
       alias Harness.Insights.Store
       alias Harness.ResultStore
 
+      @tag unquote(opts)
       test "structured reviewer concerns are available and concern-only updates reach the witness" do
         first = evidence_record(review_concerns: ["REVIEW_CONCERN_ALPHA"])
         :ok = ResultStore.record_run(first)
@@ -19,6 +20,7 @@ defmodule Harness.Test.InsightsEvidenceContract do
         assert Jason.encode!(changed["sources"]) =~ "REVIEW_CONCERN_BETA"
       end
 
+      @tag unquote(opts)
       test "an old relevant finding gets the changed evidence before it is consumed" do
         :ok =
           Store.put_many([
@@ -48,6 +50,7 @@ defmodule Harness.Test.InsightsEvidenceContract do
         assert Enum.any?(context["previous_findings"], &(&1["id"] == "old"))
       end
 
+      @tag unquote(opts)
       test "source marked available does not silently lose review report content" do
         :ok = ResultStore.record_run(evidence_record(review_report: String.duplicate("x", 5000) <> "TAIL_REVIEW_FINDING"))
         {:ok, batch} = Evidence.batch(%{})
@@ -56,6 +59,7 @@ defmodule Harness.Test.InsightsEvidenceContract do
         assert source["text"] =~ "TAIL_REVIEW_FINDING"
       end
 
+      @tag unquote(opts)
       test "all retained facts and changes beyond source excerpts remain observable" do
         report = String.duplicate("界", 9000) <> "BEYOND_EXCERPT_ALPHA"
 

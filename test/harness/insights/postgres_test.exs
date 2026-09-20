@@ -1,6 +1,6 @@
 defmodule Harness.Insights.PostgresTest do
   use Harness.DataCase, async: false
-  use Harness.Test.InsightsEvidenceContract
+  use Harness.Test.InsightsEvidenceContract, integration: true
 
   alias Harness.Insights
   alias Harness.Insights.Document
@@ -26,13 +26,6 @@ defmodule Harness.Insights.PostgresTest do
 
     old_repo = Application.get_env(:harness, :repo_enabled)
     old_store = Application.get_env(:harness, :result_store)
-    Application.put_env(:harness, :repo_enabled, true)
-    Application.put_env(:harness, :result_store, Harness.ResultStore.Postgres)
-    Application.put_env(:harness, :insights_witness, Harness.Test.InsightsWitness)
-    Application.put_env(:harness, :insights_test_owner, self())
-    ProjectRegistry.reset()
-    :ok = ProjectRegistry.register(ProjectFixture.from_repo("/tmp/insights-pg", name: "insights-pg"))
-    Repo.delete_all(Document)
 
     on_exit(fn ->
       Application.put_env(:harness, :repo_enabled, old_repo)
@@ -42,6 +35,14 @@ defmodule Harness.Insights.PostgresTest do
       Application.delete_env(:harness, :insights_test_response)
       ProjectRegistry.reset()
     end)
+
+    Application.put_env(:harness, :repo_enabled, true)
+    Application.put_env(:harness, :result_store, Harness.ResultStore.Postgres)
+    Application.put_env(:harness, :insights_witness, Harness.Test.InsightsWitness)
+    Application.put_env(:harness, :insights_test_owner, self())
+    ProjectRegistry.reset()
+    :ok = ProjectRegistry.register(ProjectFixture.from_repo("/tmp/insights-pg", name: "insights-pg"))
+    Repo.delete_all(Document)
 
     :ok = Insights.configure(Map.put(Insights.settings(), "enabled", true))
     :ok
