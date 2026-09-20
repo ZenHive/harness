@@ -13726,7 +13726,7 @@ scored_at = "2026-09-20"
 id = "443"
 phase = 24
 bundle = "operator-cockpit"
-status = "in_progress"
+status = "done"
 title = "Add Run Insights to observe runs and track recurring problems"
 scores = { d = 8, b = 8, u = 5 }
 acceptance_criteria = ["A real configured AI observes active and completed runs across projects, cites source evidence, and performs a later pass using previous findings; an independent reviewer checks the claims against the cited evidence rather than accepting agent self-report.", "A live-agent integration test is written before doubles and pins the observed invocation/output behavior, including a relevant real failure; missing credentials fail loudly with exact setup instructions. Observation access does not expose mutating Harness operations, and produced text/artifacts cannot trigger lifecycle or roadmap actions.", "Observation passes, findings and revision history survive restart in Postgres; repo_enabled:false is supported and visibly ephemeral. Cited excerpts survive source transcript expiry, with missing/truncated evidence explicitly reported.", "Disabled-by-default observation is independent of dispatch autonomy; hourly default, selectable cadence, explicit agent/model settings and Observe now work. Jobs are serialized, retried publication is idempotent, and successful progress advances only with committed observation results.", "Seven-day bootstrap and bounded incremental evidence retrieval cover active runs, completed runs and later review/recovery/landing/audit changes. AI revisits existing findings without procedural semantic classifiers. No-new-evidence, no-findings, partial and failed passes remain distinguishable.", "The MAIN NAVBAR includes Run Insights linking /harness/insights with subtitle AI observations across runs. Overview, project filters, latest-revision ordering and /harness/insights/:id revision/evidence views work; run detail links related findings and settings controls update live.", "Findings distinguish source facts from AI hypotheses and mark conclusions about active runs provisional. Proposed improvements remain advisory; a merged fix alone cannot count as resolved evidence. Later contradictory or recurring evidence can revise an existing finding.", "Context and LiveView tests cover persistence, revisions, restart progress, duplicate jobs, late audit updates, missing transcripts, malformed output, agent failure, absence of lifecycle/roadmap side effects, navbar/navigation, filters, evidence links, settings, manual observation and all empty/error states.", "Existing-module coverage meets repository tiers before mutation. Reviewer runs mix check.dispatch plus focused tests, records live evidence and durable logs, and verifies canonical driver documentation. The orchestrator runs mix precommit.full on the integrated landed base and propagates the driver skill."]
@@ -13747,9 +13747,16 @@ UI: add Run Insights to the MAIN NAVBAR linking /harness/insights, subtitle AI o
 
 Expose bounded Elixir/MCP status, manual observation, finding-list and finding-history operations; update the canonical harness-driver skill. Implementer verifies in its isolated worktree. The orchestrator owns installed-skill propagation and production activation through the existing root autodeployer; no production restart/recompile or enablement by the implementer.
 """
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1789874293559-3c333d34, 116d14607a8e9d78156f9c04e259284dfd8fbdf5)."
+delivered_by = "codex"
+verified = true
+verified_by = "cursor"
+verification_ref = "harness-run:run-1789874293559-3c333d34"
 created_at = "2026-09-20"
 started_at = "2026-09-20"
 scored_at = "2026-09-20"
+done_at = "2026-09-20"
+shipped_in = "116d14607a8e9d78156f9c04e259284dfd8fbdf5"
 
 [[task]]
 id = "444"
