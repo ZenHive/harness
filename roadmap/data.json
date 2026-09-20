@@ -18067,7 +18067,7 @@
       "domains": [
         "tooling"
       ],
-      "body": "Two separate documents — this repo's CLAUDE.md (\"Capture dispatch-gate output on the first run\") and the portfolio harness-workflow include (\"Capture dispatch-check output once, to a unique tmp log\") — instruct every agent to hand-roll LOG=$(mktemp -t ...) and report the path in the reviewer's checks entry. That is a convention standing in for a mechanism: it depends on each agent remembering, it produces prose instead of data, and it silently fails when an agent forgets and re-runs a verbose gate just to read it.\n\nSeparately, precommit.full runs harness.deps.check -> precommit -> ex_dna -> reach.check -> dialyzer.json strictly serially even though the last three are mutually independent, so the pre-PR gate is longer than it needs to be.\n\nIdea from DeepSeek Harness scripts/run-gates.ts: package scripts own the names, the runner owns the graph. Each gate carries {id, label, command, needs, allowFailure}, gates run under bounded in-process parallelism, and each gate's output is captured into its own chunk list instead of being interleaved. The transferable part is the declaration plus captured-log-per-gate plus status table; the closed Mode union and the npm-script plumbing are not.\n\n2026-09-20 scope refinement: The historical claim that the final three checks are independent is a hypothesis, not proof. Validate it before scheduling them together; any resource-driven serialization must be explicit in the graph. This is a check-invocation tool, never another harness verdict gate.\n\n2026-09-20 scope refinement: Score rationale: Captured check evidence is valuable; safe concurrency, cancellation and shared build state make the original D5 optimistic.\n",
+      "body": "Two separate documents — this repo's CLAUDE.md (\"Capture dispatch-gate output on the first run\") and the portfolio harness-workflow include (\"Capture dispatch-check output once, to a unique tmp log\") — instruct every agent to hand-roll LOG=$(mktemp -t ...) and report the path in the reviewer's checks entry. That is a convention standing in for a mechanism: it depends on each agent remembering, it produces prose instead of data, and it silently fails when an agent forgets and re-runs a verbose gate just to read it.\n\nSeparately, precommit.full runs harness.deps.check -> precommit -> ex_dna -> reach.check -> dialyzer.json strictly serially even though the last three are mutually independent, so the pre-PR gate is longer than it needs to be.\n\nIdea from DeepSeek Harness scripts/run-gates.ts: package scripts own the names, the runner owns the graph. Each gate carries {id, label, command, needs, allowFailure}, gates run under bounded in-process parallelism, and each gate's output is captured into its own chunk list instead of being interleaved. The transferable part is the declaration plus captured-log-per-gate plus status table; the closed Mode union and the npm-script plumbing are not.\n\n2026-09-20 scope refinement: The historical claim that the final three checks are independent is a hypothesis, not proof. Validate it before scheduling them together; any resource-driven serialization must be explicit in the graph. This is a check-invocation tool, never another harness verdict gate.\n\n2026-09-20 scope refinement: Score rationale: Captured check evidence is valuable; safe concurrency, cancellation and shared build state make the original D5 optimistic.\n\n\n2026-09-20 QA split: Tasks 447 (combined audit/full QA) and 448 (fleet rollout) own separating complete checks from focused dispatch. Retain this task scope; do not duplicate that work.",
       "created_at": "2026-08-23",
       "scored_at": "2026-09-20",
       "cross_repo": []
@@ -20764,7 +20764,7 @@
         "test/harness/",
         "skills/harness-driver/SKILL.md"
       ],
-      "body": "Deliver a recurring AI maintenance loop across individually enabled repositories, including its complete UI and durable roadmap publication. The operator requested automatic dependency updates, security fixes, refactoring, application performance improvements and faster tests, with outcomes visible in the dashboard. AI judges relevance, priority, semantic duplication and whether evidence justifies work; harness handles scheduling, isolation, persistence, limits and publication. A sweep may correctly produce no tasks. Score rationale: this adds the requested fleet-wide improvement capability; isolated analysis, durable publication and autonomous operation make it substantial work.\n\nApproved decisions: opt-in per repository; weekly default with configurable cadence and Sweep now; explicit agent/model settings; automatic task publication under each repository's existing dispatch and landing policies. Cap unfinished maintenance tasks at three per repository, including pending, running and blocked work. Retain additional findings for later reassessment rather than growing the backlog. Allow major upgrades and breaking changes with explicit migration scope and consumer verification; establish coordinated cross-repository changes before dispatch, and expose unavailable consumers or credentials as blockers. Do not switch models automatically when new models appear.\n\nInspect a fresh isolated checkout of the current target revision, repository instructions, current roadmap, dependency-freshness facts, suite-health evidence and previous findings. Use current provider-owned docs and advisories, including accessible private repository advisories; unavailable evidence is not a clean result. Keep undisclosed vulnerability details out of public roadmap entries and git history. Performance tasks require comparable before/after measurements. Faster-test tasks preserve assertions, coverage and real integration checks. Refactor tasks name concrete simplification and behavior-preservation criteria. Newer-model suggestions are hypotheses to verify. Later sweeps reassess findings against delivery evidence; a merge alone is not proof of improvement.\n\nPersist passes, findings, assessment revisions, publication identities, source revision and agent/model in Postgres, following existing visibly ephemeral repo_enabled:false behavior. Serialize sweeps on a dedicated queue with a configurable 30-minute deadline per repository. Analyze isolated checkouts without mutating the operator's tree or delivering code directly. Publish selected tasks through the existing durable roadmap writeback boundary. Re-read the current roadmap before publication: AI reconciles existing tasks and findings, while mechanical idempotency prevents duplicates after retries or crashes. Unknown roadmap/history state stops publication visibly. Generated tasks carry D/B/U scores, explicit live routing/model pins, accurate write sets and independently verifiable criteria; they use the existing recovery-aware implement/review/land workflow.\n\nUI: add Maintenance to the main navigation, separate from Run Insights. The fleet overview shows opted-in repos, current progress, next sweep, last result and outstanding maintenance tasks. Repository detail shows findings, evidence, AI rationale and linked task implementation/review/landing state. Finding detail shows chronological assessments, evidence, proposed improvement and verified outcomes, including before/after measurements where applicable. Settings expose per-repo enablement, cadence, explicit agent/model and Sweep now. Distinguish disabled, queued, running, successful/no findings, partial evidence and failed states. Match the existing design system and update through LiveView. Expose equivalent bounded Elixir/MCP controls, status and finding-history operations.\n\nReuse completed dependency-freshness Tasks 331/336/341/342 (the inspected DepFreshness and DepFreshnessPoller capture facts rather than automatically updating dependencies). Keep Task 443 Run Insights advisory/read-only and reuse its landed surfaces where appropriate without granting it mutation authority. Task 394 owns the gate runner; do not duplicate it. Include task-publication recovery in this feature; do not assume the pending Task 386 already guarantees it. Existing-module coverage must meet repository tiers before mutation. Write real-agent integration coverage before doubles; independent reviewer verifies evidence and operation boundaries, not implementer self-report. Update canonical driver documentation. Orchestrator owns full integrated checks, installed-skill propagation and production activation through the existing autodeployer; implementers never restart production or enable maintenance there.\n\nOperator instruction 2026-09-20: file this task but DO NOT DISPATCH YET. Leave pending for a later explicit dispatch instruction. Harness project cron was disabled when this task was filed; this note is an operator hold, not permission to dispatch automatically.\n",
+      "body": "Deliver a recurring AI maintenance loop across individually enabled repositories, including its complete UI and durable roadmap publication. The operator requested automatic dependency updates, security fixes, refactoring, application performance improvements and faster tests, with outcomes visible in the dashboard. AI judges relevance, priority, semantic duplication and whether evidence justifies work; harness handles scheduling, isolation, persistence, limits and publication. A sweep may correctly produce no tasks. Score rationale: this adds the requested fleet-wide improvement capability; isolated analysis, durable publication and autonomous operation make it substantial work.\n\nApproved decisions: opt-in per repository; weekly default with configurable cadence and Sweep now; explicit agent/model settings; automatic task publication under each repository's existing dispatch and landing policies. Cap unfinished maintenance tasks at three per repository, including pending, running and blocked work. Retain additional findings for later reassessment rather than growing the backlog. Allow major upgrades and breaking changes with explicit migration scope and consumer verification; establish coordinated cross-repository changes before dispatch, and expose unavailable consumers or credentials as blockers. Do not switch models automatically when new models appear.\n\nInspect a fresh isolated checkout of the current target revision, repository instructions, current roadmap, dependency-freshness facts, suite-health evidence and previous findings. Use current provider-owned docs and advisories, including accessible private repository advisories; unavailable evidence is not a clean result. Keep undisclosed vulnerability details out of public roadmap entries and git history. Performance tasks require comparable before/after measurements. Faster-test tasks preserve assertions, coverage and real integration checks. Refactor tasks name concrete simplification and behavior-preservation criteria. Newer-model suggestions are hypotheses to verify. Later sweeps reassess findings against delivery evidence; a merge alone is not proof of improvement.\n\nPersist passes, findings, assessment revisions, publication identities, source revision and agent/model in Postgres, following existing visibly ephemeral repo_enabled:false behavior. Serialize sweeps on a dedicated queue with a configurable 30-minute deadline per repository. Analyze isolated checkouts without mutating the operator's tree or delivering code directly. Publish selected tasks through the existing durable roadmap writeback boundary. Re-read the current roadmap before publication: AI reconciles existing tasks and findings, while mechanical idempotency prevents duplicates after retries or crashes. Unknown roadmap/history state stops publication visibly. Generated tasks carry D/B/U scores, explicit live routing/model pins, accurate write sets and independently verifiable criteria; they use the existing recovery-aware implement/review/land workflow.\n\nUI: add Maintenance to the main navigation, separate from Run Insights. The fleet overview shows opted-in repos, current progress, next sweep, last result and outstanding maintenance tasks. Repository detail shows findings, evidence, AI rationale and linked task implementation/review/landing state. Finding detail shows chronological assessments, evidence, proposed improvement and verified outcomes, including before/after measurements where applicable. Settings expose per-repo enablement, cadence, explicit agent/model and Sweep now. Distinguish disabled, queued, running, successful/no findings, partial evidence and failed states. Match the existing design system and update through LiveView. Expose equivalent bounded Elixir/MCP controls, status and finding-history operations.\n\nReuse completed dependency-freshness Tasks 331/336/341/342 (the inspected DepFreshness and DepFreshnessPoller capture facts rather than automatically updating dependencies). Keep Task 443 Run Insights advisory/read-only and reuse its landed surfaces where appropriate without granting it mutation authority. Task 394 owns the gate runner; do not duplicate it. Include task-publication recovery in this feature; do not assume the pending Task 386 already guarantees it. Existing-module coverage must meet repository tiers before mutation. Write real-agent integration coverage before doubles; independent reviewer verifies evidence and operation boundaries, not implementer self-report. Update canonical driver documentation. Orchestrator owns full integrated checks, installed-skill propagation and production activation through the existing autodeployer; implementers never restart production or enable maintenance there.\n\nOperator instruction 2026-09-20: file this task but DO NOT DISPATCH YET. Leave pending for a later explicit dispatch instruction. Harness project cron was disabled when this task was filed; this note is an operator hold, not permission to dispatch automatically.\n\n\n2026-09-20 QA split: Tasks 447 (combined audit/full QA) and 448 (fleet rollout) own separating complete checks from focused dispatch. Retain this task scope; do not duplicate that work.",
       "created_at": "2026-09-20",
       "started_at": "2026-09-20",
       "scored_at": "2026-09-20",
@@ -20872,6 +20872,107 @@
       "verified": true,
       "verified_by": "cursor",
       "verification_ref": "harness-run:run-1789879093180-a8bf2087",
+      "cross_repo": []
+    },
+    {
+      "id": "447",
+      "phase": 24,
+      "bundle": "audit-agent",
+      "status": "pending",
+      "title": "Extend post-merge audit into durable full-project QA independent of dispatch checks",
+      "scores": {
+        "d": 7,
+        "b": 9,
+        "u": 8
+      },
+      "eff": 1.21,
+      "dep_layer": 0,
+      "unlocks": 1,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-6-astra",
+      "acceptance_criteria": [
+        "Persist a separate qa_command beside check_command through project registry, settings UI and public driver APIs. Existing projects retain current behavior until explicitly migrated.",
+        "Reuse the audit worker and pending-job coalescing. The audit AI performs hygiene review AND every configured full-project check on an exact integrated SHA/range. Harness persists facts; AI judges output.",
+        "Persist project, revision, agent/model, commands, durable evidence and honest queued/running/passed/failed/incomplete states, exposed in dashboard and bounded MCP/Elixir interfaces. Missing reports, unavailable prerequisites and interrupted agents never mean passed.",
+        "New lands during QA get a subsequent pass; restart, duplicate jobs and failed attempts preserve pending work without advancing successful QA progress. Coalesced evidence covers every included landing, including clean audits.",
+        "QA is non-blocking after landing: no deployment gate, revert or restart. Failures are witnessed and enter AI-owned repair with semantic dedupe. Substantial refactors use normal implementation and independent review; undisclosed vulnerability details stay private.",
+        "A real audit agent checks a disposable repository successfully and reports a deliberately failing check. Write live integration evidence before doubles; reviewer independently verifies commands, revision and outcomes. Missing credentials fail loudly.",
+        "Tests cover settings/UI, persistence, compatibility, command separation, concurrent lands, coalescing, restart, duplicates and failed/missing artifacts. Meet module coverage tiers before mutation; update canonical driver/workflow docs. Orchestrator owns skill propagation and activation."
+      ],
+      "out_of_scope": [
+        "Deployment/landing gates or production restart/recompile",
+        "Dispatching held maintenance Task 444",
+        "Replacing Task 394 gate-runner mechanics"
+      ],
+      "touches": [
+        "lib/harness/audit.ex",
+        "lib/harness/audit/",
+        "lib/harness/project.ex",
+        "lib/harness/project_registry/",
+        "lib/harness/dispatch/",
+        "lib/harness/dashboard/",
+        "lib/harness/result_store/",
+        "priv/repo/migrations/",
+        "test/harness/",
+        "skills/harness-driver/SKILL.md",
+        "priv/includes/harness-workflow.md"
+      ],
+      "body": "Approved 2026-09-20: existing audit becomes combined audit/QA for ALL complete project checks after accepted runs land; landing/deployment never wait. Full suites, coverage, Dialyzer, Reach, Sobelow, Credo, Doctor and clone checks belong here where applicable. All projects including aave_sim follow the same rule: no mandatory full Dialyzer per implementation/review. Focused tests and risk-relevant security/live verification remain with the independent reviewer. Current Audit.audit_prompt uses project.check_command for cold checks; Audit.Worker coalesces waiting jobs. Extend these mechanisms, not a competing QA loop. Task 394 owns runner mechanics and Task 444 periodic maintenance/refactor discovery. Do not switch production check settings in the implementer. D7 reflects durable lifecycle/UI/API work; B9 is the requested reduction of repeated full checks while retaining integrated QA.",
+      "created_at": "2026-09-20",
+      "scored_at": "2026-09-20",
+      "cross_repo": []
+    },
+    {
+      "id": "448",
+      "phase": 24,
+      "bundle": "audit-agent",
+      "status": "pending",
+      "title": "Roll out focused dispatch checks and full audit QA across all registered projects",
+      "scores": {
+        "d": 6,
+        "b": 8,
+        "u": 7
+      },
+      "eff": 1.25,
+      "dep_layer": 1,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [
+        447
+      ],
+      "assignee": "cursor",
+      "model": "cursor-grok-4.6-high",
+      "acceptance_criteria": [
+        "Inventory actual aliases, hooks, agent instructions and persisted settings for all 16 registered projects, including Rust rmap, TypeScript ccxt-distill and all onchain_stack packages; record exact before/after command mappings.",
+        "Implementer/reviewer retain formatting, compilation, focused behavior tests and risk-relevant security/live verification. Full suites, coverage, Dialyzer, Reach, Sobelow, Credo, Doctor and clone checks belong in audit QA where applicable. Preserve assertions, thresholds and required live integration evidence.",
+        "aave_sim has no mandatory full Dialyzer exception before approval: its full Dialyzer belongs in QA. onchain_stack dispatch follows touched packages while QA covers the entire project; Rust/TypeScript use actual native commands.",
+        "Remove contradictory repeated full-gate requirements from affected aliases/hooks/instructions; synchronize canonical workflow/driver docs and generated AGENTS. Settings-only edits cannot establish completion.",
+        "Deliver explicit operator-invoked idempotent rollout tooling/contracts with prior-settings capture and per-project readback. Switch dispatch requirements only after deployed QA support and an evidenced complete QA pass for that project; failed activation visibly retains prior checks.",
+        "Consumer changes use each repo normal independent review/landing; no sibling live-checkout mutation from this harness run. The orchestrator coordinates fleet deliveries and persisted settings after tooling lands. Preserve landing/deployment policies, concurrency, models and Task 444 hold.",
+        "Tests verify command separation, project-specific requirements, idempotency, rollback/retention on failure and readback. Report unavailable projects honestly; update write sets before any consumer dispatch.",
+        "Inventory and change actual active plugin/hook configurations, including inherited user, project, adapter and installed marketplace settings, not just prompts. Disable automatically enforced full gates for implementer/reviewer seats and retain complete audit QA checks. Verify real spawned runs cannot silently re-enable the old gates; provide durable installation/update propagation and preserve unrelated safety hooks."
+      ],
+      "out_of_scope": [
+        "Reimplementing Task 447 audit QA lifecycle",
+        "Task 394 gate runner",
+        "Dispatching held Task 444",
+        "Production restart/recompile or deployment gates"
+      ],
+      "touches": [
+        "mix.exs",
+        "priv/includes/harness-workflow.md",
+        "skills/harness-driver/SKILL.md",
+        "CLAUDE.md",
+        "AGENTS.md",
+        "lib/mix/tasks/",
+        "test/mix/tasks/",
+        "priv/"
+      ],
+      "body": "Operator-approved 2026-09-20: all 16 projects, not only Elixir, adopt focused dispatch and complete post-land audit QA. aave_sim explicitly has no full-Dialyzer-before-approval exception. Current live inventory: twelve mix check.dispatch projects, aave_sim full-precommit plus Dialyzer hint, onchain_stack per-package hint, ccxt-distill npm run check, rmap fmt/clippy/test. Re-read actual commands and live settings before rollout. Task 447 provides the prerequisite QA contract. Deliver reusable adoption tooling/contracts here; orchestrator owns consumer reviewer-gated changes and actual fleet activation after landing. Never reduce current checks before replacement QA is demonstrated. Task 394 retains runner mechanics; Task 444 retains periodic maintenance/refactor discovery and its explicit hold. D6 reflects fleet/hooks/instruction consistency; B8 reflects removing redundant complete checks across the requested portfolio.",
+      "created_at": "2026-09-20",
+      "scored_at": "2026-09-20",
       "cross_repo": []
     }
   ]
