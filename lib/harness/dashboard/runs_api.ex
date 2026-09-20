@@ -4,9 +4,9 @@ defmodule Harness.Dashboard.RunsAPI do
   scripts that must not restart the node while work is in flight.
 
   Oban is the wrong oracle for that question: a run's job is not the run.
-  `dispatch-resume_failed` never had a job; a held run can outlive Lifeline's
-  age bound (configured lifetime plus a five-minute margin); exhausted jobs are
-  discarded rather than left `executing`. The run registry is the only source of
+  Direct API runs may have no job, and exhausted orphan jobs are discarded
+  rather than left `executing`. Lifeline protects registered local runs even
+  beyond its age bound. The run registry is the only source of
   truth, and this endpoint exposes it mechanically — every registered
   `Harness.Run` status, with `in_flight` counting the ones not yet settled.
 

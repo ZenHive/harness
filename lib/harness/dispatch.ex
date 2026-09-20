@@ -567,8 +567,7 @@ defmodule Harness.Dispatch do
 
   @doc "Approves the exact parked generation displayed to an operator."
   @spec approve(String.t(), DateTime.t() | nil) :: {:ok, map()} | {:error, term()}
-  def approve(pending_id, parked_at) when is_binary(pending_id),
-    do: Admin.approve(pending_id, parked_at)
+  def approve(pending_id, parked_at) when is_binary(pending_id), do: Admin.approve(pending_id, parked_at)
 
   # --- Project registration over JSON ---
   #

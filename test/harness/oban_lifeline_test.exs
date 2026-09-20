@@ -4,12 +4,13 @@ defmodule Harness.ObanLifelineTest do
   alias Ecto.Adapters.SQL.Sandbox
   alias Harness.AgentAdapter.Capabilities
   alias Harness.Config
+  alias Harness.Dashboard.RunFeed
   alias Harness.GitFixture
   alias Harness.Oban, as: HarnessOban
+  alias Harness.Oban.Lifeline
   alias Harness.ProjectFixture
   alias Harness.Run.Supervisor, as: RunSupervisor
   alias Harness.Run.Worker
-  alias Oban.Lifeline
 
   defmodule BlockingAdapter do
     @moduledoc false
@@ -29,7 +30,7 @@ defmodule Harness.ObanLifelineTest do
       send(Keyword.fetch!(invocation.adapter_opts, :owner), {:adapter_waiting, self()})
 
       receive do
-        :release -> {:ok, {"/bin/true", [], []}}
+        :release -> {:ok, {"/bin/sleep", ["60"], []}}
       end
     end
   end
@@ -90,6 +91,10 @@ defmodule Harness.ObanLifelineTest do
         executing!(worker.new(%{run_id: "abandoned"}, queue: queue), now, bound + 1_000)
       end
 
+    legacy = executing!(Worker.new(%{}), now, bound + 1_000)
+    exhausted = executing!(Worker.new(%{run_id: "exhausted"}, max_attempts: 1), now, bound + 1_000)
+    audit = executing!(Harness.Audit.Worker.new(%{run_id: run_id}), now, bound + 1_000)
+
     plugin = Oban.Registry.whereis(__MODULE__, {:plugin, Lifeline})
     assert is_pid(plugin)
     assert Oban.Peer.leader?(Oban.config(__MODULE__))
@@ -104,10 +109,38 @@ defmodule Harness.ObanLifelineTest do
       assert %{state: "available", attempt: 1} = Harness.Repo.reload!(job)
     end
 
+    assert %{state: "available"} = Harness.Repo.reload!(legacy)
+    assert %{state: "available"} = Harness.Repo.reload!(audit)
+    assert %{state: "discarded", discarded_at: %DateTime{}} = Harness.Repo.reload!(exhausted)
+
     # The original row still owns the unique identity after a real rescue tick.
     duplicate = Oban.insert!(__MODULE__, Worker.new(args, queue: live.queue, unique: Worker.unique_opts()))
     assert duplicate.conflict?
     assert duplicate.id == live.id
+
+    # Holds suspend the lifetime and resume grants a new budget. The original
+    # attempt must remain anchored even beyond Lifeline's normal age limit.
+    live =
+      live
+      |> Ecto.Changeset.change(attempted_at: DateTime.add(now, -(bound + 1_000), :millisecond))
+      |> Harness.Repo.update!()
+
+    :ok = RunFeed.subscribe()
+    assert :ok = Harness.Run.hold(run_id, true)
+    send(adapter_pid, :release)
+    assert_receive {:harness_run_update, %{run_id: ^run_id, state: :held}}, 10_000
+    assert {:ok, %{state: :held}} = Harness.Run.status(run_id)
+    send(plugin, :rescue)
+    :sys.get_state(plugin)
+    assert %{state: "executing", attempt: 1, attempted_at: attempted_at} = Harness.Repo.reload!(live)
+    assert attempted_at == live.attempted_at
+
+    assert :ok = Harness.Run.resume(run_id)
+    assert_receive {:adapter_waiting, resumed_adapter}, 10_000
+    assert Process.alive?(resumed_adapter)
+    send(plugin, :rescue)
+    :sys.get_state(plugin)
+    assert %{state: "executing", attempt: 1} = Harness.Repo.reload!(live)
 
     assert :ok = HarnessOban.rescue_orphaned_run_jobs()
     assert %{state: "executing"} = Harness.Repo.reload!(live)
@@ -122,7 +155,8 @@ defmodule Harness.ObanLifelineTest do
     end
 
     refute run_id in RunSupervisor.list_runs()
-    assert :ok = HarnessOban.rescue_orphaned_run_jobs()
+    send(plugin, :rescue)
+    :sys.get_state(plugin)
     assert %{state: "available", attempt: 1} = Harness.Repo.reload!(live)
   end
 

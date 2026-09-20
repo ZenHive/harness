@@ -15,6 +15,7 @@ defmodule Harness.ObanDispatchTest do
   alias Harness.GitFixture
   alias Harness.Lander.Worker, as: LanderWorker
   alias Harness.Oban, as: HarnessOban
+  alias Harness.Oban.Lifeline
   alias Harness.Project
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
@@ -27,7 +28,6 @@ defmodule Harness.ObanDispatchTest do
   alias Harness.Run.Supervisor, as: RunSupervisor
   alias Harness.Run.Worker
   alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
-  alias Oban.Lifeline
   alias Oban.Notifiers.Isolated
 
   @lifeline_rescue_after_ms to_timeout(second: 5)
@@ -1349,7 +1349,9 @@ defmodule Harness.ObanDispatchTest do
     test "an old explicit Lifeline window cannot override the run lifetime bound" do
       previous = Application.get_env(:harness, Oban)
       on_exit(fn -> Application.put_env(:harness, Oban, previous) end)
-      Application.put_env(:harness, Oban, plugins: [{Lifeline, rescue_after: 1_000}])
+      Application.put_env(:harness, Oban, plugins: [{Oban.Lifeline, rescue_after: 1_000}])
+
+      refute Keyword.has_key?(HarnessOban.oban_opts()[:plugins], Oban.Lifeline)
 
       assert HarnessOban.oban_opts()[:plugins][Lifeline][:rescue_after] ==
                HarnessOban.lifeline_rescue_after()

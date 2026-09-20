@@ -104,6 +104,7 @@ defmodule Harness.MixProject do
         :peri,
         :ecto,
         :db_connection,
+        :telemetry,
         :phoenix,
         :phoenix_live_view,
         :phoenix_pubsub,

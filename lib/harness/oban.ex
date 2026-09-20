@@ -6,8 +6,9 @@ defmodule Harness.Oban do
   each queue's local limit independently, so total local concurrency is the sum
   of all project queue limits.
 
-  Oban 2.24 Lifeline checks job age, without queue or process-liveness filters.
-  Lifeline rescues executing jobs after the configured run lifetime plus five
+  Harness.Oban.Lifeline excludes dispatches owned by registered local runs,
+  including held/resumed runs whose total age can exceed the lifetime budget.
+  It rescues unowned executing jobs after the configured run lifetime plus five
   minutes for setup and settlement. Its one-minute polling interval gives an
   abandoned job a rescue bound of lifetime + six minutes from attempted_at,
   while the database and elected Oban peer are available. The default is 96
@@ -29,9 +30,9 @@ defmodule Harness.Oban do
   alias Harness.Cron.RoadmapPoller
   alias Harness.Cron.SuiteHealthPoller
   alias Harness.Lander.PRPoller
+  alias Harness.Oban.Lifeline
   alias Harness.Project
   alias Harness.ProjectRegistry
-  alias Oban.Lifeline
 
   @default_queue_limit 1
   @lifeline_margin_ms to_timeout(minute: 5)
@@ -446,6 +447,7 @@ defmodule Harness.Oban do
       plugins when is_list(plugins) ->
         plugins
         |> Keyword.delete(Oban.Plugins.Lifeline)
+        |> Keyword.delete(Oban.Lifeline)
         |> Keyword.put(Lifeline, rescue_after: rescue_after)
 
       _other ->

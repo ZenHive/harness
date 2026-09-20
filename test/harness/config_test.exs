@@ -336,6 +336,6 @@ defmodule Harness.ConfigTest do
   defp restore(key, value), do: Application.put_env(:harness, key, value)
 
   defp rescue_bound do
-    Harness.Oban.oban_opts()[:plugins][Oban.Lifeline][:rescue_after]
+    Harness.Oban.oban_opts()[:plugins][Harness.Oban.Lifeline][:rescue_after]
   end
 end
