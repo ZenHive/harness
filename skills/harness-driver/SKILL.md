@@ -135,7 +135,7 @@ For every dispatched task, the cross-family reviewer AI's verdict — not the im
 | `dispatch-status` | Live snapshot of an in-flight (or 5s-lingering) run by `run_id`: state, review verdict so far, agent pid. |
 | `dispatch-transcript` / `dispatch-transcript_events` | Buffered raw / parsed transcript for a live run, with a `seq` to poll deltas. |
 | `dispatch-cancel` | Cancel an in-flight run (idempotent). |
-| `dispatch-hold` / `dispatch-steer` / `dispatch-resume` | Operator-mediated run recovery by `run_id`: park a run (`hold`, `interrupt:` to kill the agent now), stash guidance for the next agent boundary (`steer`), re-enter `:running` in the same worktree (`resume`). The JSON-native counterparts to `Harness.Run.hold/2` · `steer/2` · `resume/1`. |
+| `dispatch-hold` / `dispatch-steer` / `dispatch-resume` | Operator-mediated run recovery by `run_id`: park a run (`hold`, `interrupt:` to kill the agent now), stash guidance for the next agent boundary (`steer`), re-enter `:running` in the same worktree (`resume`). The JSON-native counterparts to `Harness.Run.hold/2` · `steer/2` · `resume/1`. The same `steer` + `resume` pair answers an implementer question-hold (see § "Implementer question channel"). |
 | `dispatch-rereview` | Queue a reviewer-only run from a retained, validated commit. No implementer runs; stale selections fail visibly instead of starting fresh. |
 | `dispatch-resume_failed` | Recover a SETTLED `:failed` run by `run_id`: re-dispatch its roadmap task on a NEW run branched off the retained `harness/<run-id>` branch (prior commits are the start point) with the failure report injected. Same agent by default; `escalate: true` routes via capability score to the recommended agent. DISTINCT from `dispatch-resume` (which un-pauses a live `:held` run). |
 | `dispatch-reland` | Re-enqueue the landing job for a run whose land-train hit its cap and left the task `blocked`. Pure git, reviewer-approved branch — **zero agent tokens**. `Harness.Dispatch.reland/1` → `Harness.Lander.enqueue/1`. |
@@ -159,6 +159,29 @@ For every dispatched task, the cross-family reviewer AI's verdict — not the im
 **Anti-staleness contract:** before relying on a remembered tool shape, call `describe-tools` to see the live catalog and `describe-tool` for one tool's params/returns. This is the MCP-visible source of truth for chat/project_eval drivers that cannot see protocol-level `tools/list`.
 
 **Live recovery loop — hold → steer → resume.** `dispatch-steer` is async: it only stashes a note for the next agent boundary. It does not interrupt a continuous live turn, so steer alone will not reach an agent that is grinding inside the same attempt. To redirect a live turn, call `dispatch-hold` with `interrupt: true`, then `dispatch-steer` with the new instruction, then `dispatch-resume`. For an implementer over-grinding the gate (for example, repeatedly rerunning `mix check.dispatch` trying to make it green before committing), the operator move is force-handoff: hold/interruption → steer "commit your work and hand off; you do not need to green the dispatch check" → resume. The cross-family reviewer runs the gate and can fix checks inline, so the implementer does not need to pass the gate before handing off. This is operator use of existing mechanical primitives, not new harness judgment.
+
+**Implementer question channel — park via `.harness/question.json`, answer via steer + resume.** A headless implementer that hits genuinely ambiguous acceptance criteria writes `.harness/question.json` and ends its invocation. Harness reads the file mechanically at the agent-invocation boundary (same pattern as `review.json` / `recovery.json`): a well-formed, identity-fenced artifact parks the run in `:held` with `hold_reason: :question` and emits a `:question` witness event carrying the question string verbatim. Anything else (missing, empty, malformed, stale identity, already-consumed) is ignored-and-logged and the run proceeds to commit/review. There is no classifier, regex, or content-branch on the question text.
+
+Schema (injected into agent rules so no consumer-repo setup is required):
+
+```json
+{
+  "question": "<the ambiguity, as a string>",
+  "context": "<optional extra prose>",
+  "run_id": "<$HARNESS_RUN_ID>",
+  "invocation": "<$HARNESS_IMPLEMENTER_ATTEMPT>"
+}
+```
+
+Identity is `run_id` + `invocation`. Consumption is the sidecar `.harness/question-state.json` (pending/answered/consumed ids) plus an archive under `.harness/questions/` — harness does not delete `question.json` by convention. A leftover file cannot park the next invocation; a later genuine question with a new identity can.
+
+Answer path reuses existing primitives: `dispatch-steer` with the answer text, then `dispatch-resume`. Resume of a question-held run requires a non-empty steer (`{:error, :answer_required}` otherwise) and injects question + answer into the re-invoked agent's prompt. It does **not** re-arm a fresh lifetime budget.
+
+**Timeout policy (deliberate):** question-held time stays inside the existing `lifetime_timeout`. The timer is not suspended (unlike operator hold). Expiry settles `:timed_out` with the worktree retained — recoverable via `dispatch-resume_failed` / inspect, not an ambient new timeout. `max_hold_timeout` (`:hold_expired`) remains operator-hold only.
+
+**Recovery boundary:** the sidecar lives in the run worktree. A gen_statem crash while `:held` still settles `:failed` (`{:run_crashed, ...}`) like any other held crash; the retained worktree keeps pending/consumed facts and the notified flag, so a same-process re-read cannot duplicate the witness. A new run has a new worktree and a new `run_id`, so state cannot leak across runs. This is not resurrection of a live `:held` process.
+
+This is an escape hatch, not a substitute for well-written tasks. Reviewer and audit questions are out of scope (reviewer already has `concerns`).
 
 `project_eval` is deliberately **not** on this surface — it's the escape hatch (next section), reached for only when you need arbitrary eval or one of the struct-passing ops the flat tools omit (`supervisor-start_run`, `batch-*`, `agent_evaluation-compare`, `audit_review-grade_fix_with`). The Manifest's `:exchange_data` filter is what keeps those off the JSON surface; the flat wrappers above are the JSON-native way around it. For the full descripex/MCP mechanics, see § "Driving via Chat / MCP".
 
@@ -638,6 +661,7 @@ Changes that require an update to this skill:
 - Changes to the MCP transport (`/harness/mcp` path, JSON-RPC envelope, tool naming, `Harness.Chat.Tools` registry shape)
 - Additional MCP backends beyond `Harness.Chat.Claude` (if/when a library-backed metered-API backend lands as an opt-in)
 - New or changed `Harness.Playbooks` (catalog entries, `priv/playbooks/*.md` recipes that drift from the actual tool surface, or the `list/0` / `get/1` shapes)
+- New or changed implementer question-channel protocol (`.harness/question.json` schema, identity fence, sidecar consumption, timeout policy, or the steer/resume answer path)
 
 **How this skill reaches the orchestrator's context.**
 

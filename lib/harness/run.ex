@@ -16,7 +16,10 @@ defmodule Harness.Run do
       recovering   — bounded AI recovery for witnessed checkout pollution
       reviewing   — the cross-family reviewer (THE gate) reviews, runs the
                     project's checks itself, fixes inline, writes its verdict
-      held        — operator-parked; worktree retained, lifetime timer suspended
+      held        — parked; worktree retained. Operator hold (`:graceful` /
+                    `:interrupt`) suspends the lifetime timer; an implementer
+                    question hold (`:question`) keeps the existing lifetime
+                    budget running, so unanswered wait counts toward expiry.
       done        — the reviewer approved (terminal)
       failed      — anything else (terminal)
 
@@ -54,10 +57,18 @@ defmodule Harness.Run do
 
   `hold/1` parks a live run in `:held` so an operator can co-drive the worktree.
   Graceful hold waits for the current agent attempt to finish; `hold/2` with
-  `interrupt: true` kills the agent immediately. `steer/2` stashes operator
-  guidance for the next boundary; `resume/1` re-enters `:running` with a
-  session-resume invocation in the same worktree. Steering requires
-  `capabilities.session_resume` on the adapter.
+  `interrupt: true` kills the agent immediately. An implementer may also park
+  the run by writing `.harness/question.json` — harness reads that artifact
+  mechanically at the invocation boundary, holds with `hold_reason: :question`,
+  and notifies configured sinks. `steer/2` stashes operator guidance (the
+  question answer) for the next boundary; `resume/1` re-enters `:running` with
+  a session-resume invocation in the same worktree. Question-held resume
+  requires a non-empty steer answer (`{:error, :answer_required}` otherwise).
+  Steering requires `capabilities.session_resume` on the adapter.
+
+  Question-held time is inside the existing lifetime budget — the timer is
+  **not** suspended — and expiry settles `:timed_out` (recoverable, worktree
+  retained). Operator hold still suspends the lifetime timer as before.
 
   ## Cancellation & timeout
 
@@ -174,8 +185,11 @@ defmodule Harness.Run do
            review_only_agent_diff_size: non_neg_integer() | nil,
            implementer_empty_diff?: boolean(),
            hold_requested: false | :graceful | :interrupt,
-           hold_reason: :graceful | :interrupt | nil,
+           hold_reason: :graceful | :interrupt | :question | nil,
            operator_feedback: String.t() | nil,
+           pending_question: Harness.Run.Question.t() | nil,
+           consumed_question_ids: [String.t()],
+           implementer_attempt: non_neg_integer(),
            in_run_discernment: keyword(),
            substrate_retry: keyword(),
            base_dir: String.t() | nil,
@@ -414,11 +428,11 @@ defmodule Harness.Run do
     ],
     returns: %{
       type: :tuple,
-      description: ":ok | {:error, :not_held} | {:error, :not_found}"
+      description: ":ok | {:error, :not_held} | {:error, :answer_required} | {:error, :not_found}"
     }
   )
 
-  @spec resume(run()) :: :ok | {:error, :not_held | :not_found}
+  @spec resume(run()) :: :ok | {:error, :not_held | :answer_required | :not_found}
   def resume(run) do
     case resolve(run) do
       {:ok, pid} -> :gen_statem.call(pid, :resume)
@@ -509,6 +523,9 @@ defmodule Harness.Run do
       hold_requested: false,
       hold_reason: nil,
       operator_feedback: nil,
+      pending_question: nil,
+      consumed_question_ids: [],
+      implementer_attempt: 0,
       in_run_discernment: RunDiscernment.in_run_discernment_opts(opts),
       substrate_retry: Keyword.get(opts, :substrate_retry, []),
       base_dir: Keyword.get(opts, :base_dir),

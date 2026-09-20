@@ -11,6 +11,7 @@ defmodule Harness.Run.Actions do
 
   alias Harness.AgentAdapter.Outcome
   alias Harness.Dashboard.Transcript
+  alias Harness.Run.Question
   alias Harness.Run.TranscriptSnapshot
 
   @recoverable_code_reload_states [:reviewing, :recovering, :held]
@@ -116,7 +117,8 @@ defmodule Harness.Run.Actions do
 
   def handle_common({:call, from}, {:steer, text}, state, data) when state in [:running, :held] do
     if session_resume_supported?(data) do
-      {:keep_state, apply_steer(data, text), [{:reply, from, :ok}]}
+      data = data |> apply_steer(text) |> maybe_record_question_answer()
+      {:keep_state, data, [{:reply, from, :ok}]}
     else
       {:keep_state_and_data, [{:reply, from, {:error, :resume_unsupported}}]}
     end
@@ -138,6 +140,10 @@ defmodule Harness.Run.Actions do
 
   def handle_common({:call, from}, :cancel, _state, data) do
     do_cancel(data, :cancelled, from)
+  end
+
+  def handle_common({:timeout, :lifetime}, :lifetime, :held, %{hold_reason: :question} = data) do
+    force_settle_lifetime(data)
   end
 
   def handle_common({:timeout, :lifetime}, :lifetime, state, _data) when state in [:done, :failed, :held] do
@@ -179,13 +185,13 @@ defmodule Harness.Run.Actions do
     # through the bounded recovery seam before any non-terminal advance.
     case {data.hold_requested, data.cancel_requested, outcome.kind, checkout_pollution_reason(data)} do
       {hold, nil, _kind, nil} when hold in [:graceful, :interrupt] ->
-        do_hold(data, hold)
+        maybe_question_or_hold(data, hold)
 
       {false, nil, {:reflex_halted, reason}, nil} ->
         fail(data, route_reflex_halt(data, reason))
 
       {false, nil, _kind, nil} ->
-        {:next_state, :committing, data}
+        maybe_question_or_commit(data)
 
       {_, {reason, from}, _kind, nil} ->
         do_cancel(data, reason, from)
@@ -194,4 +200,35 @@ defmodule Harness.Run.Actions do
         recover_checkout_pollution(data, pollution_reason)
     end
   end
+
+  @spec maybe_question_or_commit(data()) :: handler_result()
+  defp maybe_question_or_commit(data) do
+    case Question.take(data) do
+      {:park, data, question, notify?} -> park_question(data, question, notify?)
+      :ignore -> {:next_state, :committing, data}
+    end
+  end
+
+  @spec maybe_question_or_hold(data(), :graceful | :interrupt) :: handler_result()
+  defp maybe_question_or_hold(data, hold) do
+    case Question.take(data) do
+      {:park, data, question, notify?} -> park_question(data, question, notify?)
+      :ignore -> do_hold(data, hold)
+    end
+  end
+
+  @spec park_question(data(), Question.t(), boolean()) :: handler_result()
+  defp park_question(data, question, notify?) do
+    data = Question.park(data, question)
+    if notify?, do: Question.notify_parked(data, question)
+    do_hold(data, :question)
+  end
+
+  @spec maybe_record_question_answer(data()) :: data()
+  defp maybe_record_question_answer(%{hold_reason: :question, operator_feedback: text} = data) when is_binary(text) do
+    Question.record_answer(data, text)
+  end
+
+  @spec maybe_record_question_answer(data()) :: data()
+  defp maybe_record_question_answer(data), do: data
 end

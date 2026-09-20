@@ -11,7 +11,7 @@ defmodule Harness.Run.States.Held do
   @typep event :: term()
   @typep handler_result :: term()
 
-  # ── State: held — operator-parked, worktree retained ─────────────────────
+  # ── State: held — operator- or question-parked, worktree retained ────────
 
   @doc false
   @spec handle(event(), term(), data()) :: handler_result()

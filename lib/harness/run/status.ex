@@ -70,9 +70,9 @@ defmodule Harness.Run.Status do
       warning facts (`concerns` or a `passed: false` check claim).
     * `reason` — why the run settled or is failing, once known (see
       `t:Harness.Run.Result.reason/0`); `nil` while the run is still in flight.
-    * `held?` — `true` while the run is operator-parked in `:held`.
-    * `hold_reason` — `:graceful` or `:interrupt` when `held?` is true; `nil`
-      otherwise.
+    * `held?` — `true` while the run is parked in `:held`.
+    * `hold_reason` — `:graceful`, `:interrupt`, or `:question` when `held?`
+      is true; `nil` otherwise.
     * `landed_sha` — the durable landing witness written by the lander when the
       run's commit is fast-forward-pushed; nil for unlanded and pre-column rows.
   """
@@ -97,7 +97,7 @@ defmodule Harness.Run.Status do
           review_warning?: boolean(),
           reason: Result.reason() | nil,
           held?: boolean(),
-          hold_reason: :graceful | :interrupt | nil,
+          hold_reason: :graceful | :interrupt | :question | nil,
           dispatch_decision: map(),
           landed_sha: String.t() | nil
         }

@@ -6,8 +6,9 @@ defmodule Harness.Notification.Event do
   **blocked** (landing-attempt cap exhausted), or a manual reland retains a
   conflicted branch; by `Harness.Lander` when the operator's local target branch
   needs manual sync after a successful land; by `Harness.Run` on every terminal
-  settle (`:settled` for `:done` / `:failed` runs); and by `Harness.Run` when
-  in-run discernment samples a partial transcript.
+  settle (`:settled` for `:done` / `:failed` runs); by `Harness.Run` when
+  in-run discernment samples a partial transcript; and by `Harness.Run` when
+  an implementer parks on `.harness/question.json` (`:question`).
 
   ## The sakshi↔buddhi hinge
 
@@ -34,6 +35,7 @@ defmodule Harness.Notification.Event do
           | :settled
           | :persist_failed
           | :pr_opened
+          | :question
 
   @typedoc """
   The raw outcome payload, keyed by `type`:
@@ -58,6 +60,9 @@ defmodule Harness.Notification.Event do
       with `reason`, optional `spilled_path`, and optional `pending_migrations`
       labels (Task 370 — schema/DB drift must not be silent).
     * `:pr_opened` — GitHub pull request URL opened under `landing_policy: :pr`.
+    * `:question` — an implementer parked the run on `.harness/question.json`;
+      `outcome` is `%{id, question, context, invocation}` with the question
+      string verbatim.
   """
   @type outcome :: String.t() | map()
 
@@ -113,6 +118,9 @@ defmodule Harness.Notification.Event do
   def summary(%__MODULE__{type: :landed, task_id: id, outcome: sha}), do: "landed task #{id} at #{sha}"
 
   def summary(%__MODULE__{type: :pr_opened, task_id: id, outcome: url}), do: "opened PR for task #{id}: #{url}"
+
+  def summary(%__MODULE__{type: :question, task_id: id, run_id: run_id, outcome: %{question: question}}),
+    do: "question from run #{run_id || "unknown"} task #{id}: #{question}"
 
   def summary(%__MODULE__{type: :blocked, task_id: id, outcome: reason}), do: "blocked task #{id}: #{reason}"
 

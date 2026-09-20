@@ -13,6 +13,7 @@ defmodule Harness.Run.Actions.Worktree do
   alias Harness.Git
   alias Harness.Project
   alias Harness.Roadmap.Item
+  alias Harness.Run.Question
   alias Harness.Run.Result
   alias Harness.Run.RetryPolicy
   alias Harness.Run.TestDbIsolation
@@ -32,6 +33,11 @@ defmodule Harness.Run.Actions.Worktree do
   # loop — whatever the implementer leaves behind is the reviewer's to judge.
   @doc false
   @spec build_invocation(data()) :: Invocation.t()
+  def build_invocation(%{pending_question: %Question{} = question, operator_feedback: feedback} = data)
+      when is_binary(feedback) do
+    invocation(data, Question.answer_prompt(question, feedback), :resume)
+  end
+
   def build_invocation(%{operator_feedback: feedback} = data) when is_binary(feedback) do
     invocation(data, operator_steer_prompt(data), :resume)
   end
@@ -72,9 +78,11 @@ defmodule Harness.Run.Actions.Worktree do
 
   @doc false
   @spec in_run_env(data()) :: %{optional(String.t()) => String.t() | false}
-  def in_run_env(%{env: env, worktree: %Worktree{path: path}}) do
+  def in_run_env(%{env: env, worktree: %Worktree{path: path}} = data) do
     env
     |> Map.put("GH_CONFIG_DIR", Path.join(path, @gh_config_dir))
+    |> Map.put(Question.run_id_env(), data.run_id)
+    |> Map.put(Question.invocation_env(), to_string(Map.get(data, :implementer_attempt, 0)))
     |> Harness.RmapPath.ensure_agent_env()
   end
 

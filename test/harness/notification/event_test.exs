@@ -44,6 +44,20 @@ defmodule Harness.Notification.EventTest do
     end
   end
 
+  describe "summary/1 — question" do
+    test "carries the question string verbatim" do
+      event = %Event{
+        type: :question,
+        task_id: "399",
+        run_id: "run-q",
+        outcome: %{question: "which of these two readings?", context: "criterion 3"}
+      }
+
+      assert Event.summary(event) ==
+               "question from run run-q task 399: which of these two readings?"
+    end
+  end
+
   describe "summary/1 — local_sync_skipped" do
     test "names the manual sync reason" do
       event = %Event{

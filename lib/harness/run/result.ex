@@ -37,7 +37,9 @@ defmodule Harness.Run.Result do
     * `{:checkout_pollution_check_failed, r}` — the pollution diff itself
       could not run.
     * `:cancelled` — the run was cancelled via `Harness.Run.cancel/1`.
-    * `:timed_out` — the whole-job lifetime budget elapsed.
+    * `:timed_out` — the whole-job lifetime budget elapsed. Question-held time
+      counts against this budget (the timer is not suspended); expiry is the
+      same recoverable `:timed_out` as any other lifetime miss.
     * `{:memory_runaway, info}` — the per-run memory watchdog force-killed the
       spawned process tree (agent CLI + the `check_command` it forked) after its
       resident memory crossed the configured ceiling, so a runaway project check

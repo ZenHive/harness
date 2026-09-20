@@ -12,7 +12,7 @@ defmodule Harness.Run.Actions.Control do
   # process tree if one is running, and settles `failed`. `from` is the caller
   # awaiting a cancel reply, or `nil` for a timeout-triggered abort.
   @doc false
-  @spec do_hold(data(), :graceful | :interrupt, [:gen_statem.action()]) :: handler_result()
+  @spec do_hold(data(), :graceful | :interrupt | :question, [:gen_statem.action()]) :: handler_result()
   def do_hold(data, mode, extra_actions \\ []) do
     terminate_agent(data)
     cancel_task(data.task)
@@ -33,6 +33,10 @@ defmodule Harness.Run.Actions.Control do
 
   @doc false
   @spec do_resume(data(), :gen_statem.from()) :: handler_result()
+  def do_resume(%{hold_reason: :question} = data, from) do
+    resume_question_hold(data, from)
+  end
+
   def do_resume(data, from) do
     data = %{data | hold_reason: nil}
 
@@ -46,6 +50,8 @@ defmodule Harness.Run.Actions.Control do
 
   @doc false
   @spec hold_enter_actions(data()) :: [:gen_statem.action()]
+  def hold_enter_actions(%{hold_reason: :question}), do: []
+
   def hold_enter_actions(data) do
     [{{:timeout, :lifetime}, :infinity, :lifetime}] ++ hold_expiry_actions(data)
   end
@@ -56,6 +62,27 @@ defmodule Harness.Run.Actions.Control do
 
   def hold_expiry_actions(%{max_hold_timeout: timeout}) when is_integer(timeout) and timeout > 0 do
     [{:state_timeout, timeout, :held_expired}]
+  end
+
+  @doc false
+  @spec resume_question_hold(data(), :gen_statem.from()) :: handler_result()
+  defp resume_question_hold(%{operator_feedback: answer} = data, from) when is_binary(answer) and answer != "" do
+    if String.trim(answer) == "" do
+      {:keep_state_and_data, [{:reply, from, {:error, :answer_required}}]}
+    else
+      data = %{data | hold_reason: nil}
+
+      {:next_state, :running, data,
+       [
+         {:reply, from, :ok},
+         {{:timeout, :mem_sample}, data.mem_sample_interval, :mem_sample}
+       ]}
+    end
+  end
+
+  @spec resume_question_hold(data(), :gen_statem.from()) :: handler_result()
+  defp resume_question_hold(_data, from) do
+    {:keep_state_and_data, [{:reply, from, {:error, :answer_required}}]}
   end
 
   @doc false

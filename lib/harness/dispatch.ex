@@ -416,7 +416,7 @@ defmodule Harness.Dispatch do
 
   api(
     :resume,
-    "Resume a :held run, by run_id — re-enters :running with a session-resume invocation in the same worktree (any stashed steer note is applied). The JSON-native counterpart to Harness.Run.resume/1 — a mechanical lifecycle transition.",
+    "Resume a :held run, by run_id — re-enters :running with a session-resume invocation in the same worktree (any stashed steer note is applied). A question-held run requires a prior dispatch-steer answer (`:answer_required` otherwise). The JSON-native counterpart to Harness.Run.resume/1 — a mechanical lifecycle transition.",
     params: [
       run_id: [
         kind: :value,
@@ -427,12 +427,12 @@ defmodule Harness.Dispatch do
     returns: %{
       type: :tuple,
       description:
-        "{:ok, %{run_id, resumed: true}} on re-entry to :running. {:error, reason}: :not_held (run was not parked) or :not_found."
+        "{:ok, %{run_id, resumed: true}} on re-entry to :running. {:error, reason}: :not_held (run was not parked), :answer_required (question-held run has no steer answer yet), or :not_found."
     }
   )
 
   @spec resume(String.t()) ::
-          {:ok, %{run_id: String.t(), resumed: true}} | {:error, :not_held | :not_found}
+          {:ok, %{run_id: String.t(), resumed: true}} | {:error, :not_held | :answer_required | :not_found}
   def resume(run_id), do: Lifecycle.resume(run_id)
 
   api(

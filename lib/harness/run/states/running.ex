@@ -25,6 +25,7 @@ defmodule Harness.Run.States.Running do
   alias Harness.AgentAdapter.Run, as: AgentRun
   alias Harness.Dashboard.RunFeed
   alias Harness.Dashboard.Transcript
+  alias Harness.Run.Question
 
   require Logger
 
@@ -42,9 +43,11 @@ defmodule Harness.Run.States.Running do
   # logic or a `status/1` snapshot.
   def handle(:enter, _old_state, data) do
     data = stamp_state_entry(:running, data)
+    data = %{data | implementer_attempt: length(data.composed_inputs)}
     RunFeed.broadcast_update(status_snapshot(:running, data))
     parent = self()
     invocation = build_invocation(data)
+    data = Question.consume_if_answered(data)
     checkout_snapshot = checkout_snapshot_for_run(data)
     task = start_task(fn -> run_driver(data, data.adapter, invocation, driver_opts(data, parent)) end)
 

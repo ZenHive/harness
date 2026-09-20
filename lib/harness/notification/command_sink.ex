@@ -8,7 +8,7 @@ defmodule Harness.Notification.CommandSink do
   a curl webhook without harness knowing which. The event fields arrive as:
 
     * `HARNESS_NOTIFY_TYPE` — `landed` | `blocked` | `conflict` |
-      `in_run_discernment`
+      `in_run_discernment` | `question` | …
     * `HARNESS_NOTIFY_TASK_ID`, `HARNESS_NOTIFY_RUN_ID`
     * `HARNESS_NOTIFY_PROJECT`, `HARNESS_NOTIFY_BRANCH`
     * `HARNESS_NOTIFY_LAND_ATTEMPT`

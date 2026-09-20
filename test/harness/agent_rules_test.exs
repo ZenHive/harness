@@ -10,6 +10,10 @@ defmodule Harness.AgentRulesTest do
       assert rendered =~ "Harness operation"
       assert rendered =~ "Development methodology"
       assert rendered =~ "reviewer AI is the gate"
+      assert rendered =~ ".harness/question.json"
+      assert rendered =~ "HARNESS_RUN_ID"
+      assert rendered =~ "HARNESS_IMPLEMENTER_ATTEMPT"
+      assert rendered =~ "genuinely ambiguous"
     end
 
     test "excludes check-expectation thresholds from the injected set" do
