@@ -137,6 +137,47 @@ defmodule Harness.Run.QuestionTest do
     end
   end
 
+  describe "durable recovery" do
+    @tag :tmp_dir
+    test "consumed answers survive recovery, while unrelated runs cannot import them", %{tmp_dir: base} do
+      source_path = Worktree.run_dir("harness", "run-1", base_dir: base)
+      source = data_for(source_path)
+      question = %Question{id: "run-1:0", run_id: "run-1", invocation: "0", question: "which API?"}
+      parked = Question.park(source, question)
+      Question.consume_if_answered(%{parked | operator_feedback: "option A"})
+      target = data_for(Path.join(base, "target"))
+
+      target =
+        Map.merge(target, %{
+          run_id: "run-2",
+          base_dir: base,
+          dispatch_decision: %{"action" => "resume", "source_run_id" => "run-1"}
+        })
+
+      restored = Question.recover(target)
+      assert restored.pending_question == question
+      assert restored.operator_feedback == "option A"
+      assert restored.hold_reason == :question
+      assert Question.load_state(target.worktree.path).run_id == "run-2"
+      assert Question.recover(%{target | dispatch_decision: %{}}).pending_question == nil
+
+      assert Question.recover(%{target | dispatch_decision: %{"action" => "resume", "source_run_id" => "other"}}).pending_question ==
+               nil
+
+      state_path = Path.join(source_path, Question.state_path())
+      state = Jason.decode!(File.read!(state_path))
+      File.write!(state_path, Jason.encode!(Map.put(state, "run_id", "unrelated")))
+      assert Question.recover(target).pending_question == nil
+    end
+
+    @tag :tmp_dir
+    test "a failed sidecar write is visible instead of claiming persistence", %{tmp_dir: path} do
+      File.write!(Path.join(path, ".harness"), "not a directory")
+      question = %Question{id: "run-1:0", run_id: "run-1", invocation: "0", question: "which API?"}
+      assert_raise File.Error, fn -> Question.park(data_for(path), question) end
+    end
+  end
+
   describe "answer_prompt/2" do
     test "threads question and answer verbatim with no interpretation" do
       question = %Question{

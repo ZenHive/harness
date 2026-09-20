@@ -3,8 +3,8 @@ defmodule Harness.Artifact do
   Mechanical filesystem read of an agent-written artifact.
 
   Agents in the gate workflow communicate through JSON artifact files inside
-    their working directory (`.harness/review.json`, `.harness/recovery.json`,
-    `.harness/question.json`, `.harness/cron-plan.json`, the audit report). This is the shared read step:
+  their working directory (`.harness/review.json`, `.harness/recovery.json`,
+  `.harness/question.json`, `.harness/cron-plan.json`, the audit report). This is the shared read step:
   it maps the filesystem outcomes every reader distinguishes — `:enoent` means
   the agent never wrote the file, any other read error means the file is
   unusable — and leaves all interpretation of the contents to the caller.

@@ -35,7 +35,13 @@ defmodule Harness.Run.Actions.Worktree do
   @spec build_invocation(data()) :: Invocation.t()
   def build_invocation(%{pending_question: %Question{} = question, operator_feedback: feedback} = data)
       when is_binary(feedback) do
-    invocation(data, Question.answer_prompt(question, feedback), :resume)
+    prompt = Question.answer_prompt(question, feedback)
+
+    if data.composed_inputs == [] do
+      invocation(data, data.item.prompt <> "\n\n" <> prompt, nil)
+    else
+      invocation(data, prompt, :resume)
+    end
   end
 
   def build_invocation(%{operator_feedback: feedback} = data) when is_binary(feedback) do

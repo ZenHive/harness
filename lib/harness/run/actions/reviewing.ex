@@ -28,6 +28,7 @@ defmodule Harness.Run.Actions.Reviewing do
   alias Harness.Git
   alias Harness.ModelAvailability
   alias Harness.ResultStore
+  alias Harness.Run.Question
   alias Harness.Run.Review
   alias Harness.Text
   alias Harness.Worktree
@@ -138,7 +139,12 @@ defmodule Harness.Run.Actions.Reviewing do
     |> route_to_review()
   end
 
-  def route_after_dispatch(data), do: {:next_state, :running, data}
+  def route_after_dispatch(data) do
+    case Question.recover(data) do
+      %{hold_reason: :question} = recovered -> {:next_state, :held, recovered}
+      ready -> {:next_state, :running, ready}
+    end
+  end
 
   @doc false
   @spec maybe_validate_implementer_isolation(data()) ::

@@ -30,6 +30,8 @@ defmodule Harness.Test.QuestionAdapter do
   end
 
   @spec command_argv(atom(), Invocation.t()) :: {String.t(), [String.t()]}
+  defp command_argv(:complete, invocation), do: write_resume(invocation.prompt)
+
   defp command_argv(:malformed, _invocation) do
     script = ~S(mkdir -p .harness; echo '{not json' > .harness/question.json; echo agent-output > agent_output.txt)
     {"/bin/sh", ["-c", script]}

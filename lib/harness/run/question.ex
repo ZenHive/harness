@@ -24,12 +24,14 @@ defmodule Harness.Run.Question do
   deleting `question.json` by convention. A later invocation may park on a
   new identity.
 
-  The sidecar is the durable copy of pending/answered/consumed state for the
-  live run process. A gen_statem crash while `:held` still settles `:failed`
-  (`{:run_crashed, ...}`) like any other held crash; the retained worktree
-  keeps the sidecar so the facts survive inspection and a same-process
-  re-read cannot double-notify. A new run has a new worktree and a new
-  `run_id`, so the sidecar cannot leak across runs.
+  The sidecar is the durable copy of pending/answered/consumed state. After
+  process or node failure, explicit `dispatch-resume_failed` recovery reads
+  the selected source run's retained worktree and parks the replacement run
+  without another notification. A recorded answer can be resumed; otherwise
+  steer supplies it. A fresh dispatch never imports another run's sidecar.
+  Recovery requires the retained worktree on the same storage and a recorded
+  failed source run; it does not resurrect the old process. The replacement
+  has its own normal lifetime budget, including time held on the question.
   """
 
   alias Harness.Artifact
@@ -66,7 +68,9 @@ defmodule Harness.Run.Question do
   @typedoc "Durable pending/consumed index stored next to the artifact."
   @type state :: %{
           pending: map() | nil,
-          consumed: [String.t()]
+          consumed: [String.t()],
+          run_id: String.t() | nil,
+          answered: map() | nil
         }
 
   @type data :: map()
@@ -180,7 +184,7 @@ defmodule Harness.Run.Question do
     sidecar = load_state(path)
     consumed = merge_consumed(data, sidecar)
     pending = pending_map(question, notified: true, answer: sidecar_answer(sidecar, question.id))
-    write_state(path, %{pending: pending, consumed: consumed})
+    write_state(path, %{sidecar | pending: pending, consumed: consumed, run_id: data.run_id})
 
     %{data | pending_question: question, consumed_question_ids: consumed, hold_reason: :question}
   end
@@ -211,7 +215,7 @@ defmodule Harness.Run.Question do
     sidecar = load_state(path)
     consumed = merge_consumed(data, sidecar)
     pending = pending_map(question, notified: true, answer: text)
-    write_state(path, %{pending: pending, consumed: consumed})
+    write_state(path, %{sidecar | pending: pending, consumed: consumed, run_id: data.run_id})
     data
   end
 
@@ -231,11 +235,45 @@ defmodule Harness.Run.Question do
     sidecar = load_state(path)
     consumed = Enum.uniq(merge_consumed(data, sidecar) ++ [question.id])
     archive_answered(path, question, answer)
-    write_state(path, %{pending: nil, consumed: consumed})
+
+    write_state(path, %{
+      sidecar
+      | pending: nil,
+        consumed: consumed,
+        run_id: data.run_id,
+        answered: pending_map(question, answer: answer)
+    })
+
     %{data | pending_question: nil, consumed_question_ids: consumed}
   end
 
   def consume_if_answered(data), do: data
+
+  @doc "Restores question facts only from the explicitly selected retained recovery run."
+  @spec recover(data()) :: data()
+  def recover(%{dispatch_decision: %{"action" => "resume", "source_run_id" => source}} = data) when is_binary(source) do
+    opts = if data.base_dir, do: [base_dir: data.base_dir], else: []
+    state = data.project.name |> Worktree.run_dir(source, opts) |> load_state()
+    record = state.pending || state.answered
+
+    with ^source <- state.run_id,
+         true <- is_map(record),
+         {:ok, question} <- build(record) do
+      write_state(data.worktree.path, %{state | run_id: data.run_id})
+
+      %{
+        data
+        | pending_question: question,
+          consumed_question_ids: state.consumed,
+          operator_feedback: Map.get(record, "answer"),
+          hold_reason: :question
+      }
+    else
+      _absent -> data
+    end
+  end
+
+  def recover(data), do: data
 
   @doc "Prompt fragment injecting the parked question and the steer answer."
   @spec answer_prompt(t(), String.t()) :: String.t()
@@ -341,7 +379,9 @@ defmodule Harness.Run.Question do
       {:ok, decoded} when is_map(decoded) ->
         %{
           pending: state_pending(decoded),
-          consumed: state_consumed(decoded)
+          consumed: state_consumed(decoded),
+          run_id: Map.get(decoded, "run_id"),
+          answered: Map.get(decoded, "answered")
         }
 
       _other ->
@@ -366,7 +406,7 @@ defmodule Harness.Run.Question do
   end
 
   @spec empty_state() :: state()
-  defp empty_state, do: %{pending: nil, consumed: []}
+  defp empty_state, do: %{pending: nil, consumed: [], run_id: nil, answered: nil}
 
   @spec merge_consumed(data(), state()) :: [String.t()]
   defp merge_consumed(data, sidecar) do
@@ -388,12 +428,9 @@ defmodule Harness.Run.Question do
   defp write_state(worktree_path, state) do
     path = Path.join(worktree_path, @state_path)
     File.mkdir_p!(Path.dirname(path))
-    File.write!(path, Jason.encode!(state))
+    File.write!(path <> ".tmp", Jason.encode!(state))
+    File.rename!(path <> ".tmp", path)
     :ok
-  rescue
-    error in [File.Error, Jason.EncodeError] ->
-      Logger.warning("harness run: failed to persist question-state.json: #{inspect(error)}")
-      :ok
   end
 
   @spec archive_answered(String.t(), t(), String.t()) :: :ok
@@ -415,10 +452,6 @@ defmodule Harness.Run.Question do
 
     File.write!(Path.join(dir, name), Jason.encode!(payload))
     :ok
-  rescue
-    error in [File.Error, Jason.EncodeError] ->
-      Logger.warning("harness run: failed to archive answered question: #{inspect(error)}")
-      :ok
   end
 
   @spec context_block(String.t() | nil) :: String.t()

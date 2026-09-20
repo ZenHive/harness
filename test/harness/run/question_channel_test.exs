@@ -32,7 +32,7 @@ defmodule Harness.Run.QuestionChannelTest do
       Application.put_env(:harness, FileSink, path: path)
       Application.put_env(:harness, :notification_sinks, [FileSink])
 
-      {run_id, _pid} =
+      {run_id, pid} =
         start(
           adapter: QuestionAdapter,
           adapter_opts: [command: :question],
@@ -50,6 +50,8 @@ defmodule Harness.Run.QuestionChannelTest do
       assert question_line["run_id"] == run_id
       assert question_line["outcome"]["question"] == "which API shape?"
       assert question_line["summary"] =~ "which API shape?"
+      assert :ok = Run.cancel(run_id)
+      assert %Result{state: :failed, reason: :cancelled} = await_result(run_id, pid)
     end
 
     test "malformed, empty, and stale-identity artifacts proceed to commit/review" do
@@ -91,7 +93,7 @@ defmodule Harness.Run.QuestionChannelTest do
     end
 
     test "a leftover question.json cannot park the next invocation; a new identity can" do
-      {:ok, counter} = Agent.start_link(fn -> 0 end)
+      counter = start_supervised!({Agent, fn -> 0 end})
 
       {run_id, pid} =
         start(
@@ -107,6 +109,7 @@ defmodule Harness.Run.QuestionChannelTest do
 
       await_held(run_id)
       assert {:ok, %Status{hold_reason: :question}} = Run.status(run_id)
+      assert {:error, :answer_required} = Run.resume(run_id)
       assert :ok = Run.steer(run_id, "answer two")
       assert :ok = Run.resume(run_id)
 
@@ -162,6 +165,54 @@ defmodule Harness.Run.QuestionChannelTest do
   end
 
   describe "process recovery" do
+    test "recovery restores pending and answered questions without notifying again" do
+      Application.put_env(:harness, :notification_sinks, [CaptureSink])
+      Application.put_env(:harness, :test_capture_pid, self())
+      project = ProjectFixture.from_repo(GitFixture.init_repo())
+      base = GitFixture.tmp_base()
+
+      for answered? <- [false, true] do
+        opts = [
+          project: project,
+          base_dir: base,
+          adapter: QuestionAdapter,
+          adapter_opts: [command: :question],
+          terminal_linger: 100
+        ]
+
+        {source, pid} = start(opts)
+        await_held(source)
+        assert_receive {:notify, %Event{type: :question, run_id: ^source}}, 2_000
+        if answered?, do: assert(:ok = Run.steer(source, "preserved answer"))
+        assert :ok = :gen_statem.stop(pid, :shutdown, 5_000)
+        assert %Result{state: :failed} = await_result(source, pid)
+
+        {recovered, recovered_pid} =
+          start(
+            Keyword.merge(opts,
+              dispatch_decision: %{"action" => "resume", "source_run_id" => source},
+              adapter_opts: [command: :complete],
+              base_ref: "harness/" <> source
+            )
+          )
+
+        await_held(recovered)
+        refute_receive {:notify, %Event{type: :question, run_id: ^recovered}}, 100
+
+        if !answered? do
+          assert {:error, :answer_required} = Run.resume(recovered)
+          assert :ok = Run.steer(recovered, "preserved answer")
+        end
+
+        assert :ok = Run.resume(recovered)
+        assert %Result{state: :done, composed_inputs: inputs} = await_result(recovered, recovered_pid)
+        assert hd(inputs).session == nil
+        assert hd(inputs).prompt =~ "do the thing"
+        assert hd(inputs).prompt =~ "which API shape?"
+        assert hd(inputs).prompt =~ "preserved answer"
+      end
+    end
+
     test "sidecar pending state survives a gen_statem crash without a second notify" do
       Application.put_env(:harness, :notification_sinks, [CaptureSink])
       Application.put_env(:harness, :test_capture_pid, self())
