@@ -15,6 +15,12 @@ defmodule Harness.Dashboard.RoadmapLiveTest do
   alias Harness.Run.Status
   alias Harness.TokenUsage
 
+  defmodule UnavailableStore do
+    @moduledoc false
+    @spec list_run_records(keyword(), keyword()) :: {:error, :unavailable}
+    def list_run_records(_filters, _opts), do: {:error, :unavailable}
+  end
+
   setup do
     for project <- ProjectRegistry.list(), do: ProjectRegistry.unregister(project.name)
 
@@ -79,7 +85,7 @@ defmodule Harness.Dashboard.RoadmapLiveTest do
       stub_roadmap(
         [
           task("1", "pending", "Ready wire"),
-          task("2", "pending", "Waiting on 1"),
+          Map.put(task("2", "pending", "Waiting on 1"), "depends_on", ["1"]),
           task("3", "in_progress", "Implementer running"),
           task("4", "in_progress", "Reviewer running"),
           task("5", "in_progress", "Approved unlanded"),
@@ -385,6 +391,86 @@ defmodule Harness.Dashboard.RoadmapLiveTest do
     end
   end
 
+  test "unavailable roadmap reads retain cards and expose the error", %{conn: conn} do
+    register("board-unavailable")
+    stub_roadmap([task("1", "pending", "Keep visible")], ["1"])
+    stub_execution("board-unavailable", [], [])
+    {:ok, view, _} = live(conn, "/harness/roadmap")
+    Application.put_env(:harness, :roadmap_list, fn _ -> {:error, :rmap_failed} end)
+    Application.put_env(:harness, :roadmap_ready, fn _ -> {:error, :rmap_failed} end)
+    send(view.pid, :roadmap_tick)
+    html = render(view)
+    assert card(html, "1", "pending") =~ "Keep visible"
+    assert html =~ "roadmap unavailable"
+    assert html =~ "dispatch readiness unavailable"
+    assert html =~ "rmap_failed"
+    refute has_element?(view, "button[phx-click=dispatch_task]")
+  end
+
+  test "unavailable persisted results retain the last witnessed attempt", %{conn: conn} do
+    register("board-store-error")
+    stub_roadmap([task("1", "in_progress", "Keep landing")], [])
+    stub_execution("board-store-error", [], [record("approved-run", "1", :done, verdict: :approve)])
+    {:ok, view, _} = live(conn, "/harness/roadmap")
+    previous = Application.get_env(:harness, :result_store)
+    on_exit(fn -> restore(:result_store, previous) end)
+    Application.delete_env(:harness, :task_board_records)
+    Application.put_env(:harness, :result_store, {UnavailableStore, []})
+    send(view.pid, {:harness_run_settled, %{}})
+    html = render(view)
+    assert card(html, "1", "landing") =~ "approved-run"
+    assert html =~ "Run results unavailable: :unavailable"
+  end
+
+  test "settled elapsed time uses the measured duration even without terminal timestamps", %{conn: conn} do
+    register("board-elapsed")
+    stub_roadmap([task("1", "in_progress", "Measured duration")], [])
+    settled = %{record("measured", "1", :done, verdict: :approve) | started_at: ~U[2020-01-01 00:00:00Z]}
+    stub_execution("board-elapsed", [], [settled])
+    {:ok, _view, html} = live(conn, "/harness/roadmap")
+    {:ok, document} = html |> card("1", "landing") |> Floki.parse_document()
+    elapsed = document |> Floki.find(".task-card-facts > div:nth-child(4) dd") |> Floki.text()
+    assert elapsed == "1s"
+  end
+
+  describe "production contracts" do
+    test "real Dispatch failures remain visible without changing task status", %{conn: conn} do
+      register("board-contracts")
+      stub_roadmap([task("1", "pending", "Unchanged")], [])
+      stub_execution("board-contracts", [], [])
+      {:ok, view, _} = live(conn, "/harness/roadmap")
+
+      for event <- ["hold_run", "resume_held", "resume_failed", "rereview_run", "land_run"] do
+        html = render_click(view, event, %{"run_id" => "missing-board-contract-run"})
+        assert html =~ "not_found"
+        assert card(html, "1", "pending") =~ "Unchanged"
+      end
+
+      html = render_click(view, "dispatch_task", %{"project" => "missing-board-project", "task_id" => "1"})
+      assert html =~ "unknown_project"
+      assert card(html, "1", "pending") =~ "Unchanged"
+    end
+
+    test "settled landing facts survive more than 200 unrelated results", %{conn: conn} do
+      register("quiet-project")
+      stub_roadmap([task("1", "in_progress", "Still needs landing")], [])
+      previous = Application.get_env(:harness, :result_store)
+      store = {Harness.ResultStore.Memory, scope: make_ref()}
+      Application.put_env(:harness, :result_store, store)
+      on_exit(fn -> restore(:result_store, previous) end)
+
+      :ok =
+        Harness.ResultStore.record_run(record("quiet-run", "1", :done, project_name: "quiet-project", verdict: :approve))
+
+      for i <- 1..201 do
+        :ok = Harness.ResultStore.record_run(record("busy-#{i}", to_string(i), :failed, project_name: "busy-project"))
+      end
+
+      {:ok, _view, html} = live(conn, "/harness/roadmap")
+      assert card(html, "1", "landing") =~ "quiet-run"
+    end
+  end
+
   describe "rmap display reads" do
     test "a roadmap tick with an unreachable origin never fetches and stays inside the drilldown timeout", %{
       conn: conn
@@ -473,7 +559,7 @@ defmodule Harness.Dashboard.RoadmapLiveTest do
   end
 
   defp task(id, status, title) do
-    %{"id" => id, "status" => status, "title" => title}
+    %{"id" => id, "status" => status, "title" => title, "depends_on" => []}
   end
 
   defp status(run_id, task_id, state, opts \\ []) do

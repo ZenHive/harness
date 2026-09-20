@@ -21,6 +21,7 @@ defmodule Harness.Run.Actions.Transcript do
     %Status{
       run_id: data.run_id,
       task_id: data.item.id,
+      task_ids: Map.get(data.item, :task_ids, []),
       dispatch_decision: Map.get(data, :dispatch_decision, %{}),
       project_name: data.project.name,
       # data.agent_kind is the executing adapter's identity atom (resolved at

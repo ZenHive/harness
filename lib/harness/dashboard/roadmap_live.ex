@@ -41,7 +41,6 @@ defmodule Harness.Dashboard.RoadmapLive do
 
   @roadmap_tick_interval_ms 30_000
   @drilldown_timeout_ms 5_000
-  @record_limit 200
   @ready_fields ~w(id)
 
   @impl Phoenix.LiveView
@@ -160,6 +159,8 @@ defmodule Harness.Dashboard.RoadmapLive do
 
     <Components.operator_flash notice={@notice} include_persistent={false} />
 
+    <p :for={error <- @load_errors} role="alert">{error}</p>
+    <p :if={@record_error} role="alert">{@record_error}</p>
     <p :if={@projects == []}>No projects registered.</p>
     <div :if={@projects != []} class="task-board" aria-label="Fleet task board">
       <section :for={lane <- TaskBoard.lanes()} class="task-lane" data-lane={lane}>
@@ -330,13 +331,14 @@ defmodule Harness.Dashboard.RoadmapLive do
 
   @spec assign_snapshot(Socket.t(), [Project.t()]) :: Socket.t()
   defp assign_snapshot(socket, projects) do
-    {tasks, ready_ids} = roadmap_facts(projects)
+    {tasks, ready_ids, errors} = roadmap_facts(projects, Map.get(socket.assigns, :rmap_tasks, %{}))
 
     socket
+    |> assign(:load_errors, errors)
     |> assign(:rmap_tasks, tasks)
     |> assign(:ready_ids, ready_ids)
     |> assign(:live_runs, live_runs())
-    |> assign(:records, records())
+    |> load_records()
     |> assign_lanes()
   end
 
@@ -344,7 +346,7 @@ defmodule Harness.Dashboard.RoadmapLive do
   defp refresh_execution(socket) do
     socket
     |> assign(:live_runs, live_runs())
-    |> assign(:records, records())
+    |> load_records()
     |> assign_lanes()
   end
 
@@ -365,28 +367,39 @@ defmodule Harness.Dashboard.RoadmapLive do
     assign(socket, :lanes, lanes)
   end
 
-  @spec roadmap_facts([Project.t()]) :: {%{optional(String.t()) => [map()]}, TaskBoard.ready_ids()}
-  defp roadmap_facts(projects) do
+  @spec roadmap_facts([Project.t()], map()) :: {map(), TaskBoard.ready_ids(), [String.t()]}
+  defp roadmap_facts(projects, previous) do
     listed =
       projects
       |> Task.async_stream(&list_tasks/1, timeout: @drilldown_timeout_ms, on_timeout: :kill_task)
       |> Enum.zip(projects)
-      |> Map.new(fn
-        {{:ok, {:ok, tasks}}, project} -> {project.name, tasks}
-        {_other, project} -> {project.name, []}
+
+    {tasks, errors} =
+      Enum.reduce(listed, {%{}, []}, fn
+        {{:ok, {:ok, tasks}}, project}, {acc, errors} ->
+          {Map.put(acc, project.name, tasks), errors}
+
+        {failure, project}, {acc, errors} ->
+          {Map.put(acc, project.name, Map.get(previous, project.name, [])),
+           ["#{project.name}: roadmap unavailable: #{inspect(failure)}" | errors]}
       end)
 
-    ready =
+    ready_results =
       projects
-      |> Task.async_stream(&ready_task_ids/1, timeout: @drilldown_timeout_ms, on_timeout: :kill_task)
+      |> Task.async_stream(&ready_tasks/1, timeout: @drilldown_timeout_ms, on_timeout: :kill_task)
       |> Enum.zip(projects)
-      |> Enum.flat_map(fn
-        {{:ok, ids}, project} -> Enum.map(ids, &{project.name, &1})
-        {_other, _project} -> []
-      end)
-      |> MapSet.new()
 
-    {listed, ready}
+    {ready, errors} =
+      Enum.reduce(ready_results, {MapSet.new(), errors}, fn
+        {{:ok, {:ok, tasks}}, project}, {acc, errors} ->
+          ids = MapSet.new(tasks, &{project.name, to_string(&1["id"])})
+          {MapSet.union(acc, ids), errors}
+
+        {failure, project}, {acc, errors} ->
+          {acc, ["#{project.name}: dispatch readiness unavailable: #{inspect(failure)}" | errors]}
+      end)
+
+    {tasks, ready, Enum.reverse(errors)}
   end
 
   @spec list_tasks(Project.t()) :: {:ok, [map()]} | {:error, term()}
@@ -394,14 +407,6 @@ defmodule Harness.Dashboard.RoadmapLive do
     case Application.get_env(:harness, :roadmap_list) do
       fun when is_function(fun, 1) -> fun.(project)
       _other -> Roadmap.list(project.name)
-    end
-  end
-
-  @spec ready_task_ids(Project.t()) :: [String.t()]
-  defp ready_task_ids(project) do
-    case ready_tasks(project) do
-      {:ok, tasks} -> Enum.map(tasks, &to_string(&1["id"]))
-      _other -> []
     end
   end
 
@@ -421,19 +426,24 @@ defmodule Harness.Dashboard.RoadmapLive do
     end
   end
 
-  @spec records() :: [LogRecord.t()]
+  @spec records() :: {:ok, [LogRecord.t()]} | {:error, term()}
   defp records do
     case Application.get_env(:harness, :task_board_records) do
-      fun when is_function(fun, 0) -> fun.()
-      _other -> stored_records()
+      fun when is_function(fun, 0) -> {:ok, fun.()}
+      _other -> ResultStore.list_run_records()
     end
   end
 
-  @spec stored_records() :: [LogRecord.t()]
-  defp stored_records do
-    case ResultStore.list_run_records(limit: @record_limit) do
-      {:ok, records} -> records
-      {:error, _reason} -> []
+  @spec load_records(Socket.t()) :: Socket.t()
+  defp load_records(socket) do
+    case records() do
+      {:ok, records} ->
+        socket |> assign(:records, records) |> assign(:record_error, nil)
+
+      {:error, reason} ->
+        socket
+        |> assign(:records, Map.get(socket.assigns, :records, []))
+        |> assign(:record_error, "Run results unavailable: #{inspect(reason)}")
     end
   end
 
@@ -499,9 +509,10 @@ defmodule Harness.Dashboard.RoadmapLive do
   defp empty_lane_line(:blocked), do: "No blocked tasks."
   defp empty_lane_line(:done), do: "No recent done tasks."
 
-  @spec dependency_label(:ready | :waiting) :: String.t()
+  @spec dependency_label(:ready | :waiting | :unknown) :: String.t()
   defp dependency_label(:ready), do: "Dependencies ready"
   defp dependency_label(:waiting), do: "Waiting on dependencies"
+  defp dependency_label(:unknown), do: "Dependencies unavailable"
 
   @spec fact(String.t() | nil) :: String.t()
   defp fact(nil), do: "—"
@@ -513,6 +524,11 @@ defmodule Harness.Dashboard.RoadmapLive do
   defp run_stage(%Card{run_state: state}), do: Atom.to_string(state)
 
   @spec elapsed(Card.t(), DateTime.t()) :: String.t()
+  defp elapsed(%Card{status: %Status{state: state, duration_ms: duration} = status}, now)
+       when state in [:done, :failed] and is_integer(duration) do
+    Components.elapsed_label(%{status | started_at: nil}, now)
+  end
+
   defp elapsed(%Card{status: %Status{} = status}, now), do: Components.elapsed_label(status, now)
   defp elapsed(_card, _now), do: "—"
 

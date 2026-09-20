@@ -6,6 +6,11 @@ defmodule Harness.Run.StatusTest do
   alias Harness.Test.IdentityFakeAdapter, as: FakeAdapter
 
   describe "from_log_record/1" do
+    test "preserves coalesced member ids" do
+      record = %{log_record("coalesced", []) | task_ids: ["1", "2"]}
+      assert Status.from_log_record(record).task_ids == ["1", "2"]
+    end
+
     test "maps a settled rejected record into a status snapshot" do
       record =
         log_record("run-abc",

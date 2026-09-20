@@ -24,14 +24,16 @@ defmodule Harness.Dashboard.TaskBoard do
      Landing. A live linger in `:done` with the same facts uses this lane too.
   5. **rmap `in_progress`** otherwise → Implementing (failed/held attempts are
      badges and action state on that card).
-  6. **rmap `pending`** → Pending. Dependency membership in the rmap ready set
-     is `ready` or `waiting`; it is not inferred by re-walking `depends_on`.
+  6. **rmap `pending`** → Pending. Membership in the rmap ready set
+     controls dispatch eligibility. Dependency labels compare rmap `depends_on`
+     against that project’s done tasks; missing dependency data stays unknown.
 
   The **selected attempt** is the non-terminal live run when one exists,
-  otherwise the newest persisted record for that identity (coalesced
-  `task_ids` count). A terminal live linger with no record yet is itself the
-  selected attempt. An older approved record never places a pending task in
-  Done or Landing.
+  otherwise the newest live or persisted attempt for that identity (coalesced
+  `task_ids` count). A persisted record wins for the same run id,
+  retaining its landing witness. Multiple live attempts prefer non-terminal
+  then newest start time, with run id as a stable tie-breaker. An older approved
+  record never places a pending task in Done or Landing.
   """
 
   alias Harness.Project
@@ -65,6 +67,7 @@ defmodule Harness.Dashboard.TaskBoard do
       :status,
       :token_total,
       :landed_sha,
+      :done_at,
       held?: false,
       failed?: false,
       actions: []
@@ -73,8 +76,8 @@ defmodule Harness.Dashboard.TaskBoard do
     @typedoc "Factual board action whose existing Dispatch/Lander guard can fire."
     @type action :: :dispatch | :hold | :resume | :resume_failed | :rereview | :land | :reland
 
-    @typedoc "Pending-lane dependency membership in `rmap ready`, when known."
-    @type dependency :: :ready | :waiting | nil
+    @typedoc "Pending dependency readiness from rmap task facts, when known."
+    @type dependency :: :ready | :waiting | :unknown | nil
 
     @typedoc "A renderable task card."
     @type t :: %__MODULE__{
@@ -91,6 +94,7 @@ defmodule Harness.Dashboard.TaskBoard do
             status: Status.t() | nil,
             token_total: non_neg_integer() | nil,
             landed_sha: String.t() | nil,
+            done_at: String.t() | nil,
             held?: boolean(),
             failed?: boolean(),
             actions: [action()]
@@ -181,10 +185,12 @@ defmodule Harness.Dashboard.TaskBoard do
           landable_projects()
         ) :: [Card.t()]
   defp project_cards(project, tasks_by_project, ready_ids, live_index, record_index, landable) do
-    tasks_by_project
-    |> Map.get(project.name, [])
+    tasks = Map.get(tasks_by_project, project.name, [])
+    done_ids = tasks |> Enum.filter(&(&1["status"] == "done")) |> MapSet.new(&task_id/1)
+
+    tasks
     |> Enum.filter(&keep_task?/1)
-    |> Enum.map(&card_for(project.name, &1, ready_ids, live_index, record_index, landable))
+    |> Enum.map(&card_for(project.name, &1, ready_ids, live_index, record_index, landable, done_ids))
     |> Enum.sort_by(&{&1.project_name, numeric_task_key(&1.task_id), &1.task_id})
   end
 
@@ -192,8 +198,8 @@ defmodule Harness.Dashboard.TaskBoard do
   defp keep_task?(%{"status" => status}) when status in @rmap_statuses, do: true
   defp keep_task?(_task), do: false
 
-  @spec card_for(String.t(), map(), ready_ids(), map(), map(), landable_projects()) :: Card.t()
-  defp card_for(project_name, task, ready_ids, live_index, record_index, landable) do
+  @spec card_for(String.t(), map(), ready_ids(), map(), map(), landable_projects(), MapSet.t()) :: Card.t()
+  defp card_for(project_name, task, ready_ids, live_index, record_index, landable, done_ids) do
     task_id = task_id(task)
     identity = {project_name, task_id}
     rmap_status = task["status"]
@@ -211,15 +217,26 @@ defmodule Harness.Dashboard.TaskBoard do
       model: model(task, selected),
       lane: lane,
       rmap_status: rmap_status,
-      dependency: dependency(lane, identity, ready_ids),
+      dependency: dependency(lane, task, done_ids),
       run_id: selected && selected.run_id,
       run_state: selected && selected.state,
       status: selected,
       token_total: token_total(records, selected),
       landed_sha: selected && present(selected.landed_sha),
+      done_at: present(task["done_at"]),
       held?: held?(selected),
       failed?: selected != nil and selected.state == :failed,
-      actions: actions(lane, execution, selected, rmap_status, project_name, landable, identity, ready_ids)
+      actions:
+        actions(
+          lane,
+          execution,
+          persisted_attempt(selected, records),
+          rmap_status,
+          project_name,
+          landable,
+          identity,
+          ready_ids
+        )
     }
   end
 
@@ -263,29 +280,45 @@ defmodule Harness.Dashboard.TaskBoard do
   defp selected_attempt(%Status{state: state} = live, _records) when state not in @terminal_states, do: live
 
   defp selected_attempt(live, records) do
-    case newest_record(records) do
-      %LogRecord{} = record -> Status.from_log_record(record)
-      nil -> live
+    stored =
+      case newest_record(records) do
+        nil -> nil
+        record -> Status.from_log_record(record)
+      end
+
+    case {live, stored} do
+      {nil, stored} -> stored
+      {live, nil} -> live
+      {%Status{run_id: id}, %Status{run_id: id} = stored} -> stored
+      {live, stored} -> Enum.max_by([live, stored], &record_recency/1)
     end
+  end
+
+  @spec persisted_attempt(Status.t() | nil, [LogRecord.t()]) :: Status.t() | nil
+  defp persisted_attempt(nil, _records), do: nil
+
+  defp persisted_attempt(selected, records) do
+    if Enum.any?(records, &(&1.run_id == selected.run_id)), do: selected
   end
 
   @spec newest_record([LogRecord.t()]) :: LogRecord.t() | nil
   defp newest_record([]), do: nil
   defp newest_record(records), do: Enum.max_by(records, &record_recency/1)
 
-  @spec record_recency(LogRecord.t()) :: {0 | 1, integer(), String.t()}
-  defp record_recency(%LogRecord{started_at: %DateTime{} = started, run_id: run_id}) do
+  @spec record_recency(LogRecord.t() | Status.t()) :: {0 | 1, integer(), String.t()}
+  defp record_recency(%{started_at: %DateTime{} = started, run_id: run_id}) do
     {1, DateTime.to_unix(started, :microsecond), run_id}
   end
 
-  defp record_recency(%LogRecord{run_id: run_id}), do: {0, 0, run_id}
+  defp record_recency(%{run_id: run_id}), do: {0, 0, run_id}
 
-  @spec dependency(lane(), {String.t(), String.t()}, ready_ids()) :: Card.dependency()
-  defp dependency(:pending, identity, ready_ids) do
-    if MapSet.member?(ready_ids, identity), do: :ready, else: :waiting
+  @spec dependency(lane(), map(), MapSet.t()) :: Card.dependency()
+  defp dependency(:pending, %{"depends_on" => deps}, done_ids) when is_list(deps) do
+    if Enum.all?(deps, &MapSet.member?(done_ids, to_string(&1))), do: :ready, else: :waiting
   end
 
-  defp dependency(_lane, _identity, _ready_ids), do: nil
+  defp dependency(:pending, _task, _done_ids), do: :unknown
+  defp dependency(_lane, _task, _done_ids), do: nil
 
   @spec actions(
           lane(),
@@ -302,7 +335,7 @@ defmodule Harness.Dashboard.TaskBoard do
     |> maybe_action(:dispatch, dispatchable?(lane, identity, ready_ids))
     |> maybe_action(:hold, holdable?(execution))
     |> maybe_action(:resume, resumable_held?(execution))
-    |> maybe_action(:resume_failed, resume_failed?(selected, execution))
+    |> maybe_action(:resume_failed, rmap_status != "done" and resume_failed?(selected, execution))
     |> maybe_action(:rereview, rereviewable?(selected, execution, rmap_status))
     |> maybe_action(:land, landable?(selected, rmap_status, project_name, landable))
     |> maybe_action(:reland, relandable?(selected, rmap_status))
@@ -342,7 +375,7 @@ defmodule Harness.Dashboard.TaskBoard do
   defp landable?(_selected, _rmap_status, _project_name, _landable), do: false
 
   @spec relandable?(Status.t() | nil, String.t()) :: boolean()
-  defp relandable?(%Status{run_id: run_id}, "blocked") when is_binary(run_id), do: true
+  defp relandable?(%Status{} = selected, "blocked"), do: landing_attempt?(selected)
   defp relandable?(_selected, _rmap_status), do: false
 
   @spec assignee(map(), Status.t() | nil) :: String.t() | nil
@@ -391,7 +424,15 @@ defmodule Harness.Dashboard.TaskBoard do
 
   @spec index_live([Status.t()]) :: %{optional({String.t(), String.t()}) => Status.t()}
   defp index_live(runs) do
-    Map.new(runs, fn %Status{} = status -> {{status.project_name, status.task_id}, status} end)
+    runs
+    |> Enum.flat_map(fn status ->
+      Enum.map(Enum.uniq([status.task_id | status.task_ids]), &{{status.project_name, to_string(&1)}, status})
+    end)
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+    |> Map.new(fn {identity, attempts} ->
+      selected = Enum.max_by(attempts, &{&1.state not in @terminal_states, record_recency(&1)})
+      {identity, selected}
+    end)
   end
 
   @spec index_records([LogRecord.t()]) :: %{optional({String.t(), String.t()}) => [LogRecord.t()]}
@@ -422,10 +463,10 @@ defmodule Harness.Dashboard.TaskBoard do
     end)
   end
 
-  @spec done_sort_key(Card.t()) :: String.t()
-  defp done_sort_key(%Card{status: %Status{started_at: %DateTime{} = started}}), do: DateTime.to_iso8601(started)
-  defp done_sort_key(%Card{run_id: run_id}) when is_binary(run_id), do: run_id
-  defp done_sort_key(%Card{task_id: task_id}), do: task_id
+  @spec done_sort_key(Card.t()) :: tuple()
+  defp done_sort_key(%Card{done_at: done_at, task_id: task_id}) do
+    {done_at || "", numeric_task_key(task_id), task_id}
+  end
 
   @spec fill_lanes(%{optional(lane()) => [Card.t()]}) :: %{lane() => [Card.t()]}
   defp fill_lanes(grouped) do

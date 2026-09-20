@@ -11,6 +11,7 @@ defmodule Harness.Dashboard.TaskBoardTest do
 
   alias Harness.Dashboard.TaskBoard
   alias Harness.ProjectFixture
+  alias Harness.Run.Actions.Transcript
   alias Harness.Run.LogRecord
   alias Harness.Run.Status
   alias Harness.TokenUsage
@@ -37,7 +38,7 @@ defmodule Harness.Dashboard.TaskBoardTest do
     test "pending cards expose ready vs waiting from the rmap ready set" do
       lanes =
         compose(
-          tasks: [pending("10", title: "Ready one"), pending("11", title: "Waiting one")],
+          tasks: [pending("10", title: "Ready one"), pending("11", title: "Waiting one", depends_on: ["10"])],
           ready_ids: MapSet.new([{"board", "10"}])
         )
 
@@ -255,7 +256,7 @@ defmodule Harness.Dashboard.TaskBoardTest do
       [card] = lanes.blocked
       assert card.rmap_status == "blocked"
       assert card.run_id == "run-block-live"
-      assert :reland in card.actions
+      refute :reland in card.actions
     end
 
     test "rmap pending plus an older approved unlanded run stays Pending, not Done or Landing" do
@@ -271,6 +272,85 @@ defmodule Harness.Dashboard.TaskBoardTest do
       [card] = lanes.pending
       assert card.run_id == "run-old-approve"
       refute :land in card.actions
+    end
+  end
+
+  test "live snapshots retain coalesced members and place every member in Reviewing" do
+    snapshot =
+      Transcript.status_snapshot(:reviewing, %{
+        run_id: "coalesced-live",
+        item: %{id: "40", task_ids: ["40", "41"]},
+        project: project(),
+        agent_kind: nil,
+        requested_model: nil,
+        started_at: nil,
+        state_entered_at: %{},
+        worktree: nil,
+        reviewer_adapter: nil,
+        recovery_adapter: nil,
+        review: nil,
+        reason: nil
+      })
+
+    lanes = compose(tasks: [in_progress("40"), in_progress("41")], live_runs: [snapshot])
+    assert ids(lanes.reviewing) == ["40", "41"]
+    assert Enum.all?(lanes.reviewing, &(&1.run_id == "coalesced-live"))
+    assert lanes.implementing == []
+  end
+
+  test "dependency readiness is independent of headless dispatch eligibility" do
+    tasks = [pending("1", depends_on: ["2"]), done("2")]
+    assert [card] = compose(tasks: tasks).pending
+    assert card.dependency == :ready
+    assert card.actions == []
+  end
+
+  describe "attempt ordering regressions" do
+    test "terminal live attempts compete with older persisted attempts" do
+      older = record("old", "1", :done, verdict: :approve, started_at: ~U[2026-09-01 00:00:00Z])
+      newer = status("new", "1", :failed, started_at: ~U[2026-09-20 00:00:00Z])
+      lanes = compose(tasks: [in_progress("1")], live_runs: [newer], records: [older])
+      assert [card] = lanes.implementing
+      assert card.run_id == "new"
+      assert lanes.landing == []
+      assert card.actions == []
+    end
+
+    test "multiple live attempts choose active then newest independent of enumeration order" do
+      old = status("old", "1", :done, started_at: ~U[2026-09-01 00:00:00Z])
+      active = status("active", "1", :reviewing, started_at: ~U[2026-09-20 00:00:00Z])
+
+      for runs <- [[active, old], [old, active]] do
+        assert [card] = compose(tasks: [in_progress("1")], live_runs: runs).reviewing
+        assert card.run_id == "active"
+      end
+    end
+
+    test "same-attempt persisted landing witness wins over a terminal live linger" do
+      live = status("same", "1", :done, review_verdict: :approve)
+      stored = record("same", "1", :done, verdict: :approve, landed_sha: "abc")
+      lanes = compose(tasks: [in_progress("1")], live_runs: [live], records: [stored])
+      assert [card] = lanes.implementing
+      assert card.landed_sha == "abc"
+      assert lanes.landing == []
+    end
+
+    test "blocked failed attempts cannot expose re-land" do
+      lanes = compose(tasks: [blocked("1")], records: [record("failed", "1", :failed)])
+      assert [card] = lanes.blocked
+      refute :reland in card.actions
+    end
+
+    test "Done uses rmap completion dates before unrelated attempt dates or lexical ids" do
+      tasks = [Map.put(done("2"), "done_at", "2026-09-20"), Map.put(done("99"), "done_at", "2026-09-01")]
+
+      records = [
+        record("old", "2", :done, started_at: ~U[2026-08-01 00:00:00Z]),
+        record("new", "99", :done, started_at: ~U[2026-09-20 00:00:00Z])
+      ]
+
+      assert [card] = compose(tasks: tasks, records: records, done_limit: 1).done
+      assert card.task_id == "2"
     end
   end
 
@@ -385,6 +465,7 @@ defmodule Harness.Dashboard.TaskBoardTest do
       "id" => id,
       "status" => status,
       "title" => Keyword.get(opts, :title, "Task #{id}"),
+      "depends_on" => Keyword.get(opts, :depends_on, []),
       "assignee" => Keyword.get(opts, :assignee),
       "model" => Keyword.get(opts, :model)
     }

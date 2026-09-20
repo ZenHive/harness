@@ -31,6 +31,7 @@ defmodule Harness.Run.Status do
 
     * `run_id` — the run's unique id.
     * `task_id` — the rmap task id the run serves.
+    * `task_ids` — coalesced task members, empty for a single-task run.
     * `state` — the current lifecycle state (see `t:state/0`).
     * `started_at` — wall-clock timestamp captured when the run starts, or
       `nil` for legacy settled records created before timing facts existed.
@@ -78,6 +79,7 @@ defmodule Harness.Run.Status do
   @type t :: %__MODULE__{
           run_id: String.t(),
           task_id: String.t(),
+          task_ids: [String.t()],
           project_name: String.t() | nil,
           agent: atom() | nil,
           model: String.t() | nil,
@@ -120,6 +122,7 @@ defmodule Harness.Run.Status do
     :reason,
     :landed_sha,
     :hold_reason,
+    task_ids: [],
     dispatch_decision: %{},
     state_entered_at: %{},
     review_warning?: false,
@@ -145,6 +148,7 @@ defmodule Harness.Run.Status do
     %__MODULE__{
       run_id: record.run_id,
       task_id: record.task_id,
+      task_ids: Map.get(record, :task_ids, []),
       # Map.get (not record.project_name) so records persisted before this field
       # existed decode without a KeyError — they simply filter as "no project".
       project_name: Map.get(record, :project_name),
