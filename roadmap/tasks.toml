@@ -13820,7 +13820,7 @@ scored_at = "2026-09-20"
 id = "446"
 phase = 25
 bundle = "core-loop"
-status = "in_progress"
+status = "done"
 title = "Cron planner distinguishes verified empty history from missing recovery evidence"
 scores = { d = 2, b = 8, u = 8 }
 markers = ["bug"]
@@ -13829,7 +13829,14 @@ touches = ["lib/harness/cron/orchestrator.ex", "test/harness/cron/"]
 assignee = "codex"
 model = "gpt-6-astra"
 body = "Production incident 2026-09-20 04:34:42 UTC: Dispatch now found ready tasks but planner deferred every candidate because attempts was empty and scratch was not a Git repository. Attempts.attach uses strict_history; Orchestrator.build_invocation intentionally uses scratch cwd. Prompt rule 4 unconditionally requires branch/origin evidence and describes every fresh action as discarding work. Clarify first-attempt versus recovery semantics, preserving safeguards. Reproduce using a real planner in disposable workspace, then add regressions. Runtime-control bug needs independent review. No production restart/recompile, autonomy changes or unrelated dispatch by implementer/reviewer; root owns activation through autodeploy. User authorized fixing this incident."
+implemented = "Landed by codex via merge-train; reviewer-approved (run run-1789879093180-a8bf2087, dcc89175fda7f129c1599eb0490e435f12356e19)."
+delivered_by = "codex"
+verified = true
+verified_by = "cursor"
+verification_ref = "harness-run:run-1789879093180-a8bf2087"
 created_at = "2026-09-20"
 started_at = "2026-09-20"
 scored_at = "2026-09-20"
+done_at = "2026-09-20"
+shipped_in = "dcc89175fda7f129c1599eb0490e435f12356e19"
 
