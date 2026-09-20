@@ -166,16 +166,14 @@ defmodule Harness.Dispatch do
 
   @spec await(String.t(), String.t(), String.t(), number(), boolean()) ::
           {:ok, map()} | {:error, error()}
-  def await(
-        project_name,
-        task,
-        adapter \\ @recommended_adapter,
-        timeout_ms \\ @default_await_timeout_ms,
-        scrub_anthropic_key \\ true
-      )
-      when is_number(timeout_ms) and timeout_ms > 0 and is_boolean(scrub_anthropic_key) and is_binary(project_name) and
-             is_binary(task) and is_binary(adapter),
-      do: Observation.await(project_name, task, adapter, timeout_ms, scrub_anthropic_key)
+  defdelegate await(
+                project_name,
+                task,
+                adapter \\ @recommended_adapter,
+                timeout_ms \\ @default_await_timeout_ms,
+                scrub_anthropic_key \\ true
+              ),
+              to: Observation
 
   @doc false
   @spec await_result(String.t(), number()) :: {:ok, map()}
@@ -675,32 +673,19 @@ defmodule Harness.Dispatch do
           {:ok, %{name: String.t()}} | {:error, term()}
 
   # credo:disable-for-next-line Credo.Check.Refactor.FunctionArity
-  def register_project(
-        name,
-        source_type,
-        source_location,
-        roadmap_path,
-        languages,
-        check_command \\ nil,
-        concurrency_cap \\ nil,
-        warm_paths \\ [],
-        roadmap_target_branch \\ nil,
-        qa_command \\ nil
-      )
-      when is_binary(name) and is_binary(source_type) and is_binary(source_location) and is_binary(roadmap_path),
-      do:
-        Admin.register_project(
-          name,
-          source_type,
-          source_location,
-          roadmap_path,
-          languages,
-          check_command,
-          concurrency_cap,
-          warm_paths,
-          roadmap_target_branch,
-          qa_command
-        )
+  defdelegate register_project(
+                name,
+                source_type,
+                source_location,
+                roadmap_path,
+                languages,
+                check_command \\ nil,
+                concurrency_cap \\ nil,
+                warm_paths \\ [],
+                roadmap_target_branch \\ nil,
+                qa_command \\ nil
+              ),
+              to: Admin
 
   api(
     :bundle,

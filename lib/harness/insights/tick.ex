@@ -7,7 +7,7 @@ defmodule Harness.Insights.Tick do
   def perform(%Oban.Job{}) do
     status = Harness.Insights.status()
 
-    if status["settings"]["enabled"] and due?(status["next_pass"]) do
+    if status["settings"]["enabled"] and Harness.Cron.Due.due?(status["next_pass"]) do
       case Harness.Insights.observe_now() do
         {:ok, _} -> :ok
         error -> error
@@ -16,14 +16,4 @@ defmodule Harness.Insights.Tick do
       :ok
     end
   end
-
-  @spec due?(term()) :: boolean()
-  defp due?(next) when is_binary(next) do
-    case DateTime.from_iso8601(next) do
-      {:ok, date, _} -> DateTime.compare(date, DateTime.utc_now()) != :gt
-      _ -> false
-    end
-  end
-
-  defp due?(_), do: false
 end

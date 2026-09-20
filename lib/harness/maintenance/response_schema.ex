@@ -1,6 +1,8 @@
 defmodule Harness.Maintenance.ResponseSchema do
   @moduledoc "Public assessment transport structure; relevance and disclosure remain AI judgments."
 
+  import Harness.ResponseSchema, only: [object: 1, array: 1]
+
   @doc "Returns the disclosure review's structured response contract."
   @spec schema() :: map()
   def schema do
@@ -26,16 +28,4 @@ defmodule Harness.Maintenance.ResponseSchema do
       "rationale" => text
     })
   end
-
-  @spec object(map()) :: map()
-  defp object(properties),
-    do: %{
-      "type" => "object",
-      "properties" => properties,
-      "required" => Map.keys(properties),
-      "additionalProperties" => false
-    }
-
-  @spec array(map()) :: map()
-  defp array(items), do: %{"type" => "array", "items" => items}
 end

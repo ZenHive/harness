@@ -4,6 +4,24 @@ defmodule Harness.Dispatch.AdminTest do
   alias Harness.Dispatch.Admin
   alias Harness.ProjectRegistry
 
+  test "Dispatch registration delegates every public arity and preserves validation" do
+    optional = ["focused", 2, [], "main", "full"]
+
+    for count <- 0..5 do
+      name = "dispatch-facade-#{System.unique_integer([:positive])}"
+      args = [name, "local", "/tmp/#{name}", "/tmp/#{name}", [:elixir]] ++ Enum.take(optional, count)
+      assert {:ok, %{name: ^name}} = apply(Harness.Dispatch, :register_project, args)
+      on_exit(fn -> ProjectRegistry.unregister(name) end)
+      assert {:ok, project} = ProjectRegistry.lookup(name)
+      assert project.qa_command == if(count == 5, do: "full")
+      assert project.roadmap_target_branch == if(count >= 4, do: "main")
+    end
+
+    assert_raise FunctionClauseError, fn ->
+      Harness.Dispatch.register_project(nil, "local", "/tmp", "/tmp", [:elixir])
+    end
+  end
+
   test "optional registration arities retain their defaults" do
     for extra <- [[], ["focused"], ["focused", 2], ["focused", 2, []]] do
       name = "admin-defaults-#{System.unique_integer([:positive])}"

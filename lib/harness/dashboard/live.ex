@@ -1840,10 +1840,5 @@ defmodule Harness.Dashboard.Live do
   # keeps it hidden until landing can actually work.
   @doc false
   @spec landable_project_names([Project.t()]) :: MapSet.t(String.t())
-  def landable_project_names(projects) do
-    for %Project{name: name, landing_policy: :manual, target_branch: tb} <- projects,
-        is_binary(tb) and tb != "",
-        into: MapSet.new(),
-        do: name
-  end
+  defdelegate landable_project_names(projects), to: Harness.Dashboard.TaskBoard
 end

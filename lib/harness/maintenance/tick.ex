@@ -13,20 +13,10 @@ defmodule Harness.Maintenance.Tick do
   defp schedule(project) do
     status = Harness.Maintenance.status(project.name)
 
-    if status["settings"]["enabled"] and due?(status["next_sweep"]) do
+    if status["settings"]["enabled"] and Harness.Cron.Due.due?(status["next_sweep"]) do
       _ = Harness.Maintenance.sweep_now(project.name)
     end
 
     :ok
   end
-
-  @spec due?(term()) :: boolean()
-  defp due?(next) when is_binary(next) do
-    case DateTime.from_iso8601(next) do
-      {:ok, date, _} -> DateTime.compare(date, DateTime.utc_now()) != :gt
-      _ -> false
-    end
-  end
-
-  defp due?(_), do: false
 end
