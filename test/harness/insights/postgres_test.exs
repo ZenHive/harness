@@ -160,7 +160,6 @@ defmodule Harness.Insights.PostgresTest do
     assert Store.get("progress") == nil
   end
 
-  @tag :live_agent
   @tag timeout: 300_000
   test "live configured witness publishes and revises Postgres observations from collected run evidence" do
     Application.delete_env(:harness, :insights_witness)

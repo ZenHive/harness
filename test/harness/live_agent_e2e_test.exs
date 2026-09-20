@@ -3,7 +3,7 @@ defmodule Harness.LiveAgentE2ETest do
   Opt-in real CLI smoke test. Oban inserts are captured as in PipelineE2ETest;
   dispatch, both agents, reviewer verdict ingestion, git landing and rmap are real.
 
-  Run: HARNESS_LIVE_REVIEWER_MODEL=<supported-pin> mix test.json --include live_agent
+  Run: HARNESS_LIVE_REVIEWER_MODEL=<supported-pin> mix test.json --include live_agent --no-retry
   Optional HARNESS_LIVE_IMPLEMENTER / HARNESS_LIVE_REVIEWER select codex or claude
   (defaults: codex / claude). HARNESS_LIVE_IMPLEMENTER_MODEL defaults to gpt-6-astra
   only for Codex; all other pins must be explicit. Pins are checked against the
@@ -39,7 +39,7 @@ defmodule Harness.LiveAgentE2ETest do
   Optional: export HARNESS_LIVE_REVIEWER=claude
   Only codex and claude are supported by this smoke test; they must differ.
   With a Claude implementer, HARNESS_LIVE_IMPLEMENTER_MODEL is also required.
-  Run: mix test.json --include live_agent
+  Run: mix test.json --include live_agent --no-retry
   """
 
   setup %{tmp_dir: tmp_dir} do
@@ -108,7 +108,10 @@ defmodule Harness.LiveAgentE2ETest do
           reviewer: ctx.reviewer.adapter,
           total_timeout: @total_timeout,
           lifetime_timeout: @total_timeout,
-          idle_timeout: 60_000,
+          progress_timeout: @total_timeout,
+          implementer_idle_timeout: @total_timeout,
+          reviewing_idle_timeout: @total_timeout,
+          idle_timeout: @total_timeout,
           terminal_linger: 100,
           env: %{"ANTHROPIC_API_KEY" => false, "ANTHROPIC_AUTH_TOKEN" => false, "OPENAI_API_KEY" => false}
         )
@@ -216,9 +219,12 @@ defmodule Harness.LiveAgentE2ETest do
       end
 
     assert Enum.any?(entries, &(&1.id == model)),
-           "Unsupported #{selection.name} pin #{model}; available: #{inspect(Enum.map(entries, & &1.id))}"
+           "Unsupported #{selection.name} pin #{model}; available: #{inspect(Enum.map(entries, & &1.id))}\n" <>
+             @setup_instructions
 
-    assert ModelAvailability.available?(selection.agent, model)
+    assert ModelAvailability.available?(selection.agent, model),
+           "#{selection.name} pin #{model} is blocked or not in the live catalog.\n" <> @setup_instructions
+
     Map.put(selection, :model, model)
   end
 

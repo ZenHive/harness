@@ -215,7 +215,7 @@ defmodule Harness.MixProject do
         # explicitly. `mix cmd` execs its first token directly (no shell), so an
         # inline `MIX_ENV=test` prefix is read as the program name (:enoent);
         # route through `sh -c` so the env assignment is interpreted.
-        ~s|cmd sh -c "MIX_ENV=test mix test.json --quiet --cover --cover-threshold 80 --summary-only --exclude integration"|,
+        ~s|cmd sh -c "MIX_ENV=test mix test.json --quiet --cover --cover-threshold 80 --summary-only --exclude integration --exclude live_agent"|,
         "sobelow --exit --skip"
       ],
       # Mergeable bar — the full gate before a reviewer handoff / PR. Adds the

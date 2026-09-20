@@ -42,7 +42,8 @@ untouched. `--no-retry` prevents the JSON runner from spending capacity on an
 automatic retry of a failed live test.
 
 Both `:integration` and `:live_agent` tags exclude it from routine tests and
-`mix precommit`. `--include live_agent` opts in and consumes authenticated capacity.
+`mix precommit` (`--exclude integration --exclude live_agent`). `--include live_agent`
+opts in this smoke test only — other live-CLI tests stay behind `:integration`.
 Each agent has a logged 240-second total timeout; the entire run also has a
 240-second lifetime deadline. ExUnit bounds setup, dispatch and landing together
 at 330 seconds. Cancellation terminates the run's agent processes before fixture
