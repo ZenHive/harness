@@ -14795,7 +14795,7 @@
       "phase": 22,
       "bundle": "core-loop",
       "milestone": "v0_16",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Stabilize residual erl_child_setup spawn flake in worktree-heavy suite (Harness.AuditTest noop)",
       "scores": {
         "d": 4,
@@ -14823,6 +14823,7 @@
       ],
       "body": "Follow-up to task 324. During that review, `mix precommit.full` went red intermittently (2 of 4 full `--summary-only` runs). The failing test was `Harness.AuditTest` \"run/1 — unaudited-range computation the noop path removes its audit worktree\" (`test/harness/audit_test.exs`), with `erl_child_setup: failed with error 32 (EPIPE) on line 284`. That is historical evidence, not a current root-cause proof: re-run a bounded probe on the current pinned toolchain before selecting a fix.\n\nThis is a DIFFERENT spawn path than 324 fixed: 324 hardened `Harness.AgentAdapter.invoke` (the agent CLI Port), but this flake is in the System.cmd/git-fixture/worktree path. Normal `mix test.json` HEALS it via ex_unit_json auto-retry (reports `flaky: N`, exit 0); precommit's `--summary-only` disables retry, so it surfaces as a hard `failed: 1`, exit 2.\n\nIf the failure still reproduces, trace the concrete spawn/interleaving path before changing it; bounding concurrent external-process spawns is one possible outcome, not a preselected solution. Confirm any fix with the project's precommit test command (`--summary-only`, retry disabled) across repeated runs.\n\n2026-09-20 scope refinement: This is a dispatchable bounded diagnosis; no human-only action is required. Choose and record the probe budget before running it, and preserve historical failure evidence even if the current revision does not reproduce.\n",
       "created_at": "2026-06-21",
+      "started_at": "2026-09-20",
       "scored_at": "2026-08-07",
       "cross_repo": []
     },

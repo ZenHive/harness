@@ -299,7 +299,7 @@
 | Task 322 | ✅ | 🎁 **model-availability** · Antigravity is no longer model-incapable — agy 1.0.10 gained --model + a multi-model catalog; make the adapter model-capable [D:4/B:6/U:5 → Eff:1.38?] 📋 |
 | Task 323 | ✅ | 🎁 **core-loop** · Add an integration tripwire: each worktree_isolation:true adapter actually isolates to its run worktree (harness skips the pollution snapshot on trust) [D:3/B:4/U:4 → Eff:1.33?] 📋 |
 | Task 324 | ✅ | 🎁 **core-loop** · 🐛 Stabilize cold precommit temp-worktree spawn flake observed by post-merge audit [D:3/B:5/U:4 → Eff:1.5?] 🚀 |
-| Task 326 | ⬜ | 🎁 **core-loop** · 🚀 **v0_16** · 🐛 Stabilize residual erl_child_setup spawn flake in worktree-heavy suite (Harness.AuditTest noop) [D:4/B:4/U:3 → Eff:0.88?] ⚠️ |
+| Task 326 | 🔄 | 🎁 **core-loop** · 🚀 **v0_16** · 🐛 Stabilize residual erl_child_setup spawn flake in worktree-heavy suite (Harness.AuditTest noop) [D:4/B:4/U:3 → Eff:0.88?] ⚠️ |
 | Task 327 `[P]` | ✅ | 🎁 **contract** · Invert the rule-content seam + make Invocation agent-agnostic (AgentAdapter no longer names Harness.AgentRules) [D:4/B:5/U:5 → Eff:1.25?] 📋 |
 | Task 328 `[P]` | ✅ | 🎁 **contract** · Break the Driver -> Run.Reflex -> Worktree.Isolation -> AgentAdapter dependency cycle [D:4/B:6/U:5 → Eff:1.38?] 📋 |
 | Task 329 | ⛔ | 🎁 **contract** · Decision spike: extract the decoupled AgentAdapter subsystem to its own hex package? [D:2/B:5/U:4 → Eff:2.25?] 🎯 |

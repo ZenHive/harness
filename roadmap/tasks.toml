@@ -9945,13 +9945,14 @@ id = "326"
 phase = 22
 bundle = "core-loop"
 milestone = "v0_16"
-status = "pending"
+status = "in_progress"
 title = "Stabilize residual erl_child_setup spawn flake in worktree-heavy suite (Harness.AuditTest noop)"
 scores = { d = 4, b = 4, u = 3 }
 markers = ["bug"]
 acceptance_criteria = ["Reproduce the historical erl_child_setup EPIPE on the current pinned Elixir/OTP toolchain with a bounded repeated-run probe, or record durable non-reproduction evidence before changing production code", "If reproduced, identify the actual spawn-pressure/interleaving path and eliminate or bound it so `MIX_ENV=test mix test.json --quiet --cover --cover-threshold 80 --summary-only --exclude integration` is green across repeated runs", "No sleeps, no @tag :skip, no retry/gate weakening, and no contract changes to the cold-check witness path", "If the failure does not reproduce, record the exact revision, toolchain, commands, seeds/run count, probe bound and captured logs. Close the investigation as not reproduced at that revision without claiming a fix or changing production behavior; renewed failure evidence reopens diagnosis through a new task."]
 out_of_scope = ["Re-litigating task 324's AgentAdapter fix (already landed and correct)", "Disabling ex_unit_json retry or weakening the precommit gate to hide the flake"]
 assignee = "cursor"
+model = "cursor-grok-4.6-high"
 body = '''
 Follow-up to task 324. During that review, `mix precommit.full` went red intermittently (2 of 4 full `--summary-only` runs). The failing test was `Harness.AuditTest` "run/1 — unaudited-range computation the noop path removes its audit worktree" (`test/harness/audit_test.exs`), with `erl_child_setup: failed with error 32 (EPIPE) on line 284`. That is historical evidence, not a current root-cause proof: re-run a bounded probe on the current pinned toolchain before selecting a fix.
 
@@ -9962,8 +9963,8 @@ If the failure still reproduces, trace the concrete spawn/interleaving path befo
 2026-09-20 scope refinement: This is a dispatchable bounded diagnosis; no human-only action is required. Choose and record the probe budget before running it, and preserve historical failure evidence even if the current revision does not reproduce.
 '''
 created_at = "2026-06-21"
+started_at = "2026-09-20"
 scored_at = "2026-08-07"
-model = "cursor-grok-4.6-high"
 
 [[task]]
 id = "327"
