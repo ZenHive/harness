@@ -935,6 +935,45 @@ defmodule Harness.Cron.RoadmapPollerTest do
   end
 
   describe "zero-dispatch occupancy witness (Task 431)" do
+    for mode <- [:duplicate, :unavailable, :enqueue_error, :manual, :planned_error, :conflict] do
+      @witness_mode mode
+      test "one witness for #{mode} without an enqueue" do
+        mode = @witness_mode
+        project = ProjectFixture.from_repo("/tmp/cron-zero-outcome", name: "cron-zero-outcome", concurrency_cap: 3)
+        assert :ok = ProjectRegistry.register(project)
+        enable_project(project.name)
+        Application.put_env(:harness, :roadmap_list, fn _ -> {:ok, []} end)
+        Application.put_env(:harness, :live_run_statuses, fn -> [] end)
+        Application.put_env(:harness, :roadmap_ready, fn _ -> {:ok, [task("1", "codex")]} end)
+        Application.put_env(:harness, :oban_insert, fn _ -> {:error, :database_unavailable} end)
+
+        expected = witness_outcome(mode, project)
+
+        log = capture_log(fn -> assert :ok = RoadmapPoller.perform(%Oban.Job{}) end)
+        witnesses = log |> String.split("\n") |> Enum.filter(&String.contains?(&1, "zero dispatch"))
+        assert [witness] = witnesses
+        assert witness =~ "cap=3"
+        assert witness =~ expected
+      end
+    end
+
+    test "the witness bounds large plan rationale" do
+      project = ProjectFixture.from_repo("/tmp/cron-bounded", name: "cron-bounded")
+      assert :ok = ProjectRegistry.register(project)
+      enable_project(project.name)
+      Application.put_env(:harness, :roadmap_list, fn _ -> {:ok, []} end)
+      Application.put_env(:harness, :roadmap_ready, fn _ -> {:ok, [task("1", "codex"), task("2", "codex")]} end)
+
+      Application.put_env(:harness, :cron_orchestrator, fn _, _ ->
+        {:ok,
+         %Orchestrator{dispatch: [], skip: [%{task_id: "1", disposition: "defer", reason: String.duplicate("a", 20_000)}]}}
+      end)
+
+      log = capture_log(fn -> assert :ok = RoadmapPoller.perform(%Oban.Job{}) end)
+      assert [witness] = log |> String.split("\n") |> Enum.filter(&String.contains?(&1, "zero dispatch"))
+      assert byte_size(witness) < 2500
+    end
+
     test "no-ready-work emits cap, occupancy and rmap_in_progress plus no_ready_work" do
       project =
         ProjectFixture.from_repo("/tmp/harness-cron-witness-ready", name: "cron-witness-ready", concurrency_cap: 4)
@@ -944,7 +983,7 @@ defmodule Harness.Cron.RoadmapPollerTest do
 
       Application.put_env(:harness, :live_run_statuses, fn -> [] end)
       Application.put_env(:harness, :roadmap_list, fn _ -> {:ok, []} end)
-      Application.put_env(:harness, :roadmap_ready, fn _p -> {:ok, [task("51", "human")]} end)
+      Application.put_env(:harness, :roadmap_ready, fn _p -> {:ok, []} end)
 
       log = capture_log(fn -> assert :ok = RoadmapPoller.perform(%Oban.Job{}) end)
 
@@ -1192,6 +1231,44 @@ defmodule Harness.Cron.RoadmapPollerTest do
     Settings.set_dispatch_mode(name, :manual, "test")
     Application.put_env(:harness, :notification_sinks, [CaptureSink])
     Application.put_env(:harness, :test_capture_pid, self())
+  end
+
+  defp witness_outcome(mode, project) do
+    case mode do
+      :duplicate ->
+        Application.put_env(:harness, :live_run_statuses, fn ->
+          [%Status{run_id: "run-witness", project_name: project.name, task_id: "1", state: :running}]
+        end)
+
+        "run_already_in_flight"
+
+      :unavailable ->
+        :ok = AgentRegistry.mark_unavailable(Codex, :quota)
+        "adapter_unavailable"
+
+      :manual ->
+        enable_manual(project.name)
+        "parked"
+
+      :conflict ->
+        Application.put_env(:harness, :oban_insert, fn _ ->
+          {:ok, %Oban.Job{conflict?: true, args: %{"run_id" => "run-existing"}}}
+        end)
+
+        "job_already_enqueued"
+
+      :enqueue_error ->
+        "database_unavailable"
+
+      :planned_error ->
+        Application.put_env(:harness, :roadmap_ready, fn _ -> {:ok, [task("1", "codex"), task("2", "codex")]} end)
+
+        Application.put_env(:harness, :cron_orchestrator, fn _, _ ->
+          {:ok, %Orchestrator{dispatch: [%{task_id: "1", adapter: "codex"}, %{task_id: "2", adapter: "codex"}], skip: []}}
+        end)
+
+        "database_unavailable"
+    end
   end
 
   defp enable_project(name) do

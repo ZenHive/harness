@@ -2,9 +2,11 @@ defmodule Harness.Cron.InFlightTest do
   # async: false because tests mutate :live_run_statuses / :roadmap_list app env.
   use ExUnit.Case, async: false
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias Harness.Cron.InFlight
   alias Harness.ProjectFixture
   alias Harness.Run.Status
+  alias Harness.Run.Worker
 
   setup do
     on_exit(fn ->
@@ -36,6 +38,49 @@ defmodule Harness.Cron.InFlightTest do
 
       refute InFlight.run_in_flight?(project, "4")
     end
+  end
+
+  @tag :integration
+  test "unfinished jobs count without live runs, independently of roadmap status or read errors" do
+    start_supervised!(Harness.Repo)
+    :ok = Sandbox.checkout(Harness.Repo)
+    project = ProjectFixture.from_repo("/tmp/harness-inflight-queued", name: "inflight-queued")
+    Application.put_env(:harness, :live_run_statuses, fn -> [] end)
+
+    for {id, state} <- [
+          {"1", "available"},
+          {"2", "scheduled"},
+          {"3", "retryable"},
+          {"4", "executing"},
+          {"5", "completed"},
+          {"6", "cancelled"},
+          {"7", "discarded"}
+        ] do
+      args = %{project_name: project.name, item_id: id, adapter_module: "Elixir.Harness.AgentAdapter.Codex"}
+      changeset = Worker.new(args, queue: Harness.Oban.queue_name(project))
+      assert {:ok, _job} = Harness.Repo.insert(Ecto.Changeset.put_change(changeset, :state, state))
+    end
+
+    for id <- ~w(1 2 3 4), do: assert(InFlight.run_in_flight?(project, id))
+    for id <- ~w(5 6 7), do: refute(InFlight.run_in_flight?(project, id))
+
+    # A live run and its persisted job occupy one dispatch identity.
+    Application.put_env(:harness, :live_run_statuses, fn ->
+      [%Status{run_id: "run-queued", project_name: project.name, task_id: "1", state: :running}]
+    end)
+
+    assert Harness.Oban.coalesced_run_job(project, "1") == :error
+
+    row = %{"id" => "1", "status" => "pending", "touches" => ["lib/queued.ex"]}
+    Application.put_env(:harness, :roadmap_list, fn _ -> {:ok, [row]} end)
+    snapshot = InFlight.snapshot(project)
+    assert snapshot.occupancy == 4
+    assert snapshot.rmap_in_progress == 0
+    assert row in snapshot.tasks
+    assert Enum.sort(Enum.map(snapshot.tasks, & &1["id"])) == ~w(1 2 3 4)
+
+    Application.put_env(:harness, :roadmap_list, fn _ -> {:error, :unavailable} end)
+    assert %{occupancy: 4, rmap_in_progress: :unread} = InFlight.snapshot(project)
   end
 
   describe "tasks/1 and snapshot/1" do

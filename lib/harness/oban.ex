@@ -88,20 +88,28 @@ defmodule Harness.Oban do
   """
   @spec unfinished_run_job?(Project.t(), String.t()) :: boolean()
   def unfinished_run_job?(%Project{} = project, item_id) when is_binary(item_id) do
-    queue = queue_name(project)
-
     query =
-      from(job in Oban.Job,
-        where:
-          job.queue == ^queue and job.worker == ^@run_worker and job.state in ^@headroom_states and
-            fragment("?->>? = ?", job.args, "project_name", ^project.name) and
-            fragment("?->>? = ?", job.args, "item_id", ^item_id),
-        limit: 1
+      from(job in live_run_jobs(project),
+        where: fragment("?->>? = ?", job.args, "item_id", ^item_id)
       )
 
     Harness.Repo.exists?(query)
   rescue
     _error in @query_degrade_errors -> false
+  end
+
+  @doc "Returns distinct task identities with unfinished run jobs, independent of roadmap status."
+  @spec unfinished_run_task_ids(Project.t()) :: [String.t()]
+  def unfinished_run_task_ids(%Project{} = project) do
+    project
+    |> live_run_jobs()
+    |> Ecto.Query.exclude(:limit)
+    |> Ecto.Query.select([job], fragment("?->>?", job.args, "item_id"))
+    |> Harness.Repo.all()
+    |> Enum.filter(&is_binary/1)
+    |> Enum.uniq()
+  rescue
+    _error in @query_degrade_errors -> []
   end
 
   @doc false

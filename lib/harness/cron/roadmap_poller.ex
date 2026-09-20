@@ -91,6 +91,8 @@ defmodule Harness.Cron.RoadmapPoller do
     codex: %{"OPENAI_API_KEY" => false}
   }
 
+  @typep dispatch_outcome :: :enqueued | {:skipped, term()}
+
   @type cron_status ::
           :disabled
           | {:enabled, String.t(), DateTime.t() | :unknown}
@@ -169,25 +171,32 @@ defmodule Harness.Cron.RoadmapPoller do
 
   @spec poll_project(Project.t()) :: :ok
   defp poll_project(%Project{} = project) do
-    if Settings.project_enabled?(project) do
-      occupancy = InFlight.snapshot(project)
+    occupancy = InFlight.snapshot(project)
 
-      case ready_tasks(project) do
-        {:ok, tasks} ->
-          dispatch_decision(project, tasks, occupancy)
+    outcome =
+      if Settings.project_enabled?(project) do
+        case ready_tasks(project) do
+          {:ok, tasks} ->
+            dispatch_decision(project, tasks)
 
-        {:error, reason} ->
-          log_ingest_error(project, reason)
-          witness_zero_dispatch(project, occupancy, {:ready_refused, reason})
+          {:error, reason} ->
+            log_ingest_error(project, reason)
+            {:skipped, {:ready_refused, reason}}
+        end
+      else
+        log_autonomy_skip(project)
+        {:skipped, :autonomy_disabled}
       end
-    else
-      log_autonomy_skip(project)
+
+    case outcome do
+      :enqueued -> :ok
+      {:skipped, fact} -> witness_zero_dispatch(project, occupancy, fact)
     end
   end
 
   # History is a fact, never a policy: a prior attempt requires an AI decision.
-  @spec dispatch_decision(Project.t(), [map()], InFlight.snapshot()) :: :ok
-  defp dispatch_decision(%Project{} = project, tasks, occupancy) do
+  @spec dispatch_decision(Project.t(), [map()]) :: dispatch_outcome()
+  defp dispatch_decision(%Project{} = project, tasks) do
     {dispatchable, undispatchable} = Enum.split_with(tasks, &dispatchable?/1)
     announce_unroutable(project, undispatchable)
 
@@ -196,17 +205,20 @@ defmodule Harness.Cron.RoadmapPoller do
 
     case Attempts.attach(project, first_wave(plan)) do
       {:ok, []} ->
-        witness_zero_dispatch(project, occupancy, :no_ready_work)
+        fact =
+          if undispatchable == [], do: :no_ready_work, else: {:unroutable, Enum.map(undispatchable, &unroutable_key/1)}
+
+        {:skipped, fact}
 
       {:ok, [%{"attempts" => []} = task]} ->
         direct_dispatch(project, task)
 
       {:ok, tasks} ->
-        orchestrate(project, tasks, occupancy)
+        orchestrate(project, tasks)
 
       {:error, reason} ->
         log_orchestrator_error(project, {:history_unavailable, reason})
-        witness_zero_dispatch(project, occupancy, {:history_unavailable, reason})
+        {:skipped, {:history_unavailable, reason}}
     end
   end
 
@@ -234,7 +246,7 @@ defmodule Harness.Cron.RoadmapPoller do
   end
 
   # A singleton with no prior attempt uses its roadmap routing directly.
-  @spec direct_dispatch(Project.t(), map()) :: :ok
+  @spec direct_dispatch(Project.t(), map()) :: dispatch_outcome()
   defp direct_dispatch(%Project{} = project, task) do
     route_and_enqueue(project, to_string(task["id"]), task_agent(task), task)
   end
@@ -243,28 +255,29 @@ defmodule Harness.Cron.RoadmapPoller do
   # mechanically. An empty/malformed/agent-failed plan dispatches NOTHING this
   # tick (never a blind fan-out — that was the stale-base damage); the next tick
   # re-plans against the fresher base.
-  @spec orchestrate(Project.t(), [map()], InFlight.snapshot()) :: :ok
-  defp orchestrate(%Project{} = project, tasks, occupancy) do
+  @spec orchestrate(Project.t(), [map()]) :: dispatch_outcome()
+  defp orchestrate(%Project{} = project, tasks) do
     case Orchestrator.plan(project, tasks) do
-      {:ok, %Orchestrator{dispatch: [], skip: skip}} ->
-        Enum.each(skip, &log_plan_skip(project, &1))
-        witness_zero_dispatch(project, occupancy, {:orchestrator_plan, skip})
-
       {:ok, %Orchestrator{dispatch: dispatch, skip: skip}} ->
         tasks_by_id = Map.new(tasks, &{to_string(&1["id"]), &1})
-        Enum.each(dispatch, &enqueue_planned(project, &1, tasks_by_id))
+        outcomes = Enum.map(dispatch, &enqueue_planned(project, &1, tasks_by_id))
         Enum.each(skip, &log_plan_skip(project, &1))
+
+        if :enqueued in outcomes,
+          do: :enqueued,
+          else: {:skipped, {:orchestrator_plan, skip, outcomes}}
 
       {:error, reason} ->
         log_orchestrator_error(project, reason)
-        witness_zero_dispatch(project, occupancy, {:orchestrator, reason})
+        {:skipped, {:orchestrator, reason}}
     end
   end
 
   # The plan is the grouping JUDGMENT; harness validates only mechanically — the
   # task is in the woken set, the named adapter resolves, the agent is available —
   # then enqueues. Concurrency stays capped by the Oban queue limit.
-  @spec enqueue_planned(Project.t(), Orchestrator.dispatch_entry(), %{optional(String.t()) => map()}) :: :ok
+  @spec enqueue_planned(Project.t(), Orchestrator.dispatch_entry(), %{optional(String.t()) => map()}) ::
+          dispatch_outcome()
   defp enqueue_planned(%Project{} = project, %{task_id: item_id, adapter: adapter} = entry, tasks_by_id) do
     with {:ok, task} <- Map.fetch(tasks_by_id, item_id),
          agent when is_atom(agent) <- resolve_assignee(adapter),
@@ -287,7 +300,7 @@ defmodule Harness.Cron.RoadmapPoller do
   # availability gate, then enqueue OR park. A disabled or quota-exhausted agent
   # is logged and skipped, never dispatched. The mode gate keys solely off the
   # project's dispatch mode — no "is this run high-stakes" judgment in code.
-  @spec route_and_enqueue(Project.t(), String.t(), atom(), map()) :: :ok
+  @spec route_and_enqueue(Project.t(), String.t(), atom(), map()) :: dispatch_outcome()
   defp route_and_enqueue(%Project{} = project, item_id, agent, task) when is_atom(agent) do
     with {:ok, adapter} <- AgentRegistry.delegatable_module_for_agent(agent),
          :ok <- ensure_adapter_available(agent, adapter),
@@ -346,7 +359,7 @@ defmodule Harness.Cron.RoadmapPoller do
   # The single enqueue boundary both autonomous paths share. Under `:manual` the
   # resolved decision is parked for operator approval; under `:auto` it is
   # enqueued exactly as before (byte-identical to the pre-Task-237 behaviour).
-  @spec enqueue_or_park(Project.t(), String.t(), module(), keyword()) :: :ok
+  @spec enqueue_or_park(Project.t(), String.t(), module(), keyword()) :: dispatch_outcome()
   defp enqueue_or_park(%Project{} = project, item_id, adapter, opts) do
     case Settings.dispatch_mode(project) do
       :manual -> park_for_approval(project, item_id, adapter, opts)
@@ -354,13 +367,14 @@ defmodule Harness.Cron.RoadmapPoller do
     end
   end
 
-  @spec auto_enqueue(Project.t(), String.t(), module(), keyword()) :: :ok
+  @spec auto_enqueue(Project.t(), String.t(), module(), keyword()) :: dispatch_outcome()
   defp auto_enqueue(%Project{} = project, item_id, adapter, opts) do
     if InFlight.run_in_flight?(project, item_id) do
       log_dispatch_skip(project, item_id, :run_already_in_flight)
     else
       case enqueue_run(project, item_id, adapter, opts) do
-        {:ok, _job} -> :ok
+        {:ok, %Oban.Job{conflict?: true}} -> log_dispatch_skip(project, item_id, :job_already_enqueued)
+        {:ok, _job} -> :enqueued
         {:error, reason} -> log_dispatch_skip(project, item_id, reason)
       end
     end
@@ -370,18 +384,19 @@ defmodule Harness.Cron.RoadmapPoller do
   # now (same value the auto path applies) so approval honours it without
   # re-deriving. A witness event fires only on a freshly-parked decision, so a
   # re-tick of an already-parked task does not re-notify.
-  @spec park_for_approval(Project.t(), String.t(), module(), keyword()) :: :ok
+  @spec park_for_approval(Project.t(), String.t(), module(), keyword()) :: dispatch_outcome()
   defp park_for_approval(%Project{} = project, item_id, adapter, opts) do
     if InFlight.run_in_flight?(project, item_id) do
-      :ok
+      log_dispatch_skip(project, item_id, :run_already_in_flight)
     else
       case PendingDispatch.park(project.name, item_id, adapter, env_scrub_for_adapter(adapter), opts) do
         {:parked, record} ->
           Notification.notify(park_event(project, record))
           log_park(project, item_id, adapter)
+          {:skipped, {:parked, item_id}}
 
         {:exists, _record} ->
-          :ok
+          {:skipped, {:already_parked, item_id}}
       end
     end
   end
@@ -600,16 +615,19 @@ defmodule Harness.Cron.RoadmapPoller do
     Logger.warning("harness cron poller: #{project.name} roadmap ready refused: #{inspect(reason)}")
   end
 
-  @spec log_dispatch_skip(Project.t(), String.t(), term()) :: :ok
+  @spec log_dispatch_skip(Project.t(), String.t(), term()) :: dispatch_outcome()
   defp log_dispatch_skip(%Project{} = project, item_id, reason) do
     Logger.debug("harness cron poller: #{project.name} task #{item_id} dispatch skipped: #{inspect(reason)}")
+    {:skipped, {item_id, reason}}
   end
 
-  @spec log_dispatch_suppression(Project.t(), String.t(), module(), term()) :: :ok
+  @spec log_dispatch_suppression(Project.t(), String.t(), module(), term()) :: dispatch_outcome()
   defp log_dispatch_suppression(%Project{} = project, item_id, adapter, reason) do
     Logger.info(
       "harness cron poller: #{project.name} task #{item_id} dispatch suppressed (adapter=#{inspect(adapter)}, reason=#{inspect(reason)})"
     )
+
+    {:skipped, {item_id, reason}}
   end
 
   # Info-level so a parked decision is observable in the operator log — manual
@@ -626,8 +644,10 @@ defmodule Harness.Cron.RoadmapPoller do
   # mechanical skip/error. No derived cause.
   @spec witness_zero_dispatch(Project.t(), InFlight.snapshot(), term()) :: :ok
   defp witness_zero_dispatch(%Project{} = project, occupancy, fact) do
+    fact = fact |> inspect(limit: 20, printable_limit: 1_000) |> String.slice(0, 2_000)
+
     Logger.info(
-      "harness cron poller: #{project.name} zero dispatch cap=#{inspect(occupancy.cap)} occupancy=#{occupancy.occupancy} rmap_in_progress=#{occupancy.rmap_in_progress} fact=#{inspect(fact)}"
+      "harness cron poller: #{project.name} zero dispatch cap=#{inspect(occupancy.cap)} occupancy=#{occupancy.occupancy} rmap_in_progress=#{occupancy.rmap_in_progress} fact=#{fact}"
     )
   end
 

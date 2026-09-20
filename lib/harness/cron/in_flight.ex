@@ -78,18 +78,16 @@ defmodule Harness.Cron.InFlight do
     by_id = Map.new(rows, &{task_id(&1), &1})
 
     project
-    |> in_flight_ids(rows)
+    |> in_flight_ids()
     |> Enum.map(fn id -> Map.get(by_id, id, %{"id" => id}) end)
   end
 
-  @spec in_flight_ids(Project.t(), [map()]) :: [String.t()]
-  defp in_flight_ids(%Project{} = project, rows) do
-    rows
-    |> Enum.filter(&in_progress?/1)
-    |> Enum.map(&task_id/1)
-    |> Enum.concat(live_task_ids(project))
+  @spec in_flight_ids(Project.t()) :: [String.t()]
+  defp in_flight_ids(%Project{} = project) do
+    project
+    |> live_task_ids()
+    |> Enum.concat(Harness.Oban.unfinished_run_task_ids(project))
     |> Enum.uniq()
-    |> Enum.filter(&run_in_flight?(project, &1))
   end
 
   @spec live_task_ids(Project.t()) :: [String.t()]
