@@ -8,16 +8,17 @@ defmodule Harness.Run.TestDbPartition do
   def run!(partition) when is_binary(partition) do
     Mix.env() == :test || Mix.raise("MIX_ENV=test required")
 
-    Enum.each(Mix.Ecto.parse_repo([]), fn repo_mod ->
-      repo = Mix.Ecto.ensure_repo(repo_mod, [])
+    errors =
+      Enum.flat_map(Mix.Ecto.parse_repo([]), fn repo_mod ->
+        repo = Mix.Ecto.ensure_repo(repo_mod, [])
 
-      case drop_config(repo.config(), partition) do
-        :ok -> :ok
-        {:error, reason} -> Mix.raise(format_error(reason))
-      end
-    end)
+        case drop_config(repo.config(), partition) do
+          :ok -> []
+          {:error, reason} -> [format_error(reason)]
+        end
+      end)
 
-    :ok
+    if errors == [], do: :ok, else: Mix.raise(Enum.join(errors, "\n"))
   end
 
   @doc "Guarded drop of one already-resolved repo config. Never forces a drop."
@@ -66,25 +67,16 @@ defmodule Harness.Run.TestDbPartition do
       {:error, :already_down} -> :ok
       {:error, reason} -> classify_drop_error(database, reason)
     end
-  rescue
-    error in Postgrex.Error -> classify_drop_error(database, Exception.message(error))
-    error in DBConnection.ConnectionError -> {:error, {:drop_failed, Exception.message(error)}}
   end
 
-  @spec classify_drop_error(String.t(), term()) :: {:error, term()}
+  @spec classify_drop_error(String.t(), String.t()) :: {:error, term()}
   defp classify_drop_error(database, reason) do
-    text = drop_error_text(reason)
-
-    if session_block?(text) do
-      {:error, {:active_sessions, database, text}}
+    if session_block?(reason) do
+      {:error, {:active_sessions, database, reason}}
     else
       {:error, {:drop_failed, reason}}
     end
   end
-
-  @spec drop_error_text(term()) :: String.t()
-  defp drop_error_text(reason) when is_binary(reason), do: reason
-  defp drop_error_text(reason), do: inspect(reason)
 
   @spec session_block?(String.t()) :: boolean()
   defp session_block?(text) do

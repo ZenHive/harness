@@ -88,28 +88,34 @@ defmodule Harness.Oban do
   """
   @spec unfinished_run_job?(Project.t(), String.t()) :: boolean()
   def unfinished_run_job?(%Project{} = project, item_id) when is_binary(item_id) do
-    query =
-      from(job in live_run_jobs(project),
-        where: fragment("?->>? = ?", job.args, "item_id", ^item_id)
-      )
-
-    Harness.Repo.exists?(query)
-  rescue
-    _error in @query_degrade_errors -> false
+    match?({:ok, _job}, member_run_job(project, item_id))
   end
 
   @doc "Returns distinct task identities with unfinished run jobs, independent of roadmap status."
   @spec unfinished_run_task_ids(Project.t()) :: [String.t()]
   def unfinished_run_task_ids(%Project{} = project) do
     project
-    |> live_run_jobs()
-    |> Ecto.Query.exclude(:limit)
-    |> Ecto.Query.select([job], fragment("?->>?", job.args, "item_id"))
-    |> Harness.Repo.all()
-    |> Enum.filter(&is_binary/1)
+    |> unfinished_run_task_groups()
+    |> Map.values()
+    |> List.flatten()
     |> Enum.uniq()
+  end
+
+  @doc "Returns unfinished dispatch identities and their task members, with one entry per primary task."
+  @spec unfinished_run_task_groups(Project.t()) :: %{String.t() => [String.t()]}
+  def unfinished_run_task_groups(%Project{} = project) do
+    jobs =
+      project
+      |> live_run_jobs()
+      |> Ecto.Query.exclude(:limit)
+      |> Ecto.Query.select([job], job.args)
+      |> Harness.Repo.all()
+
+    for %{"item_id" => id} = args <- jobs, is_binary(id), into: %{} do
+      {id, Enum.uniq([id | Map.get(args, "item_ids", [])])}
+    end
   rescue
-    _error in @query_degrade_errors -> []
+    _error in @query_degrade_errors -> %{}
   end
 
   @doc false

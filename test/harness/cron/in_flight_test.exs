@@ -84,6 +84,64 @@ defmodule Harness.Cron.InFlightTest do
   end
 
   describe "tasks/1 and snapshot/1" do
+    test "a live coalesced run occupies one slot and retains every member's write set" do
+      project = ProjectFixture.from_repo("/tmp/harness-inflight-coalesced", name: "inflight-coalesced")
+
+      Application.put_env(:harness, :live_run_statuses, fn ->
+        [%Status{run_id: "run-pair", project_name: project.name, task_id: "1", task_ids: ~w(1 2 3), state: :running}]
+      end)
+
+      Application.put_env(:harness, :roadmap_list, fn _ ->
+        {:ok,
+         [
+           %{"id" => "1", "touches" => ["lib/first.ex"], "files_to_modify" => ["test/shared.exs"]},
+           %{"id" => "2", "touches" => ["lib/second.ex"], "files_to_modify" => ["test/shared.exs", "test/second.exs"]}
+         ]}
+      end)
+
+      assert %{occupancy: 1, tasks: [task]} = InFlight.snapshot(project)
+      assert task["id"] == "1"
+      assert task["task_ids"] == ~w(1 2 3)
+      assert task["touches"] == ["lib/first.ex", "lib/second.ex"]
+      assert task["files_to_modify"] == ["test/shared.exs", "test/second.exs"]
+      assert InFlight.run_in_flight?(project, "2")
+      assert InFlight.run_in_flight?(project, "3")
+      refute InFlight.run_in_flight?(%{project | name: "another-project"}, "2")
+    end
+
+    @tag :integration
+    test "queued coalesced membership survives absent and incomplete live snapshots without double counting" do
+      start_supervised!(Harness.Repo)
+      :ok = Sandbox.checkout(Harness.Repo)
+      project = ProjectFixture.from_repo("/tmp/harness-inflight-coalesced-job", name: "inflight-coalesced-job")
+      args = %{project_name: project.name, item_id: "1", item_ids: ~w(1 2), run_id: "run-pair"}
+      job = args |> Worker.new(queue: Harness.Oban.queue_name(project)) |> Harness.Repo.insert!()
+      Application.put_env(:harness, :live_run_statuses, fn -> [] end)
+
+      Application.put_env(:harness, :roadmap_list, fn _ ->
+        {:ok, [%{"id" => "2", "touches" => ["lib/second.ex"], "files_to_modify" => ["test/second.exs"]}]}
+      end)
+
+      assert %{occupancy: 1, tasks: [task]} = InFlight.snapshot(project)
+      assert task["id"] == "1"
+      assert task["task_ids"] == ~w(1 2)
+      assert task["touches"] == ["lib/second.ex"]
+      assert task["files_to_modify"] == ["test/second.exs"]
+      assert InFlight.run_in_flight?(project, "2")
+      assert Enum.sort(Harness.Oban.unfinished_run_task_ids(project)) == ~w(1 2)
+
+      Application.put_env(:harness, :live_run_statuses, fn ->
+        [%Status{run_id: "run-pair", project_name: project.name, task_id: "1", state: :reviewing}]
+      end)
+
+      assert %{occupancy: 1, tasks: [^task]} = InFlight.snapshot(project)
+
+      job |> Ecto.Changeset.change(state: "completed") |> Harness.Repo.update!()
+      Application.put_env(:harness, :live_run_statuses, fn -> [] end)
+      refute InFlight.run_in_flight?(project, "2")
+      assert InFlight.tasks(project) == []
+    end
+
     test "rmap in_progress with zero live runs and zero Oban jobs is not occupancy" do
       project = ProjectFixture.from_repo("/tmp/harness-inflight-phantom", name: "inflight-phantom", concurrency_cap: 4)
       Application.put_env(:harness, :live_run_statuses, fn -> [] end)

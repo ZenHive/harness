@@ -11,6 +11,7 @@ defmodule Harness.SuiteHealth.PostgresLifecycleTest do
   alias Harness.SuiteHealth.Bootstrap
   alias Harness.SuiteHealth.Runner
 
+  @moduletag :integration
   @moduletag timeout: 120_000
   @moduletag :tmp_dir
 

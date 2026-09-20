@@ -127,8 +127,7 @@ defmodule Harness.Dashboard.RoadmapLiveTest do
       assert card(html, "5", "landing") =~ "Approved unlanded"
       assert card(html, "5", "landing") =~ "Land"
       assert card(html, "5", "landing") =~ "42"
-      assert card(html, "5", "landing") =~ "Cost"
-      assert card(html, "5", "landing") =~ "—"
+      refute card(html, "5", "landing") =~ "Cost"
 
       assert card(html, "6", "blocked") =~ "Land cap"
       assert card(html, "6", "blocked") =~ "Re-land"
@@ -434,6 +433,34 @@ defmodule Harness.Dashboard.RoadmapLiveTest do
   end
 
   describe "production contracts" do
+    test "renders only supported Hold and recovery controls", %{conn: conn} do
+      register("board-eligible")
+
+      stub_roadmap(
+        for(id <- ~w(1 2 3 4 5 6), do: task(id, "in_progress", "Task #{id}")),
+        []
+      )
+
+      coalesced = %{record("coalesced", "3", :failed) | task_ids: ["3", "4"]}
+
+      stub_execution(
+        "board-eligible",
+        [status("running", "1", :running), status("reviewing", "2", :reviewing)],
+        [coalesced, record("landed", "5", :done, verdict: :approve, landed_sha: "abc"), record("failed", "6", :failed)]
+      )
+
+      {:ok, view, _html} = live(conn, "/harness/roadmap")
+      assert has_element?(view, ~s(button[phx-click="hold_run"][phx-value-run_id="running"]))
+      refute has_element?(view, ~s(button[phx-click="hold_run"][phx-value-run_id="reviewing"]))
+
+      for run_id <- ["coalesced", "landed"], event <- ["resume_failed", "rereview_run"] do
+        refute has_element?(view, ~s(button[phx-click="#{event}"][phx-value-run_id="#{run_id}"]))
+      end
+
+      assert has_element?(view, ~s(button[phx-click="resume_failed"][phx-value-run_id="failed"]))
+      assert has_element?(view, ~s(button[phx-click="rereview_run"][phx-value-run_id="failed"]))
+    end
+
     test "real Dispatch failures remain visible without changing task status", %{conn: conn} do
       register("board-contracts")
       stub_roadmap([task("1", "pending", "Unchanged")], [])

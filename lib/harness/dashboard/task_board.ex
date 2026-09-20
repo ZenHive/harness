@@ -350,8 +350,7 @@ defmodule Harness.Dashboard.TaskBoard do
   defp dispatchable?(_lane, _identity, _ready_ids), do: false
 
   @spec holdable?(Status.t() | nil) :: boolean()
-  defp holdable?(%Status{state: :held}), do: false
-  defp holdable?(%Status{state: state}) when state not in @terminal_states, do: true
+  defp holdable?(%Status{state: :running}), do: true
   defp holdable?(_status), do: false
 
   @spec resumable_held?(Status.t() | nil) :: boolean()
@@ -359,13 +358,21 @@ defmodule Harness.Dashboard.TaskBoard do
   defp resumable_held?(_status), do: false
 
   @spec resume_failed?(Status.t() | nil, Status.t() | nil) :: boolean()
-  defp resume_failed?(%Status{state: :failed}, nil), do: true
+  defp resume_failed?(%Status{state: :failed} = selected, nil), do: recoverable_attempt?(selected)
   defp resume_failed?(_selected, _execution), do: false
 
   @spec rereviewable?(Status.t() | nil, Status.t() | nil, String.t()) :: boolean()
-  defp rereviewable?(%Status{run_id: run_id}, nil, rmap_status) when is_binary(run_id) and rmap_status != "done", do: true
+  defp rereviewable?(%Status{run_id: run_id} = selected, nil, rmap_status)
+       when is_binary(run_id) and rmap_status != "done", do: recoverable_attempt?(selected)
 
   defp rereviewable?(_selected, _execution, _rmap_status), do: false
+
+  @spec recoverable_attempt?(Status.t()) :: boolean()
+  defp recoverable_attempt?(%Status{landed_sha: nil, task_id: task_id, task_ids: ids}) when is_list(ids) do
+    Enum.all?(ids, &(&1 == task_id))
+  end
+
+  defp recoverable_attempt?(_selected), do: false
 
   @spec landable?(Status.t() | nil, String.t(), String.t(), landable_projects()) :: boolean()
   defp landable?(%Status{} = selected, rmap_status, project_name, landable) do

@@ -4,7 +4,8 @@ defmodule Harness.Cron.InFlight do
 
   Registry is authoritative for in-BEAM live runs; Oban is authoritative for
   persisted queued/executing jobs. Count both by `{project, task_id}`, not by
-  rmap status and not by `run_id`. A settled run is not in-flight regardless of
+  rmap status and not by `run_id`. Coalesced members share their primary task's
+  slot and contribute their full write set. A settled run is not in-flight regardless of
   an `in_progress` rmap row — that stickiness is Task 131 (manual landing), and
   this module is the consumer that must not misread it as occupancy.
   """
@@ -37,8 +38,9 @@ defmodule Harness.Cron.InFlight do
   end
 
   @doc """
-  In-flight tasks for the orchestrator context, with rmap `touches` /
-  `files_to_modify` resolved onto each live id.
+  In-flight dispatches for the orchestrator context, with rmap `touches` /
+  `files_to_modify` resolved onto each live id. A coalesced dispatch occupies one
+  row, with `task_ids` and the union of its members' write sets.
 
   A live id with no matching rmap row is still returned as `%{"id" => id}` so
   occupancy is not dropped when path data is missing.
@@ -78,23 +80,37 @@ defmodule Harness.Cron.InFlight do
     by_id = Map.new(rows, &{task_id(&1), &1})
 
     project
-    |> in_flight_ids()
-    |> Enum.map(fn id -> Map.get(by_id, id, %{"id" => id}) end)
+    |> in_flight_groups()
+    |> Enum.map(&resolve_group(&1, by_id))
   end
 
-  @spec in_flight_ids(Project.t()) :: [String.t()]
-  defp in_flight_ids(%Project{} = project) do
+  @spec resolve_group({String.t(), [String.t()]}, map()) :: map()
+  defp resolve_group({id, [_single]}, by_id), do: Map.get(by_id, id, %{"id" => id})
+
+  defp resolve_group({id, members}, by_id) do
+    row = by_id |> Map.get(id, %{"id" => id}) |> Map.put("task_ids", members)
+
+    Enum.reduce(["touches", "files_to_modify"], row, fn field, row ->
+      paths = Enum.flat_map(members, fn member -> List.wrap(get_in(by_id, [member, field])) end)
+      Map.put(row, field, Enum.uniq(paths))
+    end)
+  end
+
+  @spec in_flight_groups(Project.t()) :: %{String.t() => [String.t()]}
+  defp in_flight_groups(%Project{} = project) do
     project
-    |> live_task_ids()
-    |> Enum.concat(Harness.Oban.unfinished_run_task_ids(project))
-    |> Enum.uniq()
+    |> live_task_groups()
+    |> Map.merge(Harness.Oban.unfinished_run_task_groups(project), fn _id, live, queued ->
+      Enum.uniq(live ++ queued)
+    end)
   end
 
-  @spec live_task_ids(Project.t()) :: [String.t()]
-  defp live_task_ids(%Project{} = project) do
+  @spec live_task_groups(Project.t()) :: %{String.t() => [String.t()]}
+  defp live_task_groups(%Project{} = project) do
     for %Status{} = status <- live_run_statuses(),
         matching_live_run?(status, project, status.task_id),
-        do: status.task_id
+        into: %{},
+        do: {status.task_id, Enum.uniq([status.task_id | status.task_ids])}
   end
 
   @spec live_run_in_flight?(Project.t(), String.t()) :: boolean()
@@ -104,7 +120,8 @@ defmodule Harness.Cron.InFlight do
 
   @spec matching_live_run?(Status.t(), Project.t(), String.t()) :: boolean()
   defp matching_live_run?(%Status{} = status, %Project{} = project, item_id) do
-    status.project_name == project.name and status.task_id == item_id and status.state in @in_flight_run_states
+    status.project_name == project.name and status.state in @in_flight_run_states and
+      (status.task_id == item_id or item_id in status.task_ids)
   end
 
   @spec live_run_statuses() :: [Status.t()]

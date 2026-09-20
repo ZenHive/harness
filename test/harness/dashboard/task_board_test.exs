@@ -53,6 +53,14 @@ defmodule Harness.Dashboard.TaskBoardTest do
   end
 
   describe "compose/1 execution and landing lanes" do
+    test "only running attempts expose Hold" do
+      for state <- [:dispatched, :running, :committing, :recovering, :reviewing, :held] do
+        lanes = compose(tasks: [in_progress("1")], live_runs: [status("live", "1", state)])
+        [card] = Enum.flat_map(TaskBoard.lanes(), &Map.fetch!(lanes, &1))
+        assert :hold in card.actions == (state == :running)
+      end
+    end
+
     test "a live running run places an in_progress task in Implementing" do
       lanes =
         compose(
@@ -125,6 +133,44 @@ defmodule Harness.Dashboard.TaskBoardTest do
   end
 
   describe "compose/1 failed and held facts" do
+    test "coalesced attempts cannot expose unsupported recovery actions" do
+      for state <- [:failed, :done] do
+        coalesced = record("coalesced", "1", state, task_ids: ["1", "2"], verdict: :approve)
+        lanes = compose(tasks: [in_progress("1"), in_progress("2")], records: [coalesced])
+        cards = Enum.flat_map(TaskBoard.lanes(), &Map.fetch!(lanes, &1))
+
+        assert [_, _] = cards
+
+        for card <- cards do
+          refute :resume_failed in card.actions
+          refute :rereview in card.actions
+        end
+      end
+    end
+
+    test "landed attempts cannot expose recovery while roadmap completion lags" do
+      for state <- [:failed, :done] do
+        landed = record("landed", "1", state, landed_sha: "abc", verdict: :approve)
+        [card] = compose(tasks: [in_progress("1")], records: [landed]).implementing
+        refute :resume_failed in card.actions
+        refute :rereview in card.actions
+      end
+    end
+
+    test "coalesced approved attempts retain manual landing actions" do
+      approved = record("coalesced", "1", :done, task_ids: ["1", "2"], verdict: :approve)
+
+      lanes =
+        compose(
+          tasks: [in_progress("1"), blocked("2")],
+          records: [approved],
+          landable_projects: MapSet.new(["board"])
+        )
+
+      assert :land in hd(lanes.landing).actions
+      assert :reland in hd(lanes.blocked).actions
+    end
+
     test "a held live run is a badge on Implementing or Reviewing, never its own lane" do
       implementing =
         compose(
