@@ -2,7 +2,7 @@
 
 **OTP-native task-execution engine an AI orchestrator drives end to end.**
 
-Harness pulls tasks from an `rmap` roadmap, dispatches each to a headless coding agent (Claude Code, Cursor, Codex, Grok, Antigravity, Pi) running in an isolated git worktree, then gates the result with a **cross-family reviewer AI** — the reviewer runs the target project's own checks itself, fixes what it can inline, and writes the verdict. The primary user is an AI orchestrator, not a human. The reviewer's verdict — not the implementer's self-report — is the source of truth for success/failure. Every adapter is held to the same `AgentAdapter` behaviour and a reusable conformance suite.
+Harness pulls tasks from an [rmap](https://github.com/ZenHive/rmap) roadmap, dispatches each to a headless coding agent (Claude Code, Cursor, Codex, Grok, Antigravity, Pi) running in an isolated git worktree, then gates the result with a **cross-family reviewer AI** — the reviewer runs the target project's own checks itself, fixes what it can inline, and writes the verdict. The primary user is an AI orchestrator, not a human. The reviewer's verdict — not the implementer's self-report — is the source of truth for success/failure. Every adapter is held to the same `AgentAdapter` behaviour and a reusable conformance suite.
 
 ## Status
 
