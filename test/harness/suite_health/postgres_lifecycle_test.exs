@@ -23,7 +23,7 @@ defmodule Harness.SuiteHealth.PostgresLifecycleTest do
     expected = expected_database(dir)
     before = scratch_names(conn)
 
-    runner = lifecycle_runner()
+    runner = lifecycle_runner(conn)
 
     assert {:ok, first} = Runner.run_suite(project, dir, "sha-one", runner: runner)
     assert first.passed == true
@@ -39,14 +39,56 @@ defmodule Harness.SuiteHealth.PostgresLifecycleTest do
     GenServer.stop(conn)
   end
 
-  @spec lifecycle_runner() :: Bootstrap.runner()
-  defp lifecycle_runner do
+  test "live partitions are reclaimed after red, migration failure, raise and exit", %{tmp_dir: dir} do
+    {config, conn} = postgres!()
+    put_fixture_env!(config)
+    fixture!(dir)
+    project = ProjectFixture.from_repo(dir, name: "hsh433-failures", languages: [:elixir])
+    delegate = lifecycle_runner(conn)
+
+    for failure <- [:red, :migration, :raise, :exit] do
+      runner = fn cmd, args, cwd, env ->
+        case {args, failure} do
+          {["ecto.migrate" | _], :migration} -> {"migration failed", 1}
+          {["test.json" | _], :red} -> {~s({"summary":{"failed":1,"result":"failed"},"tests":[]}), 2}
+          {["test.json" | _], :raise} -> raise "suite raised"
+          {["test.json" | _], :exit} -> exit(:suite_exited)
+          _ -> delegate.(cmd, args, cwd, env)
+        end
+      end
+
+      case failure do
+        :red ->
+          assert {:ok, %{passed: false, exit_code: 2}} = Runner.run_suite(project, dir, "sha", runner: runner)
+
+        :migration ->
+          assert {:error, {:ecto_bootstrap_failed, 1, "migration failed"}} =
+                   Runner.run_suite(project, dir, "sha", runner: runner)
+
+        :raise ->
+          assert_raise RuntimeError, "suite raised", fn -> Runner.run_suite(project, dir, "sha", runner: runner) end
+
+        :exit ->
+          assert catch_exit(Runner.run_suite(project, dir, "sha", runner: runner)) == :suite_exited
+      end
+
+      refute_database(conn, expected_database(dir))
+    end
+
+    GenServer.stop(conn)
+  end
+
+  @spec lifecycle_runner(pid()) :: Bootstrap.runner()
+  defp lifecycle_runner(conn) do
     fn
       "mix", ["deps.get" | _], _cwd, _env ->
         {"", 0}
 
       "mix", ["ecto.create" | _], cwd, env ->
-        Bootstrap.default_runner("mix", ["ecto.create", "--quiet"], cwd, env)
+        result = Bootstrap.default_runner("mix", ["ecto.create", "--quiet"], cwd, env)
+        assert elem(result, 1) == 0
+        assert database_exists?(conn, expected_database(cwd))
+        result
 
       "mix", ["ecto.migrate" | _], cwd, env ->
         Bootstrap.default_runner("mix", ["ecto.migrate", "--quiet"], cwd, env)
@@ -90,6 +132,7 @@ defmodule Harness.SuiteHealth.PostgresLifecycleTest do
     File.write!(Path.join(dir, "config/test.exs"), """
     import Config
 
+    # Ecto repository with a checkout-specific database base.
     hash =
       :crypto.hash(:sha256, File.cwd!())
       |> Base.encode16(case: :lower)
