@@ -4,9 +4,17 @@ defmodule Harness.Cron.OrchestratorTest do
 
   alias Harness.Cron.Orchestrator
   alias Harness.ProjectFixture
+  alias Harness.ResultStore.Memory
 
   setup do
-    on_exit(fn -> Application.delete_env(:harness, :cron_orchestrator) end)
+    previous = Application.get_env(:harness, :result_store)
+    Application.put_env(:harness, :result_store, {Memory, scope: make_ref()})
+
+    on_exit(fn ->
+      Application.delete_env(:harness, :cron_orchestrator)
+      Application.put_env(:harness, :result_store, previous)
+    end)
+
     :ok
   end
 
@@ -113,6 +121,13 @@ defmodule Harness.Cron.OrchestratorTest do
       assert prompt =~ "rereview"
       assert prompt =~ "fresh"
       assert prompt =~ "Do not apply a fixed retry count"
+      assert prompt =~ "disposable non-Git scratch directory"
+      assert prompt =~ "are your recovery evidence source"
+      assert prompt =~ "means verified empty history"
+      assert prompt =~ "no prior branch/origin evidence is required"
+      assert prompt =~ "For prior attempts, missing required branch/origin evidence"
+      assert prompt =~ "never equivalent to `attempts: []`"
+      assert prompt =~ "Recovery of coalesced runs is unsupported"
     end
   end
 
@@ -122,14 +137,30 @@ defmodule Harness.Cron.OrchestratorTest do
       parent = self()
 
       Application.put_env(:harness, :cron_orchestrator, fn p, ready ->
-        send(parent, {:planned, p.name, length(ready)})
+        send(parent, {:planned, p.name, ready})
         {:ok, %Orchestrator{dispatch: [%{task_id: "1", adapter: "codex"}], skip: []}}
       end)
 
       assert {:ok, %Orchestrator{dispatch: [%{task_id: "1", adapter: "codex"}]}} =
                Orchestrator.plan(project, [%{"id" => "1"}, %{"id" => "2"}])
 
-      assert_received {:planned, "orch-inject", 2}
+      assert_received {:planned, "orch-inject", [%{"attempts" => []}, %{"attempts" => []}]}
+    end
+
+    test "disabled or unavailable history fails before invoking the planner" do
+      project = ProjectFixture.from_repo("/tmp/harness-orch-history", name: "orch-history")
+      parent = self()
+
+      Application.put_env(:harness, :cron_orchestrator, fn _, _ ->
+        send(parent, :planned)
+        flunk("Unavailable history must not reach the planner")
+      end)
+
+      Application.put_env(:harness, :result_store, false)
+      assert {:error, :history_store_disabled} = Orchestrator.plan(project, [%{"id" => "1"}])
+      Application.put_env(:harness, :result_store, {Harness.ResultStore.Postgres, []})
+      assert {:error, %RuntimeError{}} = Orchestrator.plan(project, [%{"id" => "1"}])
+      refute_received :planned
     end
   end
 

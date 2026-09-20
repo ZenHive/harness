@@ -231,6 +231,11 @@ defmodule Harness.Cron.Orchestrator do
     then write the plan as JSON to `#{@artifact_path}` (relative to your working
     directory) and exit. Writing that file is the whole job; you change no code.
 
+    Your working directory is a disposable non-Git scratch directory used only
+    for the plan artifact, not the project checkout. The supplied attempt facts
+    are your recovery evidence source; Git probes in scratch cannot establish
+    whether prior work exists.
+
     ## Rules
 
     1. The ready set below is already write-disjoint: harness serialized tasks with
@@ -244,12 +249,20 @@ defmodule Harness.Cron.Orchestrator do
     3. Stay within the project concurrency cap (#{inspect(context.concurrency_cap)}),
        counting the in-flight set; when in doubt, defer rather than risk a collision.
 
-    4. Read every task's attempts, fingerprints, reviewer reports and Git evidence.
-       Retain useful committed work with "resume", or choose "rereview" when only
-       the reviewer gate needs running. Select the agent and model explicitly.
-       "fresh" discards prior work: justify that choice explicitly in reason.
+    4. History was loaded successfully before this invocation: `attempts: []`
+       means verified empty history, not unavailable history or missing recovery
+       evidence. For a first attempt, choose "fresh" when the other dispatch rules
+       permit it; no prior branch/origin evidence is required and no prior work is
+       being discarded. Explain the first-attempt choice in reason.
+       When attempts exist, read their fingerprints, reviewer reports and supplied
+       Git evidence. Retain useful committed work with "resume", or choose "rereview"
+       when only the reviewer gate needs running. A "fresh" choice after prior
+       attempts discards prior work: justify that choice explicitly in reason.
+       Select the agent and model explicitly for every dispatch.
        A task id alone is not identity: do not recover unrelated changed content.
-       Missing branch/origin evidence is not proof that no work exists; defer.
+       For prior attempts, missing required branch/origin evidence is not proof
+       that no work exists; defer. Missing, malformed or unavailable history is
+       never equivalent to `attempts: []`; do not infer a first attempt from it.
        Recovery of coalesced runs is unsupported; defer the whole membership.
        Do not apply a fixed retry count, error-prose classifier or escalation rule.
 
@@ -259,7 +272,7 @@ defmodule Harness.Cron.Orchestrator do
           "dispatch": [{"task_id": "<id>", "adapter": "<agent name from the agents list>",
                         "model": "<model>", "action": "fresh|resume|rereview",
                         "source_run_id": "<required for resume/rereview; omit for fresh>",
-                        "reason": "<why retain or discard the prior work>"}],
+                        "reason": "<why first attempt, or why retain or discard prior work>"}],
           "skip": [{"task_id": "<id>", "disposition": "inline|defer", "reason": "<why>"}]
         }
 
