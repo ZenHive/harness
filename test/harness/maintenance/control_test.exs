@@ -42,6 +42,20 @@ defmodule Harness.Maintenance.ControlTest do
     assert Maintenance.history("missing")["finding"] == nil
   end
 
+  test "a pass belonging to another project is rejected without changing its evidence", %{name: name} do
+    :ok = Maintenance.configure(name, true, 60, "codex", "gpt-6-astra", 60)
+
+    for committed <- [false, true] do
+      id = Ecto.UUID.generate()
+      pass = %{"id" => id, "project" => "another-project", "committed" => committed, "state" => "successful"}
+      :ok = Store.put_many([{"pass/" <> id, "pass", pass}])
+
+      assert {:error, :pass_project_mismatch} = Maintenance.sweep(name, id)
+      assert Store.get("pass/" <> id) == pass
+      assert Store.get("progress/" <> name) == nil
+    end
+  end
+
   test "scheduler leaves disabled repositories alone and does not halt the fleet tick", %{name: name} do
     other = "maintenance-#{Ecto.UUID.generate()}"
     :ok = ProjectRegistry.register(ProjectFixture.from_repo("/tmp/maintenance-other", name: other))

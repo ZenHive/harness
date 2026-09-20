@@ -33,7 +33,9 @@ defmodule Harness.Maintenance.Pass do
     config = Map.merge(config, Map.take(pass, ["agent", "model"]))
 
     pass =
-      Map.merge(pass, %{
+      pass
+      |> Map.delete("error")
+      |> Map.merge(%{
         "state" => "running",
         "attempted_at" => DateTime.to_iso8601(DateTime.utc_now()),
         "owner" => Attempt.owner(),

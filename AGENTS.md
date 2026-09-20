@@ -333,6 +333,30 @@ Hand-build when harness cannot perform or judge the work:
   - **`blocked` is still not the escape hatch.** It hides the task from the queue, so the decision is never surfaced at all — the same failure with a quieter shape. Reserve it for an external blocker with an unblock path.
   - Under `:manual` cron mode the parked-decision drain (`dispatch-pending` / `dispatch-approve`) *does* restore the asking seat, and gate 6 reads as written. Know which mode the project is in before relying on it.
 
+### Integrated audit and QA
+
+The existing post-merge audit worker also performs complete project QA when the
+project explicitly configures `qa_command` beside its dispatch `check_command`.
+All projects, including aave_sim, use the same split: focused tests and
+risk-relevant security/live verification stay with the independent reviewer;
+full suites, coverage, Dialyzer, Reach, Sobelow, Credo, Doctor and clone checks
+belong to integrated QA where applicable. Full Dialyzer is not mandatory on
+every implementation or review. Projects without `qa_command` retain legacy
+behavior until explicitly migrated by the operator.
+
+Audit QA pins the integrated SHA/range and persists commands, covered commits,
+agent/model, reports and transcripts. Queued/running/passed/failed/incomplete are
+facts; only a complete matching agent report advances successful QA progress.
+Missing artifacts, missing prerequisites and interruptions never pass. Waiting
+jobs coalesce in the audit queue; lands during a run receive a subsequent pass.
+QA does not gate deployment, revert, or restart production. The audit AI owns
+repair judgment and semantic deduplication; substantial repairs use normal
+implementation and review, and undisclosed vulnerability details remain private.
+
+Observe bounded history with `dispatch-qa_status` and evidence slices with
+`dispatch-qa_evidence`, or the project settings dashboard. Orchestrators own
+configuration migration, skill propagation and activation.
+
 ### Running a Task
 
 **Prerequisites:** long-lived harness BEAM (`iex -S mix` in the harness checkout), target project registered in `Harness.ProjectRegistry`, clean `git status` on the target's dispatch branch (runs fork worktrees off `HEAD`). **Roadmap ingest and writeback self-sync when they can.** The run's *code* base is fresh (Task 196: with a `target_branch` set, `Run.Actions.Worktree.worktree_opts/1` fetches and forks off `origin/<target>`). `dispatch-task` / `dispatch-bundle` now also fetch the roadmap branch and fast-forward the `project.roadmap_path` checkout (`Harness.Git.TargetSync.sync_checkout/2`, ff-only, never `--force`) before `rmap` runs, and the writeback path does the same before the `roadmap: task <id> -> in_progress` commit, so a task you filed and pushed from another host is visible without a manual pull. The residual operator action is a **dirty, non-ff-diverged, detached, or self-host** checkout — those skip with a witnessed log and ingest proceeds on the on-disk file; sync them by hand (`git -C <roadmap_path> pull --ff-only`) before dispatching.
@@ -371,7 +395,7 @@ Hand-build when harness cannot perform or judge the work:
 | `:failed` / `{:worktree_failed,_}` `{:agent_spawn_failed,_}` `{:driver_crashed,_}` `{:commit_failed,_}` | Harness-side mechanical failure. | **Harness bug.** File via `rmap new`. |
 | `:failed` / `{:checkout_polluted, status}` | Agent wrote outside the run worktree into the main checkout — surfaces as `:failed` **only after bounded AI recovery was exhausted** (see "Self-healing recovery" below). | Read the isolation evidence and retained branch; explicitly select recovery or a justified fresh build on an appropriate adapter. |
 | `:failed` / `{:checkout_pollution_check_failed, _}` | Post-run pollution `git status` errored. | Rare; transient git/IO. Re-run; inspect checkout if persistent. |
-| `:failed` / `:timed_out` | Lifetime budget elapsed. | Raise `:lifetime_timeout` or investigate hang. |
+| `:failed` / `:timed_out` | Lifetime budget elapsed (question-held time counts; the timer is not suspended). | Raise `:lifetime_timeout` or recover the retained worktree (`dispatch-resume_failed` / inspect). |
 | run process **crashed** (no settle) | gen_statem died. | **Harness bug.** File via `rmap new`. |
 
 Failed runs retain the worktree at `result.worktree_path` for inspection. Approved runs keep branch `harness/<run-id>` after worktree teardown. Use `dispatch-verdict_detail` for the reviewer report, ratings, checks, concerns, proposed tasks, warning flag, and `reviewer_diff_size` — no harness-run mechanical per-check stdout.
@@ -391,10 +415,12 @@ Failed runs retain the worktree at `result.worktree_path` for inspection. Approv
 | Approved but unlanded (land-cap, lander crash) | `dispatch-reland` | **zero** — pure git rebase + push |
 | Committed, review-stage failure (work is good) | `dispatch-rereview` | zero implementer — re-enters at the reviewer gate |
 | Committed, implement-stage incomplete/`:failed` | `dispatch-resume_failed` (`escalate: true` to re-route agent) | **re-spends implementer tokens** — a fresh implementer invocation branched off the retained commits with the failure report injected (contrast `rereview`, which re-runs only the reviewer) |
-| Live `:held` run (paused, not dead) | `dispatch-resume` | none — un-pauses in place |
+| Live `:held` run (paused, not dead) | `dispatch-resume` | none — un-pauses in place. A question-held run requires a prior `dispatch-steer` answer (`:answer_required` otherwise). |
 | **No commits / no retained branch** | reset → `pending` + fresh `dispatch-task` | full redo — **the only case where this is correct** |
 
 **Live-run intervention (not recovery of a dead run):** `dispatch-hold` (optionally `interrupt: true`) parks a live run mid-turn, `dispatch-steer` stashes guidance applied on resume, `dispatch-resume` un-pauses in place, `dispatch-cancel` kills it (idempotent). Use hold → steer → resume to force-hand a grinding implementer to the reviewer gate instead of burning the lifetime budget.
+
+**Implementer question channel.** A headless implementer that hits genuinely ambiguous acceptance criteria writes `.harness/question.json` (`question` string, optional `context`, plus `run_id` / `invocation` echoing `$HARNESS_RUN_ID` / `$HARNESS_IMPLEMENTER_ATTEMPT`) and ends its invocation. Harness reads the file mechanically at the agent-invocation boundary: a fenced, unconsumed artifact parks in `:held` (`hold_reason: :question`) and emits a `:question` witness with the question verbatim; empty/malformed/stale/consumed files are ignored-and-logged. The orchestrator answers with `dispatch-steer` (the answer text) then `dispatch-resume` — no new primitives, no dashboard UI, no auto-answer inside harness. Resume injects question + answer into the prompt and consumes that identity via `.harness/question-state.json` (plus an archive under `.harness/questions/`); deleting `question.json` is not the consumption mechanism. A leftover file cannot re-park; a later question with a new identity can. Question-held time stays inside the existing `lifetime_timeout` (the timer is not suspended; expiry is recoverable `:timed_out`). A gen_statem crash while `:held` still settles `:failed`; the retained worktree sidecar is the recovery boundary and cannot leak to a new run. This is an escape hatch, not a substitute for well-written tasks; reviewer/audit questions are out of scope. Explicit `dispatch-resume_failed` recovery restores the selected retained run's pending/answered question state into a held replacement without notifying again; resume uses the saved answer or requires steer. Recovery needs the retained worktree and failed-run record on the same storage. Fresh dispatches do not import it. Notification delivery remains best effort (a crash after persisting the notified flag can lose delivery).
 
 **The gate before any reset-to-pending + re-dispatch:** `git branch -a | grep harness/<run-id>` and `git log --oneline origin/<target>..harness/<run-id>`. Commits present ⇒ explicitly judge whether to resume, re-review or replace; justify discarding them.
 

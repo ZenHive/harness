@@ -63,20 +63,25 @@ defmodule Harness.Maintenance.Publication do
 
   @spec destination(Project.t()) :: {:ok, String.t(), String.t(), String.t()} | {:error, atom()}
   defp destination(project) do
-    case Git.run(["rev-parse", "--show-toplevel"], project.roadmap_path) do
-      {:ok, output} ->
-        root = String.trim(output)
+    with {:ok, output} <- Git.run(["rev-parse", "--show-toplevel"], project.roadmap_path),
+         {:ok, prefix} <- Git.run(["rev-parse", "--show-prefix"], project.roadmap_path) do
+      root = String.trim(output)
+      target = project.roadmap_target_branch || source_target(project, root)
 
-        target =
-          project.roadmap_target_branch ||
-            if(Path.expand(Project.repo_path(project)) == root, do: project.target_branch)
-
-        if is_binary(target) and target != "",
-          do: {:ok, root, target, Path.relative_to(project.roadmap_path, root)},
-          else: {:error, :roadmap_target_required}
-
+      if is_binary(target) and target != "",
+        do: {:ok, root, target, String.trim(prefix)},
+        else: {:error, :roadmap_target_required}
+    else
       _ ->
         {:error, :roadmap_unavailable}
+    end
+  end
+
+  @spec source_target(Project.t(), String.t()) :: String.t() | nil
+  defp source_target(project, root) do
+    case Git.run(["rev-parse", "--show-toplevel"], Project.repo_path(project)) do
+      {:ok, source} -> if String.trim(source) == root, do: project.target_branch
+      _ -> nil
     end
   end
 

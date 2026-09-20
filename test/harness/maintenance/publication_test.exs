@@ -72,6 +72,19 @@ defmodule Harness.Maintenance.PublicationTest do
     assert GitFixture.git!(repo, ["status", "--porcelain"]) == ""
   end
 
+  test "a symlinked project path resolves to the same roadmap repository", %{project: project, repo: repo} do
+    link = repo <> "-alias"
+    File.ln_s!(repo, link)
+    project = %{project | source: {:local, link}, roadmap_path: link}
+    :ok = ProjectRegistry.upsert(project)
+
+    assert {:ok, raw} = Publication.snapshot(project)
+    assert raw == File.read!(Path.join(repo, "roadmap/tasks.toml"))
+    assert :ok = Maintenance.sweep(project.name, Ecto.UUID.generate())
+    assert {:ok, tasks, _} = Publication.read(repo)
+    assert Enum.count(tasks, &Publication.maintenance_task?(&1, project.name)) == 3
+  end
+
   test "an empty roadmap receives its first provider-validated numeric task", %{project: project, repo: repo} do
     path = Path.join(repo, "roadmap/tasks.toml")
     File.write!(path, path |> File.read!() |> String.split("[[task]]") |> hd())
@@ -135,6 +148,19 @@ defmodule Harness.Maintenance.PublicationTest do
     assert {:error, :publication_not_safe} = Maintenance.sweep(project.name, Ecto.UUID.generate())
     Application.put_env(:harness, :maintenance_test_mode, :fail)
     assert {:error, :agent_failed} = Maintenance.sweep(project.name, Ecto.UUID.generate())
+  end
+
+  test "a successful retry clears the previous attempt error", %{project: project} do
+    id = Ecto.UUID.generate()
+    Application.put_env(:harness, :maintenance_test_mode, :fail)
+    assert {:error, :agent_failed} = Maintenance.sweep(project.name, id)
+    assert Maintenance.status(project.name)["progress"]["error"] == "agent_failed"
+
+    Application.put_env(:harness, :maintenance_test_mode, :empty)
+    assert :ok = Maintenance.sweep(project.name, id)
+    assert Maintenance.status(project.name)["state"] == "partial_evidence"
+    refute Map.has_key?(Maintenance.status(project.name)["progress"], "error")
+    refute Map.has_key?(Store.get("pass/" <> id), "error")
   end
 
   test "unavailable consumer verification retains blocked findings without executable tasks", %{

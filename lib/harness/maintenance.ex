@@ -165,9 +165,12 @@ defmodule Harness.Maintenance do
   @spec sweep(String.t(), String.t()) :: :ok | {:error, term()}
   def sweep(project, id) do
     Store.serialized(fn ->
+      pass = Store.get("pass/" <> id)
+
       cond do
         not settings(project)["enabled"] -> {:error, :disabled}
-        match?(%{"committed" => true, "project" => ^project}, Store.get("pass/" <> id)) -> :ok
+        is_map(pass) and pass["project"] != project -> {:error, :pass_project_mismatch}
+        match?(%{"committed" => true}, pass) -> :ok
         true -> Pass.run(project, id, settings(project))
       end
     end)
