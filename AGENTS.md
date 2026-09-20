@@ -2,6 +2,29 @@
 
 # harness — CLAUDE.md
 
+<!-- @-import: ~/.claude/includes/verification-policy.md -->
+## Verification scope — focused runs, full post-merge QA
+
+This is the canonical policy for **when** checks run. Project command catalogs describe **how** to run them; an alias name such as `precommit` or `check.dispatch` does not require its execution. Apply this policy to implementers, reviewers, orchestrators and hooks. Explicit operator requests and concrete task acceptance criteria can require additional checks.
+
+| Work / role | Required verification |
+|---|---|
+| Docs, roadmap, comments, text-only changes | Validate the changed artifact (for example rmap validation or AGENTS generation); no code suite, coverage or analyzers. |
+| Implementation | Format changed code, compile where relevant, and add/run focused tests for the changed behavior and regression. |
+| Reviewer | Independently assess the diff and acceptance criteria; run focused checks for affected behavior and relevant integration boundaries. The reviewer remains the acceptance gate. |
+| Post-merge audit + QA | On the landed revision, run the full project suite, coverage and applicable analyzers: Dialyzer, Reach, Sobelow, Credo, Doctor, clone detection and language-specific equivalents. Review the integrated surface against roadmap intent and domain invariants. |
+
+- **Commit, push, PR creation, reviewer handoff, branch switch, rebase, merge and `deps.get` are not by themselves reasons to run full QA.** Do not run full-project gates on every small change or every implementer/reviewer run. No project exception, including aave_sim.
+- **Choose checks by changed behavior and risk.** Signing, money, authorization, crypto and external-provider changes still require their relevant security, boundary and live integration tests before acceptance. Missing credentials or failed checks are reported honestly, never converted into a green result. Preserve tests and thresholds; change when they run.
+- **Broaden only for a named reason:** explicit request/acceptance criterion, or concrete evidence that focused checks cannot resolve a cross-module regression. State that reason and run the smallest additional check that resolves it. “To be safe” or an alias name is not a reason.
+- **Coverage belongs to full QA.** Keep project thresholds (at least 80% standard / 95% critical unless a documented project baseline applies). Do not demand a whole-module coverage uplift before an unrelated edit. Add meaningful tests for the behavior being changed.
+- **Inspect aliases before using them.** If `check.dispatch`, `precommit`, `ci`, a registered hint or an inherited hook bundles full tests/coverage/analyzers, use the explicit scoped commands for the run and report the configuration mismatch. Do not claim the alias became lightweight merely because the instructions changed.
+- **Reuse evidence for the same revision and scope.** Capture command output once; do not rerun solely for readable logs or to repeat a passed check. A reviewer supplies independent judgment and relevant verification, not an automatic full-suite repetition.
+- **Full QA is a separate, nonblocking post-merge audit responsibility.** Record revision/range, commands, results and missing checks. Failures produce visible findings and repair work; they do not retroactively unmerge or become a blanket next-wave/deployment gate. If automatic QA is not configured or has not run, say so; never infer success from the existence of this policy.
+
+Maintain this policy in `~/.claude/includes/verification-policy.md`. Import it from project `CLAUDE.md`; regenerate `AGENTS.md` with `claude-marketplace/scripts/sync-agents-md.sh`. Keep scheduling rules here, project-specific commands and justified risk checks in the project. Do not duplicate the policy in project prose.
+
+
 **Repo:** [github.com/ZenHive/harness](https://github.com/ZenHive/harness) (public, default branch `main`).
 
 ## Always-on includes (core only)
@@ -101,15 +124,9 @@ The deciding asymmetry is the *kind* of failure, not the amount: live gives **lo
 - **Expiry does not create truth** — a freshness window bounds staleness; an unexpired recording is still only a claim about the past.
 - Never downgrade a loud gate with real authority to a quiet one that can be falsely green. Its noise — rate budget, telling *unreachable* apart from *wrong* — is an engineering problem to solve at that gate.
 
-## Raise coverage before mutating
+## Verification scope and coverage
 
-Before any code-changing task on an existing module, its `mix test.json --cover` must be at tier — **≥80%** standard, **≥95%** critical (money, signing, crypto, low-level encoders, security-sensitive parsers; when in doubt, critical). Below tier → write the missing tests first, in this task.
-
-1. `mix test.json --cover --quiet --output /tmp/cov.json`
-2. `jq '.coverage.modules[] | select(.module == "MyApp.Foo")' /tmp/cov.json`
-3. Below tier → cover the uncovered lines, even ones you didn't come to change. Then mutate.
-
-Exempt: doc-only edits, formatting/alias reordering, pure renames, typo fixes in strings/messages.
+Follow `~/.claude/includes/verification-policy.md` for check scope and coverage timing. Write tests for changed behavior; full-project coverage is evaluated in post-merge audit + QA.
 
 ## 🚨 NEVER HIDE TEST FAILURES
 
@@ -133,7 +150,7 @@ Hook fires → fix → re-run → stage. No planning around it, no asking, no di
 - Scope is only the files your change touched, not the project.
 - Generated files → fix the generator.
 - Never move the fix to ROADMAP or a follow-up. This commit.
-- Don't re-run a check the hook just ran on the same files. Full-suite re-runs earn their cost only before a PR/merge, after `mix deps.get`, after a branch switch, or on request.
+- Don't re-run a check the hook just ran on the same files. Check scope and rerun triggers are defined in `verification-policy.md`; lifecycle events alone do not trigger full QA.
 
 ## Read to the answer — don't use the runner as an oracle
 
@@ -394,7 +411,7 @@ The recovery primitives (`reland`/`rereview`/`resume_failed`) read the persisted
 - **Batch by dependency graph, then write-set.** Every pending task whose `depends_on` is satisfied can enter the ready set, but harness dispatches only the first wave whose `touches ∪ files_to_modify` are disjoint. Overlapping tasks wait for a later wave after the landed base moves forward.
 - **Keep write-set fields accurate.** The dispatcher counts declared path intersections; it does not infer paths from the task body. If two tasks really edit the same function, either let write-set serialization sequence them or fold the coupled work into one rmap task (`task-prioritization.md` § "Refine, Don't Duplicate").
 - **One driver BEAM** for all concurrent runs in a wave.
-- **Integration order (manual landing):** smallest/isolated diffs onto target first; rebase siblings; run the project's check command on target after last merge.
+- **Integration order (manual landing):** smallest/isolated diffs onto target first; rebase siblings; consume the post-merge audit + QA evidence on the integrated revision.
 - **While a wave is in flight:** do not run `rmap status` / `rmap mark` / `rmap new` in parallel sessions against the same checkout — triggers `:checkout_polluted` false-positive.
 - **Repo-wide invariant tasks run EXCLUSIVE.** A task whose real write-set is "the whole surface" — introduce a repo-wide guard/invariant and convert every violating site (e.g. an AST-scan test over all of `test/`) — cannot be write-set-serialized by declared `touches`: any sibling land that adds a new violating site after the fork reddens the guard at landing time. Dispatch such tasks as a solo wave — nothing lands in parallel — or accept that the orchestrator repairs at landing.
 - **Land-conflict repair is a standard orchestrator move, not an incident.** When the lander blocks on a rebase conflict (reason retains the branch): fork a repair worktree off `origin/<target>`, cherry-pick the run commits, resolve (for additive `tasks.toml` collisions: renumber the branch-side new task to the next free id on origin **and rewrite in-diff string references to it** — CHANGELOG lines, code comments; then `rmap validate && rmap render`), point the retained `harness/<run-id>` branch at the repaired tip, and `dispatch-reland` — the lander keeps push authority and advances rmap itself. **Do not re-run gates on a roadmap/doc-only repair:** the reviewer already graded the code; renumbering tasks, merging doc entries, and re-rendering the roadmap change nothing the gates measure, and a clean disjoint auto-merge of verified code needs no re-grade (same token-economy rule as everywhere else). Re-run a check ONLY when the repair touched code, or when the conflict overlapped a repo-wide invariant the sibling lands could have violated (e.g. a new suite-wide guard vs tests added after the fork — run just that guard, not the stack). Never reset-to-pending (that redoes paid work), never hand-push to the target when a reland can land it.
@@ -513,7 +530,7 @@ agents).
 The sections above document the *mechanisms*; this is the **continuous loop** the driving AI runs across waves:
 
 ```
-plan wave → dispatch → watch origin for the landing commits → run integration suite on the landed base
+plan wave → dispatch → watch origin for the landing commits → observe post-merge audit + QA evidence
           ↑                                                     + review whole surface vs roadmap intent & domain invariants
           └── reconcile rmap ← encode any whole-surface finding as a criterion/test ←┘
 ```
@@ -533,11 +550,11 @@ The two blind classes, both real-correctness, both passing every per-task check:
 - **Domain ground truth** — a wrong venue constant (`@funding_periods_per_day 3`, overstating Deribit's hourly funding ~8×) is internally consistent and fully tested *because the golden was computed with the same wrong constant* — coverage ratifies the bug. The reviewer has no signal; that knowledge lives in the architect's head.
 - **Cross-module global invariants** — write-set-disjoint parallel dispatch means two worktrees can each define `project_payback_timeline` and neither review sees the other; the collision only exists once both have landed on the integrated base. Only a whole-surface seat catches it.
 
-**🚨 Run the integration suite on the landed base — this is NOT redundant with per-task review.** After each wave lands, run the project's full check (`mix ci` / `mix precommit.full`) on the freshly-landed `origin/<target>`. The per-task reviewer ran the dispatch-scale check hint (for Elixir, `mix check.dispatch` plus focused `mix test.json ...` for touched behavior) in an *isolated worktree off an earlier base, before sibling waves landed* — cross-module breakage doesn't exist until multiple landed diffs coexist. This generalizes the manual-landing-only "run the project's check command on target after last merge" (§ "Parallel Dispatch") into a standing per-wave step.
+**Post-merge audit + QA owns the full landed-base check.** Follow `~/.claude/includes/verification-policy.md`. The orchestrator reads its revision-bound evidence and reconciles findings against roadmap intent and domain invariants; it does not duplicate the full suite after every wave. Missing QA evidence remains visible as unverified.
 
 **Capture dispatch-check output once, to a unique tmp log.** Dispatch checks are normally verbose. The reviewer should capture the first run instead of re-running for readability: `LOG=$(mktemp -t harness-check-dispatch.XXXXXX.log)` then `mix check.dispatch > "$LOG" 2>&1`; inspect with `tail -200 "$LOG"` / `rg "error|failed|warning" "$LOG"` and record the log path in `.harness/review.json`. The random `mktemp` path prevents parallel agents from clobbering each other's logs.
 
-**🚨 Architect/QA is a workflow responsibility, not a harness runtime gate.** After a wave lands, the orchestrator must run the full landed-base gate, review the integrated surface against roadmap intent/domain invariants, fix findings, and only then dispatch the next wave. Harness does not pause dispatches or store a completion marker for this step; this is the driving AI's seat.
+**Audit + QA is nonblocking.** Full QA is not an implementer/reviewer requirement or a prerequisite for the next wave. The orchestrator owns follow-up and integrated intent review; the reviewer still decides acceptance of the task.
 
 **Two framing guards — keep this consistent with the harness mantra:**
 
@@ -557,7 +574,7 @@ The two blind classes, both real-correctness, both passing every per-task check:
   - **🚨 Default-DECLINE — the proposal pipeline outproduces the backlog's right to grow.** Reviewer + audit agents emit ~1 proposal per run; an orchestrator that files "everything evidenced and cross-session" lands N tasks and files N new ones per wave — net backlog delta ±0, the roadmap never converges. Evidence + cross-session is the FLOOR, not the bar. File a proposal only when ALL THREE hold: (a) real defect or invariant gap with evidence, (b) not foldable into an existing pending task — and when the proposal patches an instance of a class, scope the filing as the CLASS invariant so the next instance can't spawn a sibling task, (c) not inline-doable in minutes by the orchestrator — if it is, DO it now instead of filing. Declined proposals need no ceremony: the verdict record in the ResultStore is their evidence trail.
   - **Report the net backlog delta** (landed − filed) as an explicit number in every wave/session wrap-up. A session trending ±0 or negative-growth is the churn alarm firing — tighten the decline bar, don't normalize it.
 - **Witness notification is sakshi (read-only).** Landing outcomes notify via configured command sink; the sink grants no merge capability. Human operator reviews blocked/conflict outcomes — harness does not silently force-push past conflicts.
-- **`check_command` is a dispatch-scale hint to the reviewer.** Free text (e.g. `"mix check.dispatch"` for Elixir, with focused tests chosen by the reviewer) — the reviewer runs and judges it; harness does not execute it mechanically. Keep full-suite commands like `mix precommit.full` for the landed-base Architect/QA pass. For verbose checks, capture to a per-run `mktemp` log on the first execution; never re-run only to recover truncated output.
+- **`check_command` is a dispatch-scale hint to the reviewer.** Free text (e.g. `"mix check.dispatch"` for Elixir, with focused tests chosen by the reviewer) — the reviewer runs and judges it; harness does not execute it mechanically. Use `verification-policy.md` to select scope; a hint that expands to full QA must not impose it on each run. Full-suite commands like `mix precommit.full` belong to post-merge audit + QA. For verbose checks, capture to a per-run `mktemp` log on the first execution; never re-run only to recover truncated output.
 - **The cross-family reviewer reads `AGENTS.md`, not your Claude skills/includes.** `AGENTS.md` is generated from `CLAUDE.md` by `claude-marketplace/scripts/sync-agents-md.sh`, which recursively inlines every `@`-import. **Regenerate it after any `CLAUDE.md` change** (`bash ~/_DATA/code/claude-marketplace/scripts/sync-agents-md.sh`, or `--dry-run` to preview) so the reviewer gates against current rules — a stale `AGENTS.md` makes codex/cursor/grok judge against rules you've already changed. **`--check` is the freshness gate** — it re-renders in memory and exits non-zero if `AGENTS.md` has drifted (diffs rendered output, not mtimes, so it catches drift in transitive `@`-imports too); wire it into CI / a pre-commit hook / the `check_command` so staleness fails loudly instead of silently. Consequence under Opus-4.8 skill-on-demand: once `CLAUDE.md` slims to the eager floor, reviewer-critical facts that *were* carried by eager includes (the `check_command` gate; that `mix test.json` / `mix dialyzer.json` emit JSON **by design** — parse for real failures, never flag the envelope; plain `mix dialyzer` is authoritative when the JSON encoder can't serialize a warning) no longer reach `AGENTS.md` via those imports. Put them in a **self-contained `## Toolchain & check commands` section in `CLAUDE.md`** so they survive the slim-down and flow into `AGENTS.md` on regen (ref: `tapakly/CLAUDE.md`, `ccxt_extract/CLAUDE.md`).
 - **Roster doctrine.** Prefer `codex`, `cursor`, `grok`. `claude` is dispatched only when the operator has enabled it in the Agents settings; the default is off because the orchestrator session already runs on the same Max subscription. `cursor` and `grok` are one family — pair either with a `codex` reviewer. Spread assignees across the enabled agents; a ledger skewed to one adapter is the tell. A repo may override the roster in its own CLAUDE.md.
 - **Model pins.** `model` is required at creation for any non-`human` assignee (`rmap new` rejects a model-less dispatchable task; see `rmap.md` § "Pinning an LLM model"). Read the live standing model per agent from `routing-brief` and the live ids from `model_availability-list_available_models <agent>`; a retired pin fails at dispatch, so re-pin when you touch a task. A newly-probed model lands in the catalog as `selected?: false` — select it before it is dispatchable. New ids carry no ledger data — route to them to *gather* it (`dispatch-compare`), not on a performance claim.
@@ -566,7 +583,7 @@ The two blind classes, both real-correctness, both passing every per-task check:
 
 - **Fresh worktrees lack `deps/` / `_build/`.** Implementer and reviewer each run project bootstrap (e.g. `mix deps.get`) when needed — budget timeouts for cold worktrees.
 - **Reviewer runs the checks.** No mechanical check stack. Correct-but-not-pristine work → reviewer fixes and approves (`reviewer_diff_size` > 0).
-- **Cold dialyzer PLT** dominates first reviewer check run in Elixir worktrees.
+- **Cold dialyzer PLT** belongs to the full post-merge QA budget, not routine reviewer checks.
 - **Nested Claude auth.** `ANTHROPIC_API_KEY` shadows subscription OAuth — scrub per run (`scrub_anthropic_key: true` or `env: %{"ANTHROPIC_API_KEY" => false}`).
 - **Parallel-session rmap mutations** during a run can false-positive `:checkout_polluted` — wait for the wave or use a separate worktree.
 
@@ -673,14 +690,14 @@ Toolchain: **Elixir 1.20.3 / OTP 29** (asdf) — pinned by the repo-local `.tool
 | Single test | `mix test.json test/harness/run_test.exs:42` · re-run only failures: `mix test.json --failed` · coverage: `--cover`. |
 | Fast gate | `mix check.fast` — `format --check-formatted` + `compile --warnings-as-errors` + `credo --strict`. |
 | Dispatch gate | `mix check.dispatch` — `check.fast` + `doctor --raise` + `sobelow --exit --skip`; reviewer also runs focused `mix test.json ...` for touched behavior. |
-| Pre-commit gate | `mix precommit` — adds `doctor --raise`, `test.json --cover --cover-threshold 80 --exclude integration`, `sobelow`. Hook-bound (180s); **dialyzer is deliberately not here** (cold-PLT timeout). |
-| Before PR / Architect-QA | `mix precommit.full` (alias `mix ci`) — `precommit` + `ex_dna --max-clones 0` (zero-tolerance clone gate) + `reach.check --arch --smells` (architecture policy in `.reach.exs`) + `dialyzer.json`. No `.github/workflows` yet — this alias **is** the mergeable bar on the landed base. |
+| QA command inventory | `mix precommit` — adds `doctor --raise`, `test.json --cover --cover-threshold 80 --exclude integration`, `sobelow`. Full suite and coverage; use in audit + QA. |
+| Post-merge audit + QA | `mix precommit.full` (alias `mix ci`) — `precommit` + `ex_dna --max-clones 0` (zero-tolerance clone gate) + `reach.check --arch --smells` (architecture policy in `.reach.exs`) + `dialyzer.json`. No `.github/workflows` yet — this alias is the full QA command on the landed base. |
 | Ecosystem entry point | `mix ci` — vibe_kit-convention name; delegates to `precommit.full` (one gate, not two). |
 | Update project hints | `mix harness.projects.use_dispatch_check` — points registered Elixir projects at `mix check.dispatch`; missing aliases in consumer repos fail loudly on dispatch. |
 | Sync harness skills | `scripts/sync-harness-skills.sh` (`--dry-run` to preview) — after editing `priv/includes/harness-workflow.md` or `skills/harness-driver/SKILL.md`, propagate to `~/.claude/includes/` + the marketplace `harness` plugin skills. The general marketplace sync excludes these two. |
 | Regenerate AGENTS.md | `bash ~/_DATA/code/claude-marketplace/scripts/sync-agents-md.sh` (`--check` = freshness gate, exits non-zero on drift) — after any `CLAUDE.md` edit, so cross-family reviewers gate against current rules. **Never hand-edit `AGENTS.md`.** Operator/marketplace gate (path is the personal checkout) — not wired into `precommit.full`. |
 
-**Per-edit hooks already run this stack** (`format`, `compile`, `test.json`, `credo`, `dialyzer.json`, `sobelow`, `doctor`) on every touched file — don't re-run a check the hook just graded. Full-suite `precommit.full` earns its cost only before a PR/merge, after `mix deps.get`, or on a branch switch (see global CLAUDE.md § "Don't Re-Run Hook-Driven Checks").
+Check timing is defined in `verification-policy.md`; do not assume a hook ran without observed evidence.
 
 ## 🚨 ADJUDICATED: the `hackney` advisories on this repo are DECIDED — do not re-investigate
 
@@ -710,9 +727,9 @@ appears that is not one of the four ids above.
 
 Self-contained so it reaches `AGENTS.md` (and the cross-family reviewer) even after the eager floor slimmed `code-style`/`rmap` to skills.
 
-- **Dispatch uses `mix check.dispatch` plus focused tests; Architect/QA uses `mix precommit.full` (alias `mix ci`).** `check.dispatch` is the cheap per-run reviewer hint: format, compile, Credo, Doctor, and Sobelow. The reviewer must still run focused `mix test.json ...` checks for touched behavior. `precommit.full` bundles the full suite with coverage, `ex_dna --max-clones 0`, `reach.check --arch --smells`, and `dialyzer.json`; run it on the freshly landed base after a wave, before PR/release, or as the mergeable bar. There is no `.github/workflows` yet — `mix ci` is the full bar.
+- **Command inventory:** `mix check.dispatch` includes format, compile, Credo, Doctor and Sobelow. `mix precommit.full` / `mix ci` additionally runs the full suite, coverage, clone detection, Reach and Dialyzer. Select scoped commands according to the imported verification policy; these alias definitions do not determine when to run them.
 - **Capture dispatch-gate output on the first run.** `mix check.dispatch` commonly emits long Doctor/Sobelow output; agents must not run it a second time just to get readable logs. Use a unique tmp log per run, e.g. `LOG=$(mktemp -t harness-check-dispatch.XXXXXX.log)` then `mix check.dispatch > "$LOG" 2>&1`; inspect with `tail -200 "$LOG"` / `rg "error|failed|warning" "$LOG"`. Report the log path in the reviewer's `checks` entry.
-- **Architect/QA is an orchestrator workflow responsibility, not harness code.** After a wave lands, the driving AI runs the full landed-base gate, reviews/fixes the integrated surface, and then dispatches the next wave. Harness does not pause dispatches or store a completion marker for this step.
+- **QA evidence:** the post-merge audit + QA records full-project results; the orchestrator consumes those results and handles findings.
 - **`mix test.json` and `mix dialyzer.json` emit JSON by design** (ex_unit_json / dialyzer_json reporters). Parse the payload for *real* failures — never flag the JSON envelope itself as an error. When the dialyzer_json encoder can't serialize a particular warning, **plain `mix dialyzer` is authoritative** for that warning.
 - **`ex_dna --max-clones 0`** is a zero-tolerance AST-clone gate; **`reach.check --arch --smells`** runs two phases: `--arch` **gates** on the architecture policy in `.reach.exs` (forbidden cross-boundary calls + the `boundaries[:public]` facade list — non-zero exit on violation), while `--smells` is **advisory** (reports the smell surface but exits 0 unless `--strict` / `smells: [strict: true]` is configured). An `--arch` red is real debt to fix or model honestly in `.reach.exs`, not to suppress; smell findings are a backlog signal, not a build break.
 - **`AGENTS.md` is generated from `CLAUDE.md`** by `~/_DATA/code/claude-marketplace/scripts/sync-agents-md.sh` (recursively inlines every `@`-import; `--check` re-renders and exits non-zero on drift). Regenerate after any `CLAUDE.md` change so the reviewer gates against current rules — **never hand-edit `AGENTS.md`**.

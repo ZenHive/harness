@@ -1,5 +1,7 @@
 # harness — CLAUDE.md
 
+@~/.claude/includes/verification-policy.md
+
 **Repo:** [github.com/ZenHive/harness](https://github.com/ZenHive/harness) (public, default branch `main`).
 
 ## Always-on includes (core only)
@@ -63,14 +65,14 @@ Toolchain: **Elixir 1.20.3 / OTP 29** (asdf) — pinned by the repo-local `.tool
 | Single test | `mix test.json test/harness/run_test.exs:42` · re-run only failures: `mix test.json --failed` · coverage: `--cover`. |
 | Fast gate | `mix check.fast` — `format --check-formatted` + `compile --warnings-as-errors` + `credo --strict`. |
 | Dispatch gate | `mix check.dispatch` — `check.fast` + `doctor --raise` + `sobelow --exit --skip`; reviewer also runs focused `mix test.json ...` for touched behavior. |
-| Pre-commit gate | `mix precommit` — adds `doctor --raise`, `test.json --cover --cover-threshold 80 --exclude integration`, `sobelow`. Hook-bound (180s); **dialyzer is deliberately not here** (cold-PLT timeout). |
-| Before PR / Architect-QA | `mix precommit.full` (alias `mix ci`) — `precommit` + `ex_dna --max-clones 0` (zero-tolerance clone gate) + `reach.check --arch --smells` (architecture policy in `.reach.exs`) + `dialyzer.json`. No `.github/workflows` yet — this alias **is** the mergeable bar on the landed base. |
+| QA command inventory | `mix precommit` — adds `doctor --raise`, `test.json --cover --cover-threshold 80 --exclude integration`, `sobelow`. Full suite and coverage; use in audit + QA. |
+| Post-merge audit + QA | `mix precommit.full` (alias `mix ci`) — `precommit` + `ex_dna --max-clones 0` (zero-tolerance clone gate) + `reach.check --arch --smells` (architecture policy in `.reach.exs`) + `dialyzer.json`. No `.github/workflows` yet — this alias is the full QA command on the landed base. |
 | Ecosystem entry point | `mix ci` — vibe_kit-convention name; delegates to `precommit.full` (one gate, not two). |
 | Update project hints | `mix harness.projects.use_dispatch_check` — points registered Elixir projects at `mix check.dispatch`; missing aliases in consumer repos fail loudly on dispatch. |
 | Sync harness skills | `scripts/sync-harness-skills.sh` (`--dry-run` to preview) — after editing `priv/includes/harness-workflow.md` or `skills/harness-driver/SKILL.md`, propagate to `~/.claude/includes/` + the marketplace `harness` plugin skills. The general marketplace sync excludes these two. |
 | Regenerate AGENTS.md | `bash ~/_DATA/code/claude-marketplace/scripts/sync-agents-md.sh` (`--check` = freshness gate, exits non-zero on drift) — after any `CLAUDE.md` edit, so cross-family reviewers gate against current rules. **Never hand-edit `AGENTS.md`.** Operator/marketplace gate (path is the personal checkout) — not wired into `precommit.full`. |
 
-**Per-edit hooks already run this stack** (`format`, `compile`, `test.json`, `credo`, `dialyzer.json`, `sobelow`, `doctor`) on every touched file — don't re-run a check the hook just graded. Full-suite `precommit.full` earns its cost only before a PR/merge, after `mix deps.get`, or on a branch switch (see global CLAUDE.md § "Don't Re-Run Hook-Driven Checks").
+Check timing is defined in `verification-policy.md`; do not assume a hook ran without observed evidence.
 
 ## 🚨 ADJUDICATED: the `hackney` advisories on this repo are DECIDED — do not re-investigate
 
@@ -100,9 +102,9 @@ appears that is not one of the four ids above.
 
 Self-contained so it reaches `AGENTS.md` (and the cross-family reviewer) even after the eager floor slimmed `code-style`/`rmap` to skills.
 
-- **Dispatch uses `mix check.dispatch` plus focused tests; Architect/QA uses `mix precommit.full` (alias `mix ci`).** `check.dispatch` is the cheap per-run reviewer hint: format, compile, Credo, Doctor, and Sobelow. The reviewer must still run focused `mix test.json ...` checks for touched behavior. `precommit.full` bundles the full suite with coverage, `ex_dna --max-clones 0`, `reach.check --arch --smells`, and `dialyzer.json`; run it on the freshly landed base after a wave, before PR/release, or as the mergeable bar. There is no `.github/workflows` yet — `mix ci` is the full bar.
+- **Command inventory:** `mix check.dispatch` includes format, compile, Credo, Doctor and Sobelow. `mix precommit.full` / `mix ci` additionally runs the full suite, coverage, clone detection, Reach and Dialyzer. Select scoped commands according to the imported verification policy; these alias definitions do not determine when to run them.
 - **Capture dispatch-gate output on the first run.** `mix check.dispatch` commonly emits long Doctor/Sobelow output; agents must not run it a second time just to get readable logs. Use a unique tmp log per run, e.g. `LOG=$(mktemp -t harness-check-dispatch.XXXXXX.log)` then `mix check.dispatch > "$LOG" 2>&1`; inspect with `tail -200 "$LOG"` / `rg "error|failed|warning" "$LOG"`. Report the log path in the reviewer's `checks` entry.
-- **Architect/QA is an orchestrator workflow responsibility, not harness code.** After a wave lands, the driving AI runs the full landed-base gate, reviews/fixes the integrated surface, and then dispatches the next wave. Harness does not pause dispatches or store a completion marker for this step.
+- **QA evidence:** the post-merge audit + QA records full-project results; the orchestrator consumes those results and handles findings.
 - **`mix test.json` and `mix dialyzer.json` emit JSON by design** (ex_unit_json / dialyzer_json reporters). Parse the payload for *real* failures — never flag the JSON envelope itself as an error. When the dialyzer_json encoder can't serialize a particular warning, **plain `mix dialyzer` is authoritative** for that warning.
 - **`ex_dna --max-clones 0`** is a zero-tolerance AST-clone gate; **`reach.check --arch --smells`** runs two phases: `--arch` **gates** on the architecture policy in `.reach.exs` (forbidden cross-boundary calls + the `boundaries[:public]` facade list — non-zero exit on violation), while `--smells` is **advisory** (reports the smell surface but exits 0 unless `--strict` / `smells: [strict: true]` is configured). An `--arch` red is real debt to fix or model honestly in `.reach.exs`, not to suppress; smell findings are a backlog signal, not a build break.
 - **`AGENTS.md` is generated from `CLAUDE.md`** by `~/_DATA/code/claude-marketplace/scripts/sync-agents-md.sh` (recursively inlines every `@`-import; `--check` re-renders and exits non-zero on drift). Regenerate after any `CLAUDE.md` change so the reviewer gates against current rules — **never hand-edit `AGENTS.md`**.
