@@ -123,7 +123,7 @@ defmodule Harness.Oban do
   def coalesced_run_job(%Project{} = project, item_id) when is_binary(item_id) do
     one_job(
       from(job in live_run_jobs(project),
-        where: fragment("?->'item_ids' @> ?::jsonb", job.args, ^Jason.encode!([item_id]))
+        where: fragment("?->'item_ids' @> ?::jsonb", job.args, ^[item_id])
       )
     )
   end
@@ -142,7 +142,7 @@ defmodule Harness.Oban do
       from(job in live_run_jobs(project),
         where:
           fragment("?->>? = ?", job.args, "item_id", ^item_id) or
-            fragment("?->'item_ids' @> ?::jsonb", job.args, ^Jason.encode!([item_id]))
+            fragment("?->'item_ids' @> ?::jsonb", job.args, ^[item_id])
       )
     )
   end

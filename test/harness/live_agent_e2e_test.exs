@@ -181,6 +181,7 @@ defmodule Harness.LiveAgentE2ETest do
     assert System.monotonic_time(:millisecond) - started < 300_000
   end
 
+  @spec selection!(String.t(), String.t()) :: map()
   defp selection!(role, default) do
     name = System.get_env("HARNESS_LIVE_#{role}", default)
     assert name in ["codex", "claude"], "Unsupported #{role}: #{name}.\n" <> @setup_instructions
@@ -189,6 +190,7 @@ defmodule Harness.LiveAgentE2ETest do
     %{name: name, agent: agent, adapter: adapter}
   end
 
+  @spec authenticate!(String.t()) :: term()
   defp authenticate!(name) do
     args = if name == "codex", do: ["login", "status"], else: ["auth", "status"]
     {output, status} = System.cmd("timeout", ["--kill-after=2s", "10s", name | args], stderr_to_stdout: true)
@@ -200,6 +202,7 @@ defmodule Harness.LiveAgentE2ETest do
     end
   end
 
+  @spec resolve_model!(map(), String.t()) :: map()
   defp resolve_model!(selection, role) do
     default = if role == "IMPLEMENTER" and selection.agent == :codex, do: "gpt-6-astra"
     model = System.get_env("HARNESS_LIVE_#{role}_MODEL", default)
@@ -228,6 +231,7 @@ defmodule Harness.LiveAgentE2ETest do
     Map.put(selection, :model, model)
   end
 
+  @spec seed_roadmap!(String.t()) :: String.t()
   defp seed_roadmap!(repo) do
     File.cp_r!(Path.expand("../fixtures/sample_roadmap", __DIR__), repo)
     path = Path.join(repo, "roadmap/tasks.toml")
@@ -253,11 +257,13 @@ defmodule Harness.LiveAgentE2ETest do
     GitFixture.git!(repo, ["push", "-q", "origin", "main"])
   end
 
+  @spec show_task(String.t()) :: map()
   defp show_task(repo) do
     assert {output, 0} = System.cmd("rmap", ["show", "2", "--json"], cd: repo, stderr_to_stdout: true)
     Jason.decode!(output)
   end
 
+  @spec install_env(atom(), term()) :: :ok
   defp install_env(key, value) do
     prior = Application.fetch_env(:harness, key)
     Application.put_env(:harness, key, value)

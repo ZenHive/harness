@@ -113,18 +113,22 @@ defmodule Harness.Dispatch.ContractTest do
 
   # Descripex embeds inspected maps in docs; BEAM map iteration order can vary
   # across compilations. Compare their parsed contents while retaining all prose.
+  @spec normalize_manifest(map()) :: map()
   defp normalize_manifest(manifest) do
     update_in(manifest.functions, &Enum.map(&1, fn function -> normalize_function(function) end))
   end
 
+  @spec normalize_function(map()) :: map()
   defp normalize_function(function) do
     update_in(function.description, &normalize_description/1)
   end
 
+  @spec normalize_description(String.t()) :: String.t()
   defp normalize_description(description) do
     Regex.replace(~r/```elixir\n# descripex:contract\n(.*?)\n```/s, description, &normalize_contract/2)
   end
 
+  @spec normalize_contract(String.t(), String.t()) :: String.t()
   defp normalize_contract(_block, code) do
     code
     |> Code.string_to_quoted!()
@@ -136,6 +140,7 @@ defmodule Harness.Dispatch.ContractTest do
     |> Macro.to_string()
   end
 
+  @spec fingerprint(term()) :: String.t()
   defp fingerprint(term) do
     :sha256
     |> :crypto.hash(:erlang.term_to_binary(term, [:deterministic]))

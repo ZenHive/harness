@@ -128,6 +128,8 @@ defmodule Harness.Cron.InFlightTest do
       assert task["touches"] == ["lib/second.ex"]
       assert task["files_to_modify"] == ["test/second.exs"]
       assert InFlight.run_in_flight?(project, "2")
+      assert {:ok, %{id: job_id}} = Harness.Oban.coalesced_run_job(project, "2")
+      assert job_id == job.id
       assert Enum.sort(Harness.Oban.unfinished_run_task_ids(project)) == ~w(1 2)
 
       Application.put_env(:harness, :live_run_statuses, fn ->
