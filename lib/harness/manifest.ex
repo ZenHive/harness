@@ -20,6 +20,7 @@ defmodule Harness.Manifest do
 
   @driver_surface [
     Harness.Insights,
+    Harness.Maintenance,
     Harness.Agents,
     Harness.Routing,
     Harness.Autonomy,

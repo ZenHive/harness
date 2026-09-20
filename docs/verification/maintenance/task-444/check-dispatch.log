@@ -1,0 +1,335 @@
+Compiling 11 files (.ex)
+Checking 575 source files (this might take a while) ...
+
+Please report incorrect results: https://github.com/rrrene/credo/issues
+
+Analysis took 2.3 seconds (0.1s to load, 2.2s running 98 checks on 575 files)
+7016 mods/funs, found no issues.
+
+Use `mix credo explain` to explain issues, `mix credo --help` for options.
+Doctor file found. Loading configuration.
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Doc Cov  Spec Cov  Module                                   File                                                      Functions  No Docs  No Specs  Module Doc  Struct Spec
+100%     100%      Harness                                  lib/harness.ex                                            1          0        0         Yes         N/A        
+100%     100%      Harness.Agent.Settings                   lib/harness/agent/settings.ex                             8          0        0         Yes         N/A        
+100%     100%      Harness.AgentDriver                      lib/harness/agent_driver.ex                               1          0        0         Yes         N/A        
+100%     100%      Harness.AgentKPI                         lib/harness/agent_kpi.ex                                  10         0        0         Yes         N/A        
+N/A      N/A       Jason.Encoder.Harness.AgentKPI.TokenMea  lib/harness/agent_kpi/token_means.ex                      0          0        0         N/A         N/A        
+N/A      N/A       Harness.AgentKPI.TokenMeans              lib/harness/agent_kpi/token_means.ex                      0          0        0         Yes         Yes        
+100%     100%      Harness.AgentKPI.TokenTotals             lib/harness/agent_kpi/token_totals.ex                     2          0        0         Yes         Yes        
+100%     100%      Harness.AgentModel                       lib/harness/agent_model.ex                                1          0        0         Yes         N/A        
+100%     100%      Harness.AgentRegistry                    lib/harness/agent_registry.ex                             18         0        0         Yes         N/A        
+100%     100%      Harness.AgentRuleDelivery                lib/harness/agent_rule_delivery.ex                        1          0        0         Yes         N/A        
+100%     100%      Harness.AgentRules                       lib/harness/agent_rules.ex                                3          0        0         Yes         N/A        
+100%     100%      Harness.Agents                           lib/harness/agents.ex                                     2          0        0         Yes         N/A        
+100%     100%      Harness.Application                      lib/harness/application.ex                                1          0        0         Yes         N/A        
+100%     100%      Harness.Artifact                         lib/harness/artifact.ex                                   2          0        0         Yes         N/A        
+100%     100%      Harness.Audit                            lib/harness/audit.ex                                      4          0        0         Yes         N/A        
+100%     100%      Harness.Audit.Worker                     lib/harness/audit/worker.ex                               2          0        0         Yes         N/A        
+100%     100%      Harness.AuditReview                      lib/harness/audit_review.ex                               3          0        0         Yes         N/A        
+100%     100%      Harness.Autonomy                         lib/harness/autonomy.ex                                   1          0        0         Yes         N/A        
+100%     100%      Harness.Batch                            lib/harness/batch.ex                                      5          0        0         Yes         N/A        
+N/A      N/A       Harness.Batch.AgentEvaluation.Entry      lib/harness/batch/agent_evaluation.ex                     0          0        0         Yes         Yes        
+N/A      N/A       Harness.Batch.AgentEvaluation.Compariso  lib/harness/batch/agent_evaluation.ex                     0          0        0         Yes         Yes        
+100%     100%      Harness.Batch.AgentEvaluation            lib/harness/batch/agent_evaluation.ex                     2          0        0         Yes         N/A        
+N/A      N/A       Harness.Batch.Result                     lib/harness/batch/result.ex                               0          0        0         Yes         Yes        
+100%     100%      Harness.CapabilityDomain                 lib/harness/capability_domain.ex                          6          0        0         Yes         N/A        
+N/A      N/A       Harness.CapabilityScore.Entry            lib/harness/capability_score.ex                           0          0        0         Yes         Yes        
+N/A      N/A       Harness.CapabilityScore.Assessment       lib/harness/capability_score.ex                           0          0        0         Yes         Yes        
+100%     100%      Harness.CapabilityScore                  lib/harness/capability_score.ex                           10         0        0         Yes         N/A        
+100%     100%      Harness.CapabilityScore.Recommendation   lib/harness/capability_score/recommendation.ex            1          0        0         Yes         Yes        
+N/A      N/A       Harness.Chat.Backend                     lib/harness/chat/backend.ex                               0          0        0         Yes         N/A        
+100%     100%      Harness.Chat.Claude                      lib/harness/chat/claude.ex                                7          0        0         Yes         N/A        
+100%     100%      Harness.Chat.Claude.StreamParser         lib/harness/chat/claude/stream_parser.ex                  3          0        0         Yes         Yes        
+100%     100%      Harness.Chat.Schema                      lib/harness/chat/schema.ex                                1          0        0         Yes         N/A        
+100%     100%      Harness.Chat.Session                     lib/harness/chat/session.ex                               7          0        0         Yes         N/A        
+100%     100%      Harness.Chat.Store                       lib/harness/chat/store.ex                                 5          0        0         Yes         N/A        
+100%     100%      Harness.Chat.Store.Memory                lib/harness/chat/store/memory.ex                          4          0        0         Yes         N/A        
+100%     100%      Harness.Chat.Store.Postgres              lib/harness/chat/store/postgres.ex                        4          0        0         Yes         N/A        
+100%     100%      Harness.Chat.Store.Postgres.ChatSession  lib/harness/chat/store/postgres/chat_session.ex           1          0        0         Yes         Yes        
+N/A      N/A       Harness.Chat.Store.SessionRecord         lib/harness/chat/store/session_record.ex                  0          0        0         Yes         Yes        
+100%     100%      Harness.Chat.Stream                      lib/harness/chat/stream.ex                                4          0        0         Yes         N/A        
+100%     100%      Harness.Chat.Supervisor                  lib/harness/chat/supervisor.ex                            7          0        0         Yes         N/A        
+100%     100%      Harness.Chat.Tools                       lib/harness/chat/tools.ex                                 3          0        0         Yes         N/A        
+100%     100%      Harness.CodeSearch.Server                lib/harness/code_search.ex                                8          0        0         Yes         N/A        
+100%     100%      Harness.CodeSearch                       lib/harness/code_search.ex                                5          0        0         Yes         N/A        
+100%     100%      Harness.CodeSearch.Fact                  lib/harness/code_search/fact.ex                           1          0        0         Yes         Yes        
+N/A      N/A       Harness.CodeSearch.Symbol                lib/harness/code_search/symbol.ex                         0          0        0         Yes         Yes        
+100%     100%      Harness.Config                           lib/harness/config.ex                                     12         0        0         Yes         N/A        
+N/A      N/A       Harness.Config.Entry                     lib/harness/config/entry.ex                               0          0        0         Yes         Yes        
+100%     100%      Harness.Cron.DepFreshnessPoller          lib/harness/cron/dep_freshness_poller.ex                  4          0        0         Yes         N/A        
+100%     100%      Harness.Cron.InFlight                    lib/harness/cron/in_flight.ex                             3          0        0         Yes         N/A        
+100%     100%      Harness.Cron.Orchestrator                lib/harness/cron/orchestrator.ex                          4          0        0         Yes         Yes        
+100%     100%      Harness.Cron.PendingDispatch             lib/harness/cron/pending_dispatch.ex                      9          0        0         Yes         Yes        
+100%     100%      Harness.Cron.RoadmapPoller               lib/harness/cron/roadmap_poller.ex                        9          0        0         Yes         N/A        
+100%     100%      Harness.Cron.Settings                    lib/harness/cron/settings.ex                              12         0        0         Yes         N/A        
+100%     100%      Harness.Cron.SuiteHealthPoller           lib/harness/cron/suite_health_poller.ex                   5          0        0         Yes         N/A        
+100%     100%      Harness.Cron.UnroutableNotice            lib/harness/cron/unroutable_notice.ex                     5          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.ChatLive               lib/harness/dashboard/chat_live.ex                        14         0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.CompareLive            lib/harness/dashboard/compare_live.ex                     8          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.Components             lib/harness/dashboard/components.ex                       36         0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.ConfigInspector        lib/harness/dashboard/config_inspector.ex                 1          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.DepFreshnessLive       lib/harness/dashboard/dep_freshness_live.ex               5          0        0         Yes         N/A        
+N/A      N/A       Harness.Dashboard.Endpoint               lib/harness/dashboard/endpoint.ex                         0          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.ErrorHTML              lib/harness/dashboard/error_html.ex                       1          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.Feed                   lib/harness/dashboard/feed.ex                             2          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.Inbox                  lib/harness/dashboard/inbox.ex                            6          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.InboxBadgeLive         lib/harness/dashboard/inbox_badge_live.ex                 1          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.InboxLive              lib/harness/dashboard/inbox_live.ex                       6          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.InsightsLive           lib/harness/dashboard/insights_live.ex                    5          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.InsightsStyles         lib/harness/dashboard/insights_styles.ex                  1          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.KPILive                lib/harness/dashboard/kpi_live.ex                         5          0        0         Yes         N/A        
+N/A      N/A       Harness.Dashboard.Layouts                lib/harness/dashboard/layouts.ex                          0          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.Live                   lib/harness/dashboard/live.ex                             29         0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.Live.ProjectExplorer   lib/harness/dashboard/live/project_explorer.ex            4          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.MaintenanceLive        lib/harness/dashboard/maintenance_live.ex                 5          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.MCPPlug                lib/harness/dashboard/mcp_plug.ex                         2          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.MCPServer              lib/harness/dashboard/mcp_server.ex                       4          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.OpsFeed                lib/harness/dashboard/ops_feed.ex                         4          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.OpsFeed.Op             lib/harness/dashboard/ops_feed/op.ex                      6          0        0         Yes         Yes        
+100%     100%      Harness.Dashboard.ProjectSelection       lib/harness/dashboard/project_selection.ex                4          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.RoadmapLive            lib/harness/dashboard/roadmap_live.ex                     5          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.RoadmapSummary         lib/harness/dashboard/roadmap_summary.ex                  5          0        0         Yes         N/A        
+N/A      N/A       Harness.Dashboard.Router.Helpers         lib/harness/dashboard/router.ex                           0          0        0         Yes         N/A        
+N/A      N/A       Harness.Dashboard.Router                 lib/harness/dashboard/router.ex                           0          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.RunFeed                lib/harness/dashboard/run_feed.ex                         5          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.RunsAPI                lib/harness/dashboard/runs_api.ex                         2          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.SettingsComponents     lib/harness/dashboard/settings_components.ex              8          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.SettingsLive           lib/harness/dashboard/settings_live.ex                    4          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.SuiteHealthLive        lib/harness/dashboard/suite_health_live.ex                5          0        0         Yes         N/A        
+N/A      N/A       Harness.Dashboard.TaskBoard.Card         lib/harness/dashboard/task_board.ex                       0          0        0         Yes         Yes        
+100%     100%      Harness.Dashboard.TaskBoard              lib/harness/dashboard/task_board.ex                       5          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.Tokens                 lib/harness/dashboard/tokens.ex                           1          0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.Transcript             lib/harness/dashboard/transcript.ex                       11         0        0         Yes         N/A        
+100%     100%      Harness.Dashboard.Transcript.Parser      lib/harness/dashboard/transcript/parser.ex                11         0        0         Yes         N/A        
+N/A      N/A       Harness.Dashboard.Transcript.Parser.Cla  lib/harness/dashboard/transcript/parser/claude.ex         0          0        0         Yes         Yes        
+N/A      N/A       Harness.Dashboard.Transcript.Parser.Cod  lib/harness/dashboard/transcript/parser/codex.ex          0          0        0         Yes         Yes        
+N/A      N/A       Harness.Dashboard.Transcript.Parser.Cur  lib/harness/dashboard/transcript/parser/cursor.ex         0          0        0         Yes         Yes        
+N/A      N/A       Harness.Dashboard.Transcript.Parser.Gro  lib/harness/dashboard/transcript/parser/grok.ex           0          0        0         Yes         Yes        
+100%     100%      Harness.Dashboard.Transcript.Parser.Pas  lib/harness/dashboard/transcript/parser/passthrough.ex    3          0        0         Yes         Yes        
+N/A      N/A       Harness.Dashboard.Transcript.Parser.Pi   lib/harness/dashboard/transcript/parser/pi.ex             0          0        0         Yes         Yes        
+100%     100%      Harness.DepFreshness                     lib/harness/dep_freshness.ex                              4          0        0         Yes         N/A        
+N/A      N/A       Harness.DepFreshness.Provider            lib/harness/dep_freshness/provider.ex                     0          0        0         Yes         N/A        
+100%     100%      Harness.DepFreshness.Provider.Elixir     lib/harness/dep_freshness/provider/elixir.ex              2          0        0         Yes         N/A        
+100%     100%      Harness.DepFreshness.Provider.Go         lib/harness/dep_freshness/provider/go.ex                  3          0        0         Yes         N/A        
+100%     100%      Harness.DepFreshness.Provider.JavaScrip  lib/harness/dep_freshness/provider/javascript.ex          3          0        0         Yes         N/A        
+100%     100%      Harness.DepFreshness.Provider.Rust       lib/harness/dep_freshness/provider/rust.ex                2          0        0         Yes         N/A        
+N/A      N/A       Harness.DepFreshness.Providers           lib/harness/dep_freshness/providers.ex                    0          0        0         Yes         N/A        
+100%     100%      Harness.DepFreshness.Row                 lib/harness/dep_freshness/row.ex                          4          0        0         Yes         Yes        
+100%     100%      Harness.DepFreshness.Snapshot            lib/harness/dep_freshness/snapshot.ex                     2          0        0         Yes         Yes        
+100%     100%      Harness.DepFreshnessStore                lib/harness/dep_freshness_store.ex                        4          0        0         Yes         N/A        
+100%     100%      Harness.DepFreshnessStore.Memory         lib/harness/dep_freshness_store/memory.ex                 3          0        0         Yes         N/A        
+100%     100%      Harness.DepFreshnessStore.Postgres       lib/harness/dep_freshness_store/postgres.ex               3          0        0         Yes         N/A        
+100%     100%      Harness.DepFreshnessStore.Schema.Snapsh  lib/harness/dep_freshness_store/schema/snapshot.ex        1          0        0         Yes         Yes        
+100%     100%      Harness.DependencyBump                   lib/harness/dependency_bump.ex                            2          0        0         Yes         N/A        
+100%     100%      Harness.DependencyBump.Provider.Common   lib/harness/dependency_bump/provider/common.ex            3          0        0         Yes         N/A        
+N/A      N/A       Harness.DependencyBump.Provider.Elixir   lib/harness/dependency_bump/provider/elixir.ex            0          0        0         Yes         N/A        
+N/A      N/A       Harness.DependencyBump.Provider.Go       lib/harness/dependency_bump/provider/go.ex                0          0        0         Yes         N/A        
+N/A      N/A       Harness.DependencyBump.Provider.JavaScr  lib/harness/dependency_bump/provider/javascript.ex        0          0        0         Yes         N/A        
+N/A      N/A       Harness.DependencyBump.Provider.Rust     lib/harness/dependency_bump/provider/rust.ex              0          0        0         Yes         N/A        
+N/A      N/A       Harness.DependencyBump.Providers         lib/harness/dependency_bump/providers.ex                  0          0        0         Yes         N/A        
+N/A      N/A       Harness.DependencyBump.TaskSpec          lib/harness/dependency_bump/task_spec.ex                  0          0        0         Yes         Yes        
+100%     100%      Harness.DependencyConstraintGuard        lib/harness/dependency_constraint_guard.ex                2          0        0         Yes         N/A        
+100%     100%      Harness.Describe                         lib/harness/describe.ex                                   2          0        0         Yes         N/A        
+100%     100%      Harness.Dispatch                         lib/harness/dispatch.ex                                   37         0        0         Yes         N/A        
+100%     100%      Harness.Dispatch.Admin                   lib/harness/dispatch/admin.ex                             4          0        0         Yes         N/A        
+100%     100%      Harness.Dispatch.AgentGate               lib/harness/dispatch/agent_gate.ex                        8          0        0         Yes         N/A        
+100%     100%      Harness.Dispatch.Attempts                lib/harness/dispatch/attempts.ex                          4          0        0         Yes         N/A        
+100%     100%      Harness.Dispatch.AwaitRunsSummary        lib/harness/dispatch/await_runs_summary.ex                1          0        0         Yes         Yes        
+100%     100%      Harness.Dispatch.Bundles                 lib/harness/dispatch/bundles.ex                           2          0        0         Yes         N/A        
+100%     100%      Harness.Dispatch.Compare                 lib/harness/dispatch/compare.ex                           3          0        0         Yes         N/A        
+100%     100%      Harness.Dispatch.Decision                lib/harness/dispatch/decision.ex                          3          0        0         Yes         N/A        
+100%     100%      Harness.Dispatch.Lifecycle               lib/harness/dispatch/lifecycle.ex                         11         0        0         Yes         N/A        
+100%     100%      Harness.Dispatch.Observation             lib/harness/dispatch/observation.ex                       5          0        0         Yes         N/A        
+100%     100%      Harness.Dispatch.Presentation            lib/harness/dispatch/presentation.ex                      17         0        0         Yes         N/A        
+100%     100%      Harness.Dispatch.Resolution              lib/harness/dispatch/resolution.ex                        10         0        0         Yes         N/A        
+N/A      N/A       Harness.Dispatch.RunSummary              lib/harness/dispatch/run_summary.ex                       0          0        0         Yes         Yes        
+100%     100%      Harness.Dispatch.Submission              lib/harness/dispatch/submission.ex                        5          0        0         Yes         N/A        
+100%     100%      Harness.Dispatch.WriteSetPlan            lib/harness/dispatch/write_set_plan.ex                    3          0        0         Yes         Yes        
+100%     100%      Harness.Facet                            lib/harness/facet.ex                                      1          0        0         Yes         N/A        
+100%     100%      Harness.Git                              lib/harness/git.ex                                        6          0        0         Yes         N/A        
+100%     100%      Harness.Git.TargetSync                   lib/harness/git/target_sync.ex                            3          0        0         Yes         N/A        
+100%     100%      Harness.InRepoTemplate                   lib/harness/in_repo_template.ex                           2          0        0         Yes         N/A        
+100%     100%      Harness.Insights                         lib/harness/insights.ex                                   8          0        0         Yes         N/A        
+100%     100%      Harness.Insights.Attempt                 lib/harness/insights/attempt.ex                           3          0        0         Yes         N/A        
+100%     100%      Harness.Insights.CodexWitness            lib/harness/insights/codex_witness.ex                     2          0        0         Yes         N/A        
+100%     100%      Harness.Insights.Consultation            lib/harness/insights/consultation.ex                      1          0        0         Yes         N/A        
+N/A      N/A       Harness.Insights.Document                lib/harness/insights/document.ex                          0          0        0         Yes         Yes        
+100%     100%      Harness.Insights.Evidence                lib/harness/insights/evidence.ex                          3          0        0         Yes         N/A        
+100%     100%      Harness.Insights.Prompt                  lib/harness/insights/prompt.ex                            1          0        0         Yes         N/A        
+100%     100%      Harness.Insights.Publication             lib/harness/insights/publication.ex                       1          0        0         Yes         N/A        
+100%     100%      Harness.Insights.ResponseSchema          lib/harness/insights/response_schema.ex                   1          0        0         Yes         N/A        
+100%     100%      Harness.Insights.Selection               lib/harness/insights/selection.ex                         3          0        0         Yes         N/A        
+100%     100%      Harness.Insights.Store                   lib/harness/insights/store.ex                             5          0        0         Yes         N/A        
+100%     100%      Harness.Insights.Tick                    lib/harness/insights/tick.ex                              1          0        0         Yes         N/A        
+100%     100%      Harness.Insights.Witness                 lib/harness/insights/witness.ex                           2          0        0         Yes         N/A        
+100%     100%      Harness.Insights.Worker                  lib/harness/insights/worker.ex                            2          0        0         Yes         N/A        
+100%     100%      Harness.JSONSafe                         lib/harness/json_safe.ex                                  3          0        0         Yes         N/A        
+100%     100%      Harness.Lander                           lib/harness/lander.ex                                     5          0        0         Yes         N/A        
+100%     100%      Harness.Lander.GH                        lib/harness/lander/gh.ex                                  2          0        0         Yes         N/A        
+100%     100%      Harness.Lander.PR                        lib/harness/lander/pr.ex                                  3          0        0         Yes         N/A        
+100%     100%      Harness.Lander.PRPoller                  lib/harness/lander/pr_poller.ex                           5          0        0         Yes         N/A        
+100%     100%      Harness.Lander.Resilience                lib/harness/lander/resilience.ex                          2          0        0         Yes         N/A        
+100%     100%      Harness.Lander.Resolver                  lib/harness/lander/resolver.ex                            4          0        0         Yes         N/A        
+100%     100%      Harness.Lander.Worker                    lib/harness/lander/worker.ex                              2          0        0         Yes         N/A        
+100%     100%      Harness.Landing.Settings                 lib/harness/landing/settings.ex                           9          0        0         Yes         N/A        
+100%     100%      Harness.LanguageProviders                lib/harness/language_providers.ex                         3          0        0         Yes         N/A        
+100%     100%      Harness.LineBuffer                       lib/harness/line_buffer.ex                                2          0        0         Yes         N/A        
+100%     100%      Harness.LineParser                       lib/harness/line_parser.ex                                2          0        0         Yes         N/A        
+100%     100%      Harness.Maintenance                      lib/harness/maintenance.ex                                10         0        0         Yes         N/A        
+100%     100%      Harness.Maintenance.Advisories           lib/harness/maintenance/advisories.ex                     1          0        0         Yes         N/A        
+100%     100%      Harness.Maintenance.Agent                lib/harness/maintenance/agent.ex                          2          0        0         Yes         N/A        
+100%     100%      Harness.Maintenance.Command              lib/harness/maintenance/command.ex                        1          0        0         Yes         N/A        
+N/A      N/A       Harness.Maintenance.Document             lib/harness/maintenance/document.ex                       0          0        0         Yes         Yes        
+100%     100%      Harness.Maintenance.Files                lib/harness/maintenance/files.ex                          2          0        0         Yes         N/A        
+100%     100%      Harness.Maintenance.Pass                 lib/harness/maintenance/pass.ex                           1          0        0         Yes         N/A        
+100%     100%      Harness.Maintenance.Publication          lib/harness/maintenance/publication.ex                    7          0        0         Yes         N/A        
+100%     100%      Harness.Maintenance.Queue                lib/harness/maintenance/queue.ex                          1          0        0         Yes         N/A        
+100%     100%      Harness.Maintenance.Recovery             lib/harness/maintenance/recovery.ex                       2          0        0         Yes         N/A        
+100%     100%      Harness.Maintenance.ResponseSchema       lib/harness/maintenance/response_schema.ex                1          0        0         Yes         N/A        
+100%     100%      Harness.Maintenance.Store                lib/harness/maintenance/store.ex                          5          0        0         Yes         N/A        
+100%     100%      Harness.Maintenance.Tick                 lib/harness/maintenance/tick.ex                           1          0        0         Yes         N/A        
+100%     100%      Harness.Maintenance.Worker               lib/harness/maintenance/worker.ex                         2          0        0         Yes         N/A        
+100%     100%      Harness.Manifest                         lib/harness/manifest.ex                                   6          0        0         Yes         N/A        
+100%     100%      Harness.ModelAvailability                lib/harness/model_availability.ex                         25         0        0         Yes         N/A        
+100%     100%      Harness.ModelAvailability.CatalogEntry   lib/harness/model_availability/catalog_entry.ex           2          0        0         Yes         Yes        
+100%     100%      Harness.Notification                     lib/harness/notification.ex                               1          0        0         Yes         N/A        
+100%     100%      Harness.Notification.CommandSink         lib/harness/notification/command_sink.ex                  1          0        0         Yes         N/A        
+100%     100%      Harness.Notification.Event               lib/harness/notification/event.ex                         1          0        0         Yes         Yes        
+100%     100%      Harness.Notification.FileSink            lib/harness/notification/file_sink.ex                     1          0        0         Yes         N/A        
+N/A      N/A       Harness.Notification.Sink                lib/harness/notification/sink.ex                          0          0        0         Yes         N/A        
+100%     100%      Harness.Oban                             lib/harness/oban.ex                                       21         0        0         Yes         N/A        
+100%     100%      Harness.Oban.Lifeline                    lib/harness/oban/lifeline.ex                              4          0        0         Yes         N/A        
+100%     100%      Harness.Oban.QueueBootstrap              lib/harness/oban/queue_bootstrap.ex                       2          0        0         Yes         N/A        
+100%     100%      Harness.Playbooks                        lib/harness/playbooks.ex                                  2          0        0         Yes         N/A        
+100%     100%      Harness.Project                          lib/harness/project.ex                                    4          0        0         Yes         Yes        
+100%     100%      Harness.Project.Source.Github            lib/harness/project/source/github.ex                      3          0        0         Yes         N/A        
+100%     100%      Harness.Project.Source.Local             lib/harness/project/source/local.ex                       1          0        0         Yes         N/A        
+100%     100%      Harness.ProjectCache                     lib/harness/project_cache.ex                              2          0        0         Yes         N/A        
+100%     100%      Harness.ProjectCache.Artifacts           lib/harness/project_cache/artifacts.ex                    6          0        0         Yes         N/A        
+100%     100%      Harness.ProjectCache.Command             lib/harness/project_cache/command.ex                      5          0        0         Yes         N/A        
+100%     100%      Harness.ProjectCache.Recipe              lib/harness/project_cache/recipe.ex                       2          0        0         Yes         N/A        
+100%     100%      Harness.ProjectRegistry                  lib/harness/project_registry.ex                           12         0        0         Yes         N/A        
+100%     100%      Harness.ProjectRegistry.OptionalFields   lib/harness/project_registry/optional_fields.ex           2          0        0         Yes         N/A        
+100%     100%      Harness.ProjectRegistry.Persistence      lib/harness/project_registry/persistence.ex               4          0        0         Yes         N/A        
+100%     100%      Harness.ProjectRegistry.Schema.Project   lib/harness/project_registry/schema/project.ex            1          0        0         Yes         Yes        
+N/A      N/A       Harness.Repo                             lib/harness/repo.ex                                       0          0        0         Yes         N/A        
+100%     100%      Harness.Repo.MigrationGuard              lib/harness/repo/migration_guard.ex                       6          0        0         Yes         N/A        
+100%     100%      Harness.ResultStore                      lib/harness/result_store.ex                               22         0        0         Yes         N/A        
+100%     100%      Harness.ResultStore.DeadLetter           lib/harness/result_store/dead_letter.ex                   10         0        0         Yes         N/A        
+100%     100%      Harness.ResultStore.Memory               lib/harness/result_store/memory.ex                        11         0        0         Yes         N/A        
+100%     100%      Harness.ResultStore.Postgres             lib/harness/result_store/postgres.ex                      11         0        0         Yes         N/A        
+100%     100%      Harness.ResultStore.Replayer             lib/harness/result_store/replayer.ex                      3          0        0         Yes         N/A        
+100%     100%      Harness.ResultStore.Schema.BatchResult   lib/harness/result_store/schema/batch_result.ex           1          0        0         Yes         Yes        
+100%     100%      Harness.ResultStore.Schema.RunRecord     lib/harness/result_store/schema/run_record.ex             1          0        0         Yes         Yes        
+100%     100%      Harness.RmapPath                         lib/harness/rmap_path.ex                                  1          0        0         Yes         N/A        
+N/A      N/A       Harness.Roadmap.Ctx                      lib/harness/roadmap.ex                                    0          0        0         Yes         Yes        
+100%     100%      Harness.Roadmap                          lib/harness/roadmap.ex                                    9          0        0         Yes         N/A        
+100%     100%      Harness.Roadmap.Durable                  lib/harness/roadmap/durable.ex                            1          0        0         Yes         N/A        
+100%     100%      Harness.Roadmap.Item                     lib/harness/roadmap/item.ex                               1          0        0         Yes         Yes        
+100%     100%      Harness.Roadmap.MisMarkAudit             lib/harness/roadmap/mis_mark_audit.ex                     1          0        0         Yes         N/A        
+100%     100%      Harness.Roadmap.TaskIdRewriter           lib/harness/roadmap/task_id_rewriter.ex                   2          0        0         Yes         N/A        
+100%     100%      Harness.Routing                          lib/harness/routing.ex                                    1          0        0         Yes         N/A        
+100%     100%      Harness.Routing.Availability             lib/harness/routing/availability.ex                       1          0        0         Yes         Yes        
+100%     100%      Harness.Run                              lib/harness/run.ex                                        21         0        0         Yes         N/A        
+100%     100%      Harness.Run.Actions                      lib/harness/run/actions.ex                                3          0        0         Yes         N/A        
+100%     100%      Harness.Run.Actions.Control              lib/harness/run/actions/control.ex                        20         0        0         Yes         N/A        
+100%     100%      Harness.Run.Actions.Discernment          lib/harness/run/actions/discernment.ex                    25         0        0         Yes         N/A        
+100%     100%      Harness.Run.Actions.Recovery             lib/harness/run/actions/recovery.ex                       10         0        0         Yes         N/A        
+100%     100%      Harness.Run.Actions.Reviewing            lib/harness/run/actions/reviewing.ex                      35         0        0         Yes         N/A        
+100%     100%      Harness.Run.Actions.Settlement           lib/harness/run/actions/settlement.ex                     19         0        0         Yes         N/A        
+100%     100%      Harness.Run.Actions.Timeouts             lib/harness/run/actions/timeouts.ex                       10         0        0         Yes         N/A        
+100%     100%      Harness.Run.Actions.Transcript           lib/harness/run/actions/transcript.ex                     9          0        0         Yes         N/A        
+100%     100%      Harness.Run.Actions.Worktree             lib/harness/run/actions/worktree.ex                       33         0        0         Yes         N/A        
+100%     100%      Harness.Run.LogRecord                    lib/harness/run/log_record.ex                             3          0        0         Yes         Yes        
+100%     100%      Harness.Run.MemoryGuard                  lib/harness/run/memory_guard.ex                           5          0        0         Yes         N/A        
+100%     100%      Harness.Run.Question                     lib/harness/run/question.ex                               16         0        0         Yes         Yes        
+100%     100%      Harness.Run.Recovery                     lib/harness/run/recovery.ex                               4          0        0         Yes         Yes        
+N/A      N/A       Harness.Run.Result                       lib/harness/run/result.ex                                 0          0        0         Yes         Yes        
+100%     100%      Harness.Run.RetryPolicy                  lib/harness/run/retry_policy.ex                           3          0        0         Yes         Yes        
+100%     100%      Harness.Run.Review                       lib/harness/run/review.ex                                 8          0        0         Yes         Yes        
+100%     100%      Harness.Run.States.Committing            lib/harness/run/states/committing.ex                      1          0        0         Yes         N/A        
+100%     100%      Harness.Run.States.Dispatched            lib/harness/run/states/dispatched.ex                      1          0        0         Yes         N/A        
+100%     100%      Harness.Run.States.Done                  lib/harness/run/states/done.ex                            1          0        0         Yes         N/A        
+100%     100%      Harness.Run.States.Failed                lib/harness/run/states/failed.ex                          1          0        0         Yes         N/A        
+100%     100%      Harness.Run.States.Held                  lib/harness/run/states/held.ex                            1          0        0         Yes         N/A        
+100%     100%      Harness.Run.States.Recovering            lib/harness/run/states/recovering.ex                      1          0        0         Yes         N/A        
+100%     100%      Harness.Run.States.Reviewing             lib/harness/run/states/reviewing.ex                       1          0        0         Yes         N/A        
+100%     100%      Harness.Run.States.Running               lib/harness/run/states/running.ex                         1          0        0         Yes         N/A        
+100%     100%      Harness.Run.Status                       lib/harness/run/status.ex                                 1          0        0         Yes         Yes        
+100%     100%      Harness.Run.Supervisor                   lib/harness/run/supervisor.ex                             5          0        0         Yes         N/A        
+100%     100%      Harness.Run.TestDbIsolation              lib/harness/run/test_db_isolation.ex                      5          0        0         Yes         N/A        
+100%     100%      Harness.Run.TestDbPartition              lib/harness/run/test_db_partition.ex                      3          0        0         Yes         N/A        
+100%     100%      Harness.Run.TestDbTemplate               lib/harness/run/test_db_template.ex                       5          0        0         Yes         N/A        
+100%     100%      Harness.Run.TranscriptSnapshot           lib/harness/run/transcript_snapshot.ex                    1          0        0         Yes         Yes        
+100%     100%      Harness.Run.Worker                       lib/harness/run/worker.ex                                 7          0        0         Yes         N/A        
+100%     100%      Harness.RunDiff                          lib/harness/run_diff.ex                                   2          0        0         Yes         N/A        
+100%     100%      Harness.SafeTerm                         lib/harness/safe_term.ex                                  1          0        0         Yes         N/A        
+100%     100%      Harness.SettingsStore                    lib/harness/settings_store.ex                             5          0        0         Yes         N/A        
+100%     100%      Harness.SettingsStore.Postgres           lib/harness/settings_store/postgres.ex                    2          0        0         Yes         N/A        
+100%     100%      Harness.SettingsStore.Schema.Setting     lib/harness/settings_store/schema/setting.ex              1          0        0         Yes         Yes        
+100%     100%      Harness.StatusView                       lib/harness/status_view.ex                                7          0        0         Yes         N/A        
+100%     100%      Harness.Store                            lib/harness/store.ex                                      2          0        0         Yes         N/A        
+100%     100%      Harness.Store.EtsHeir                    lib/harness/store/ets_heir.ex                             1          0        0         Yes         N/A        
+100%     100%      Harness.Store.EtsScope                   lib/harness/store/ets_scope.ex                            5          0        0         Yes         N/A        
+100%     100%      Harness.SuiteHealth                      lib/harness/suite_health.ex                               4          0        0         Yes         N/A        
+100%     100%      Harness.SuiteHealth.Bootstrap            lib/harness/suite_health/bootstrap.ex                     3          0        0         Yes         N/A        
+100%     100%      Harness.SuiteHealth.Commands             lib/harness/suite_health/commands.ex                      1          0        0         Yes         N/A        
+100%     100%      Harness.SuiteHealth.Commands.Elixir      lib/harness/suite_health/commands/elixir.ex               1          0        0         Yes         N/A        
+100%     100%      Harness.SuiteHealth.Commands.Go          lib/harness/suite_health/commands/go.ex                   1          0        0         Yes         N/A        
+100%     100%      Harness.SuiteHealth.Commands.JavaScript  lib/harness/suite_health/commands/javascript.ex           1          0        0         Yes         N/A        
+100%     100%      Harness.SuiteHealth.Commands.Rust        lib/harness/suite_health/commands/rust.ex                 1          0        0         Yes         N/A        
+100%     100%      Harness.SuiteHealth.Parser               lib/harness/suite_health/parser.ex                        2          0        0         Yes         N/A        
+100%     100%      Harness.SuiteHealth.Result               lib/harness/suite_health/result.ex                        4          0        0         Yes         Yes        
+100%     100%      Harness.SuiteHealth.Runner               lib/harness/suite_health/runner.ex                        1          0        0         Yes         N/A        
+100%     100%      Harness.SuiteHealthStore                 lib/harness/suite_health_store.ex                         4          0        0         Yes         N/A        
+100%     100%      Harness.SuiteHealthStore.Memory          lib/harness/suite_health_store/memory.ex                  3          0        0         Yes         N/A        
+100%     100%      Harness.SuiteHealthStore.Postgres        lib/harness/suite_health_store/postgres.ex                3          0        0         Yes         N/A        
+100%     100%      Harness.SuiteHealthStore.Schema.Result   lib/harness/suite_health_store/schema/result.ex           1          0        0         Yes         Yes        
+100%     100%      Harness.Text                             lib/harness/text.ex                                       3          0        0         Yes         N/A        
+100%     100%      Harness.TokenUsage                       lib/harness/token_usage.ex                                4          0        0         Yes         Yes        
+100%     100%      Harness.TokenUsage.GrokSession           lib/harness/token_usage/grok_session.ex                   1          0        0         Yes         N/A        
+100%     100%      Harness.ToolingBaseline                  lib/harness/tooling_baseline.ex                           1          0        0         Yes         N/A        
+100%     100%      Harness.ToolingBaseline.Advisory         lib/harness/tooling_baseline/advisory.ex                  2          0        0         Yes         Yes        
+100%     100%      Harness.ToolingBaseline.Dispatch         lib/harness/tooling_baseline/dispatch.ex                  2          0        0         Yes         N/A        
+100%     100%      Harness.ToolingBaseline.Item             lib/harness/tooling_baseline/item.ex                      4          0        0         Yes         Yes        
+100%     100%      Harness.ToolingBaseline.Manifest         lib/harness/tooling_baseline/manifest.ex                  1          0        0         Yes         N/A        
+100%     100%      Harness.ToolingBaseline.MixProjectReade  lib/harness/tooling_baseline/mix_project_reader.ex        1          0        0         Yes         N/A        
+N/A      N/A       Harness.ToolingBaseline.Provider         lib/harness/tooling_baseline/provider.ex                  0          0        0         Yes         N/A        
+100%     100%      Harness.ToolingBaseline.Provider.Elixir  lib/harness/tooling_baseline/provider/elixir.ex           2          0        0         Yes         N/A        
+100%     100%      Harness.ToolingBaseline.Providers        lib/harness/tooling_baseline/providers.ex                 1          0        0         Yes         N/A        
+100%     100%      Harness.ToolingBaseline.Snapshot         lib/harness/tooling_baseline/snapshot.ex                  4          0        0         Yes         Yes        
+N/A      N/A       Harness.ToolingBaseline.TaskSpec         lib/harness/tooling_baseline/task_spec.ex                 0          0        0         Yes         Yes        
+100%     100%      Harness.Worktree                         lib/harness/worktree.ex                                   21         0        0         Yes         Yes        
+100%     100%      Harness.Worktree.Isolation               lib/harness/worktree/isolation.ex                         6          0        0         Yes         N/A        
+100%     100%      Harness.Worktree.Reaper                  lib/harness/worktree/reaper.ex                            6          0        0         Yes         N/A        
+100%     100%      Harness.Worktree.Reclaim                 lib/harness/worktree/reclaim.ex                           1          0        0         Yes         N/A        
+100%     100%      Harness.Worktree.Sweeper                 lib/harness/worktree/sweeper.ex                           3          0        0         Yes         N/A        
+100%     100%      Mix.Tasks.Harness.Deps.Check             lib/mix/tasks/harness.deps.check.ex                       1          0        0         Yes         N/A        
+100%     100%      Mix.Tasks.Harness.InstallIncludes        lib/mix/tasks/harness.install_includes.ex                 1          0        0         Yes         N/A        
+100%     100%      Mix.Tasks.Harness.Projects.UseDispatchC  lib/mix/tasks/harness.projects.use_dispatch_check.ex      1          0        0         Yes         N/A        
+100%     100%      Mix.Tasks.Harness.Status                 lib/mix/tasks/harness.status.ex                           1          0        0         Yes         N/A        
+100%     100%      Mix.Tasks.Harness.Worktree.Reclaim       lib/mix/tasks/harness.worktree.reclaim.ex                 1          0        0         Yes         N/A        
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+Summary:
+
+Passed Modules: 300
+Failed Modules: 0
+Total Doc Coverage: 100.0%
+Total Moduledoc Coverage: 100.0%
+Total Spec Coverage: 100.0%
+
+Doctor validation has passed!
+WARNING: Sobelow cannot find the router. If this is a Phoenix application
+please use the `--router` flag to specify the router's location.
+
+##############################################
+#                                            #
+#          Running Sobelow - v0.15.0         #
+#  Created by Griffin Byatt - @griffinbyatt  #
+#     NCC Group - https://nccgroup.trust     #
+#                                            #
+##############################################
+
+... SCAN COMPLETE ...
+

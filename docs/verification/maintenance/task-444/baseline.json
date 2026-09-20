@@ -1,0 +1,102 @@
+{
+  "baseline": {
+    "duration_us": 233801340,
+    "excluded": 128,
+    "failed": 4,
+    "flaky": 3,
+    "invalid": 0,
+    "passed": 2594,
+    "result": "failed",
+    "skipped": 0,
+    "total": 2729
+  },
+  "baseline_failures": [
+    {
+      "file": "test/harness/agent_economy_test.exs",
+      "name": "test Harness.Manifest.mcp_tools/1 every argument-taking API declares parameters advertised on MCP tools"
+    },
+    {
+      "file": "test/harness/dispatch/contract_test.exs",
+      "name": "test preserves every public function and default arity"
+    },
+    {
+      "file": "test/harness/dispatch/contract_test.exs",
+      "name": "test preserves descripex declarations and the dispatch manifest"
+    },
+    {
+      "file": "test/harness/dispatch/contract_test.exs",
+      "name": "test preserves generated MCP tools and keeps implementation modules off the driver surface"
+    }
+  ],
+  "before_mutation_coverage": [
+    {
+      "module": "Harness.Dashboard.Components",
+      "percentage": 93.89,
+      "covered_lines": 476,
+      "uncovered_lines": [
+        455,
+        560,
+        592,
+        593,
+        594,
+        596,
+        607,
+        624,
+        642,
+        1094,
+        1103,
+        1114,
+        1308,
+        1309,
+        1551,
+        1614,
+        1616,
+        1681,
+        1814,
+        1862,
+        1884,
+        1891,
+        1903,
+        1908,
+        1910,
+        1911,
+        1935,
+        1942,
+        1945,
+        1946,
+        1952
+      ]
+    },
+    {
+      "module": "Harness.Manifest",
+      "percentage": 91.23,
+      "covered_lines": 52,
+      "uncovered_lines": [
+        1,
+        129,
+        232,
+        261,
+        264
+      ]
+    },
+    {
+      "module": "Harness.Oban",
+      "percentage": 86.81,
+      "covered_lines": 79,
+      "uncovered_lines": [
+        57,
+        58,
+        119,
+        262,
+        303,
+        339,
+        341,
+        346,
+        417,
+        429,
+        437,
+        464
+      ]
+    }
+  ]
+}

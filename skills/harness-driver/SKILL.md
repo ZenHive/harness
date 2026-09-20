@@ -775,6 +775,70 @@ Independent reviewers must check each claim against retained citations, includin
 contradictions and recurrence, rather than accepting the observer's self-report.
 Installed-skill propagation and production enablement belong to the orchestrator.
 
+### Repository Maintenance
+
+Maintenance has mutation authority only through durable roadmap publication. It is
+independent of Run Insights and disabled per repository until explicitly enabled.
+The `/harness/maintenance` navigation entry exposes fleet state, repository settings,
+findings and chronological assessments. `repo_enabled: false` is visibly ephemeral;
+Sweep now refuses scheduling without Postgres.
+
+- `maintenance-configure(project, enabled, cadence_minutes, agent, model, deadline_seconds)`:
+  weekly default (`10080` minutes), explicit Codex/model pin, default deadline `1800`
+  seconds. Cadence accepts 60–525600 minutes; deadline accepts 60–3600 seconds.
+  Model catalog changes never replace saved selections.
+- `maintenance-sweep_now(project)`: unique queued job for that repository on the
+  serialized `maintenance` queue. It does not change dispatch or landing policy.
+- `maintenance-status(project)`: disabled, ready, queued, running, no_findings,
+  successful, partial_evidence or failed; progress, next sweep and persistence mode.
+- `maintenance-findings(project, offset: 0)` and `maintenance-history(id, offset: 0)`:
+  bounded 50-entry pages; follow `next_offset`. History is chronological within a page.
+- Elixir equivalents live on `Harness.Maintenance`. `sweep(project, pass_id)` is the
+  internal worker boundary; reuse the pass id when recovering publication. Recovery
+  retains that pass's explicit agent/model selection.
+
+Analysis uses a freshly fetched target in an isolated checkout. Agent shell execution
+is disabled. The analyst requests tracked regular-file pages (24 KB, at most 40 reads
+per assessment); path traversal and symlinks are refused. Provider web research is
+available. Dependency-freshness and suite-health snapshots are evidence, not verdicts.
+Unavailable advisories, credentials, consumers or measurements must remain visible.
+Raw private advisory responses and agent tool output are never persisted to Postgres
+or shown. A separate tool-free AI disclosure pass removes private details before
+assessment publication; transient command captures are private and deleted.
+
+Discovery is persisted before publication. The durable roadmap writer fetches and
+re-reads the current roadmap for each attempt, asks the AI to reconcile semantic
+relationships, and creates tasks with persisted publication markers while rmap allocates numeric
+task ids. Generated tasks name an existing roadmap bundle. It uses
+fast-forward pushes with remote observation. After interruption, existing identities
+are recovered before new creation; deleted markers are checked against git history; unknown roadmap/history stops publication.
+At most three unfinished maintenance tasks may be published for a repository.
+Additional findings remain available for later assessment. Generated work uses the
+existing recovery-aware implement/review/land workflow; maintenance never implements
+code. A landed task is not a verified improvement: the outcome assessment needs
+independent delivery evidence and comparable measurements where applicable.
+
+Focused checks use a disposable database with the inherited connection URL removed:
+
+```sh
+env -u HARNESS_DATABASE_URL -u DATABASE_URL HARNESS_DB_NAME=harness_maintenance_test MIX_ENV=test mix ecto.create
+env -u HARNESS_DATABASE_URL -u DATABASE_URL HARNESS_DB_NAME=harness_maintenance_test MIX_ENV=test mix ecto.migrate
+env -u HARNESS_DATABASE_URL -u DATABASE_URL HARNESS_DB_NAME=harness_maintenance_test MIX_ENV=test mix test test/harness/maintenance test/harness/dashboard/maintenance_live_test.exs --include integration
+HARNESS_MAINTENANCE_TEST_MODEL=gpt-6-astra MIX_ENV=test mix test test/harness/maintenance/live_test.exs --include live_agent
+```
+
+The live test requires `codex login` and the explicit available model pin. It must fail
+loudly when access is missing. Deploy migration `20260920050000` before runtime
+activation. The orchestrator owns integrated checks, installed-skill propagation and
+production activation; dispatched sessions must not restart or enable production.
+
+Browser verification uses a runner-owned loopback server and memory-only fixtures:
+`npm install --prefix .harness/browser --no-audit --no-fund playwright`, then
+`node test/browser/maintenance.mjs`. Port `44044` must be free; override with
+`MAINTENANCE_BROWSER_PORT`. The runner refuses another server, terminates its owned
+process tree on success/failure/cancellation, and saves screenshots and results under
+`.harness/maintenance-browser/`. It never connects to the operator dashboard.
+
 ## Integrated post-merge QA
 
 `Project.qa_command` is an optional full-project check command, independent of

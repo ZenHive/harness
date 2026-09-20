@@ -1,0 +1,35 @@
+{
+  "observations": [
+    {
+      "width": 1440,
+      "route": "",
+      "overflow": false
+    },
+    {
+      "width": 1440,
+      "route": "/repositories/browser-fixture",
+      "overflow": false
+    },
+    {
+      "width": 1440,
+      "route": "/findings/browser-finding",
+      "overflow": false
+    },
+    {
+      "width": 390,
+      "route": "",
+      "overflow": false
+    },
+    {
+      "width": 390,
+      "route": "/repositories/browser-fixture",
+      "overflow": false
+    },
+    {
+      "width": 390,
+      "route": "/findings/browser-finding",
+      "overflow": false
+    }
+  ],
+  "errors": []
+}

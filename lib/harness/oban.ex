@@ -285,6 +285,7 @@ defmodule Harness.Oban do
     |> enable_suite_health_queue()
     |> enable_audit_queue()
     |> enable_insights_queue()
+    |> enable_maintenance_queue()
     |> enable_lifeline_plugin()
     |> enable_cron_plugin()
     |> Keyword.put(:name, __MODULE__)
@@ -430,6 +431,11 @@ defmodule Harness.Oban do
     end)
   end
 
+  @spec enable_maintenance_queue(keyword()) :: keyword()
+  defp enable_maintenance_queue(opts) do
+    Keyword.update(opts, :queues, [maintenance: 1], &Keyword.put(&1, :maintenance, 1))
+  end
+
   @spec enable_insights_queue(keyword()) :: keyword()
   defp enable_insights_queue(opts) do
     Keyword.update(opts, :queues, [insights: 1], fn
@@ -484,7 +490,8 @@ defmodule Harness.Oban do
       DepFreshnessPoller.cron_entry(),
       SuiteHealthPoller.cron_entry(),
       PRPoller.cron_entry(),
-      {"* * * * *", Harness.Insights.Tick, [queue: :cron]}
+      {"* * * * *", Harness.Insights.Tick, [queue: :cron]},
+      {"* * * * *", Harness.Maintenance.Tick, [queue: :cron]}
     ]
   end
 end
