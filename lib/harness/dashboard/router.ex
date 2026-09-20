@@ -57,6 +57,7 @@ defmodule Harness.Dashboard.Router do
     pipe_through(:browser)
 
     live("/harness", Live, :index, as: :dashboard)
+    live("/harness/inbox", InboxLive, :index, as: :dashboard_inbox)
     live("/harness/roadmap", RoadmapLive, :index, as: :dashboard_roadmap)
     live("/harness/settings", SettingsLive, :index, as: :dashboard_settings)
     live("/harness/insights", InsightsLive, :index)

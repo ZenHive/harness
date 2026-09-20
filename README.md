@@ -23,10 +23,13 @@ Boots the OTP application, Postgres-backed Oban, and the standalone dashboard en
 | URL | What it is |
 |---|---|
 | `http://localhost:4018/harness` | LiveView dashboard — project switcher, per-bucket run counts, per-run drill-down with live transcript pane |
+| `http://localhost:4018/harness/inbox` | Action Inbox — current manual approvals, held runs, failed committed attempts and approved unlanded work. Filter by project; navigation counts unresolved rows (alternative actions count once). Approve, Resume, Resume Failed, Rereview, Land and Reland reuse guarded Dispatch operations. Counts refresh on run events and every five seconds; accepted means submitted, not landed. No activity log or acknowledgement store. |
 | `http://localhost:4018/harness/roadmap` | Fleet task board — Pending, Implementing, Reviewing, Landing, Blocked, and Done lanes across registered projects. rmap owns durable Pending/Blocked/Done placement; live runs and persisted results place Implementing/Reviewing/Landing. Cards expose existing dispatch, hold/resume, re-review, and land/re-land actions. |
 | `http://localhost:4018/harness/oban` | Oban Web — queue / job rows / retries / scheduled work |
 | `http://localhost:4018/harness/mcp` | **Native MCP server** — flat JSON-RPC tools (`dispatch__*`, `roadmap__*`, …); the primary surface for a JSON/MCP orchestrator |
 | `http://localhost:4018/tidewave/mcp` | Tidewave MCP endpoint (dev only) — `project_eval` escape hatch for arbitrary eval + struct-surface ops |
+
+Inbox browser verification: `npm install --prefix .harness/browser playwright` then `node test/browser/inbox.mjs`. This starts and stops an isolated memory-backed test server on loopback port 44038 (`INBOX_BROWSER_PORT` overrides it); screenshots and results go to `.harness/inbox-browser/`. A Playwright Chromium installation is required.
 
 The standalone Bandit endpoint is gated by `config :harness, :dashboard, enabled: true` AND `Bandit` being in the dep stack. Mountable consumers (their own Phoenix endpoint) leave `enabled: false` and route `live "/harness/*path", Harness.Dashboard.Live` themselves. Harness ships no authentication on the dashboard, Oban Web, or `/harness/mcp`; that is safe only at the standalone endpoint's default loopback bind. A consumer mounting these routes in a non-loopback or public endpoint must put its own auth in front of both the browser pipeline and the separate MCP forward.
 

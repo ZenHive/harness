@@ -9,6 +9,12 @@
   </head>
   <body>
     <Harness.Dashboard.Components.page_shell>
+      <:inbox>
+        {Phoenix.Component.live_render(@conn, Harness.Dashboard.InboxBadgeLive,
+          id: "inbox-nav-count",
+          session: %{}
+        )}
+      </:inbox>
       {@inner_content}
     </Harness.Dashboard.Components.page_shell>
     <script src="/assets/phoenix/phoenix.min.js">

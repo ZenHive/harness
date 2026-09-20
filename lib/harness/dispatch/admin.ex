@@ -19,8 +19,12 @@ defmodule Harness.Dispatch.Admin do
 
   @spec approve(String.t()) :: {:ok, map()} | {:error, :not_found | term()}
   @doc false
-  def approve(pending_id) when is_binary(pending_id) do
-    case PendingDispatch.approve(pending_id) do
+  def approve(pending_id) when is_binary(pending_id), do: approve(pending_id, nil)
+
+  @spec approve(String.t(), DateTime.t() | nil) :: {:ok, map()} | {:error, term()}
+  @doc false
+  def approve(pending_id, parked_at) when is_binary(pending_id) do
+    case PendingDispatch.approve(pending_id, parked_at) do
       {:ok, %{adapter: adapter} = result} -> {:ok, %{result | adapter: inspect(adapter)}}
       {:error, _reason} = error -> error
     end

@@ -94,8 +94,12 @@ defmodule Harness.Cron.PendingDispatch do
   @spec approve(String.t()) ::
           {:ok, %{run_id: String.t(), task_id: String.t(), project_name: String.t(), adapter: module()}}
           | {:error, :not_found | term()}
-  def approve(id) when is_binary(id) do
-    case GenServer.call(__MODULE__, {:claim, id}) do
+  def approve(id) when is_binary(id), do: approve(id, nil)
+
+  @doc "Approves only the parked generation the operator saw; nil keeps the ID-only contract."
+  @spec approve(String.t(), DateTime.t() | nil) :: {:ok, map()} | {:error, term()}
+  def approve(id, parked_at) when is_binary(id) do
+    case GenServer.call(__MODULE__, {:claim, id, parked_at}) do
       {:ok, %__MODULE__{} = record} -> enqueue(record)
       :error -> {:error, :not_found}
     end
@@ -141,12 +145,12 @@ defmodule Harness.Cron.PendingDispatch do
     {:reply, records, state}
   end
 
-  def handle_call({:claim, id}, _from, state) do
+  def handle_call({:claim, id, expected}, _from, state) do
     case Map.fetch(state, id) do
-      {:ok, {:parked, %__MODULE__{} = record}} ->
+      {:ok, {:parked, %__MODULE__{parked_at: parked_at} = record}} when is_nil(expected) or expected == parked_at ->
         {:reply, {:ok, record}, Map.put(state, id, {:claimed, record})}
 
-      {:ok, {:claimed, %__MODULE__{}}} ->
+      {:ok, {_status, %__MODULE__{}}} ->
         {:reply, :error, state}
 
       :error ->

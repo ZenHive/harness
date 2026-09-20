@@ -40,6 +40,7 @@ defmodule Harness.Dashboard.Components do
   ## --- Chrome ---------------------------------------------------------------
 
   slot(:inner_block, required: true)
+  slot(:inbox)
 
   @doc """
   Wraps every dashboard page with the persistent navbar + main + footer.
@@ -53,7 +54,9 @@ defmodule Harness.Dashboard.Components do
   def page_shell(assigns) do
     ~H"""
     <div class="page-shell">
-      <.navbar />
+      <.navbar>
+        <:inbox>{render_slot(@inbox)}</:inbox>
+      </.navbar>
       <main class="page-main">
         <.operator_flash />
         {render_slot(@inner_block)}
@@ -73,6 +76,8 @@ defmodule Harness.Dashboard.Components do
   layout, neither of which earns the complexity for an active-state
   decoration. No `data-active` styling exists on these links.
   """
+  slot(:inbox)
+
   @spec navbar(map()) :: Rendered.t()
   def navbar(assigns) do
     ~H"""
@@ -82,6 +87,8 @@ defmodule Harness.Dashboard.Components do
       </a>
       <nav class="navbar-links" aria-label="Primary">
         <a href="/harness">Dashboard</a>
+        <a :if={@inbox == []} href="/harness/inbox">Inbox</a>
+        {render_slot(@inbox)}
         <a href="/harness/roadmap">Roadmap</a>
         <a href="/harness/compare">Compare</a>
         <a href="/harness/projects/explore">Explore</a>

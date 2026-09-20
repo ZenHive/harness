@@ -42,6 +42,29 @@ defmodule Harness.Cron.PendingDispatchTest do
     end
   end
 
+  describe "approve/2 generation guard" do
+    test "rejects an older generation without consuming the replacement" do
+      assert {:parked, old} = PendingDispatch.park("proj", "42", Codex, %{})
+      PendingDispatch.reset()
+      assert {:parked, current} = PendingDispatch.park("proj", "42", Codex, %{})
+      assert current.parked_at != old.parked_at
+      assert {:error, :not_found} = Dispatch.approve(old.id, old.parked_at)
+      assert [^current] = PendingDispatch.list()
+    end
+
+    test "accepts the exact generation and rejects a duplicate" do
+      parent = self()
+      project = ProjectFixture.from_repo("/tmp/harness-pending-generation", name: "pending-generation")
+      :ok = ProjectRegistry.register(project)
+      stub_ingest(parent)
+      capture_inserts(parent)
+      {:parked, pending} = PendingDispatch.park(project.name, "42", Codex, %{})
+      assert {:ok, %{task_id: "42"}} = Dispatch.approve(pending.id, pending.parked_at)
+      assert {:error, :not_found} = Dispatch.approve(pending.id, pending.parked_at)
+      assert [] = PendingDispatch.list()
+    end
+  end
+
   describe "approve/1" do
     test "drains a parked record into Worker.enqueue and is idempotent" do
       parent = self()

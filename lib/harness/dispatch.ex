@@ -563,7 +563,25 @@ defmodule Harness.Dispatch do
   )
 
   @spec approve(String.t()) :: {:ok, map()} | {:error, :not_found | term()}
-  def approve(pending_id), do: Admin.approve(pending_id)
+  def approve(pending_id) when is_binary(pending_id), do: approve(pending_id, nil)
+
+  @doc "Approves the exact parked generation displayed to an operator."
+  @spec approve(String.t(), DateTime.t() | nil) :: {:ok, map()} | {:error, term()}
+  def approve(pending_id, parked_at) when is_binary(pending_id),
+    do: Admin.approve(pending_id, parked_at)
+
+  # --- Project registration over JSON ---
+  #
+  # Harness.ProjectRegistry.register/1 takes a %Harness.Project{} struct
+  # (:exchange_data — off the JSON surface). This is the flat scalar entry point:
+  # it assembles the struct through the registry's validated builder so a runtime
+  # registration behaves identically to a config :harness, :projects entry. The
+  # rarer struct fields (landing_policy, target_branch, pollution_allowlist) are
+  # intentionally NOT exposed here — register those via config or the project_eval
+  # struct path (see docs/orchestrator-surface-inventory.md § Omissions).
+  # `roadmap_target_branch` IS exposed: split-repo registrations cannot set it
+  # any other JSON-native way, and omitting it keeps the same-repo derivation
+  # from `target_branch`.
 
   api(
     :register_project,
