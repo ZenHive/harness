@@ -352,7 +352,7 @@ defmodule Harness.Roadmap do
     <reviewer> --verification-ref harness-run:<run-id> --shipped-in <sha>`
     (plus `--delivered-by` / `--implemented` when supplied). This is the
     merge-train lander's writeback step; the implementer dispatched the work, the
-    verification stack graded it green post-integration, so `verified` is honest.
+    independent reviewer approved it before landing. Post-merge QA is separate.
 
     Options:
 
@@ -383,7 +383,8 @@ defmodule Harness.Roadmap do
     names its branch explicitly; when
     roadmap and source are the same repository, `project.target_branch` is the
     backward-compatible default. If the repository or branch cannot be resolved
-    without guessing, the transition falls back to a plain local rmap write.
+    without guessing, `:require_durable` returns an error; otherwise the transition
+    falls back to a plain local rmap write.
     A successful fallback keeps the existing `{:ok, output}` result because the
     local rmap mutation succeeded, but it is not durable until the operator
     commits and pushes that checkout.
@@ -395,7 +396,7 @@ defmodule Harness.Roadmap do
       opts: [
         kind: :value,
         description:
-          "Keyword list. `:project`, `:root`, `:sha`, `:verified_by`, `:verification_ref`, `:delivered_by`, `:implemented`, `:task_fingerprint`, and `:rmap_bin` are documented above."
+          "Keyword list. `:project`, `:root`, `:sha`, `:verified_by`, `:verification_ref`, `:delivered_by`, `:implemented`, `:task_fingerprint`, `:rmap_bin`, and `:require_durable` are documented above."
       ]
     ]
   )

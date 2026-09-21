@@ -16,8 +16,12 @@ defmodule Harness.Lander.WorkerTest do
   alias Harness.GitFixture
   alias Harness.Lander.Worker
   alias Harness.Landing.Settings, as: LandingSettings
+  alias Harness.LandingFixture
   alias Harness.Project
   alias Harness.ProjectRegistry
+  alias Harness.ResultStore
+  alias Harness.ResultStore.Memory
+  alias Harness.ResultStoreContract
   alias Harness.Test.SettingsStoreMemory
 
   @moduletag :tmp_dir
@@ -47,12 +51,14 @@ defmodule Harness.Lander.WorkerTest do
   end
 
   describe "perform/1 — runtime landing override (dashboard auto-land)" do
-    setup %{tmp_dir: tmp_dir} do
+    setup do
       setup_landing_store()
       fixture = git_fixture()
-      project = register_project(fixture.repo, tmp_dir)
+      roadmap = LandingFixture.roadmap()
+      project = register_project(fixture.repo, roadmap.repo)
+      setup_result_store(project)
 
-      Map.put(fixture, :project, project)
+      Map.merge(fixture, %{project: project, roadmap_origin: roadmap.origin})
     end
 
     test "lands via the persisted override when the registered project has no target branch", ctx do
@@ -61,6 +67,10 @@ defmodule Harness.Lander.WorkerTest do
       assert :ok = Worker.perform(%Oban.Job{args: land_args(ctx.project)})
       # origin/main advanced to the agent branch's tip — the land really happened.
       assert sha(ctx.origin, "refs/heads/main") == ctx.branch_tip
+      task = LandingFixture.origin_task(ctx.roadmap_origin, "1")
+      assert task["status"] == "done"
+      assert task["shipped_in"] == ctx.branch_tip
+      assert task["verified_by"] == "codex"
     end
 
     test "without an override the looked-up project still has nothing to land onto", ctx do
@@ -72,6 +82,19 @@ defmodule Harness.Lander.WorkerTest do
   end
 
   # ── fixtures ──────────────────────────────────────────────────────────────
+  defp setup_result_store(project) do
+    previous = Application.get_env(:harness, :result_store)
+    store = {Memory, scope: {:worker_test, self()}}
+    Application.put_env(:harness, :result_store, store)
+
+    on_exit(fn ->
+      restore(:result_store, previous)
+      Memory.reset(elem(store, 1))
+    end)
+
+    record = ResultStoreContract.log_record(run_id: "run-overlay", task_id: "1", project_name: project.name)
+    assert :ok = ResultStore.record_run(record)
+  end
 
   # Isolated in-memory settings store (mirrors Harness.Landing.SettingsTest) so
   # the override the test writes never collides with the operator's real state.
@@ -108,11 +131,12 @@ defmodule Harness.Lander.WorkerTest do
 
   # Registered as :manual / no target — exactly how a project looks when
   # auto-land is flipped on from the dashboard rather than at registration.
-  defp register_project(repo, tmp_dir) do
+  defp register_project(repo, roadmap_repo) do
     project = %Project{
       name: "worker-overlay-demo",
       source: {:local, repo},
-      roadmap_path: tmp_dir,
+      roadmap_path: roadmap_repo,
+      roadmap_target_branch: "main",
       languages: [:elixir],
       landing_policy: :manual,
       target_branch: nil
@@ -129,6 +153,7 @@ defmodule Harness.Lander.WorkerTest do
       "run_id" => "run-overlay",
       "task_id" => "1",
       "agent" => "claude",
+      "reviewer" => "codex",
       "branch" => "harness/run-overlay",
       "land_attempt" => 1
     }

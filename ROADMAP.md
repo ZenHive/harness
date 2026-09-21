@@ -349,6 +349,10 @@
 | Task 438 | ⬜ | 🎁 **operator-surface** · 🐛 A failed suite-health bootstrap is silently dropped — inspect(reason) overflows skip_reason varchar(255) [D:4/B:8/U:7 → Eff:1.88] 🚀 |
 | Task 450 | ✅ | 🎁 **audit-hygiene** · Clear the 10 ex_dna clones that fail mix precommit.full [D:5/B:7/U:6 → Eff:1.3] 📋 |
 | Task 453 | ✅ | 🎁 **core-loop** · 🐛 Make Worktree Reclaim report incomplete inspection instead of an empty backlog [D:4/B:6/U:5 → Eff:1.38] 📋 |
+| Task 454 | ⬜ | 🎁 **audit-agent** · 🐛 Pin audit adapter and model to one validated settings snapshot [D:3/B:5/U:4 → Eff:1.5] 🚀 |
+| Task 455 | ⬜ | 🎁 **audit-hygiene** · 🐛 Repair model configuration isolation behind the integrated Cron and Maintenance failures [D:4/B:6/U:5 → Eff:1.38] 📋 |
+| Task 456 | ⬜ | 🎁 **audit-hygiene** · 🐛 Make the AgentDriver Codex-channel fixture available before asynchronous tests run [D:2/B:4/U:4 → Eff:2.0] 🎯 |
+| Task 457 | ⬜ | 🎁 **audit-hygiene** · 🐛 Complete private security triage from integrated QA [D:4/B:5/U:4 → Eff:1.12] 📋 |
 <!-- TASKS:END -->
 
 ---

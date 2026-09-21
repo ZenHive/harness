@@ -14112,3 +14112,67 @@ started_at = "2026-09-21"
 scored_at = "2026-09-21"
 done_at = "2026-09-21"
 shipped_in = "34bdc9d7cc5ab36a1d840db70c313c1a9b199480"
+
+[[task]]
+id = "454"
+phase = 22
+bundle = "audit-agent"
+status = "pending"
+title = "Pin audit adapter and model to one validated settings snapshot"
+scores = { d = 3, b = 5, u = 4 }
+markers = ["bug"]
+acceptance_criteria = ["An audit invocation resolves its adapter and model from one settings snapshot and persists that same pair in QA evidence.", "A controlled settings change between capture and selection cannot combine an adapter from one selection with a model from another or silently use the standing model instead of the explicit model.", "Focused tests preserve automatic exclusions, explicit selection, unavailable selection errors and the explicit auditor test override; synchronize the race with messages rather than sleeps."]
+touches = ["lib/harness/audit.ex", "lib/harness/audit/selection.ex", "test/harness/audit_test.exs", "test/harness/audit/"]
+assignee = "codex"
+model = "gpt-6-astra"
+body = "Audit 03a7a8f found that Audit.run_auditor/7 captures Selection.settings at lib/harness/audit.ex:305, but select_auditor/1 rereads the store at line 396. The adapter therefore comes from a later value while Selection.model_for/2 uses the earlier request.audit_selection. Changing adapters can invoke the new adapter with its standing model instead of its explicit selected model; changing the model on the same adapter validates the newer model but invokes the older one. Resolve from the captured selection, with all existing eligibility checks retained. This is a source-proven race, not an observed production incident. Runtime routing requires independent review. B5 reflects preventing a paid audit invocation with an inconsistent operator selection; no frequency claim. See .audit/03a7a8f.md."
+created_at = "2026-09-21"
+scored_at = "2026-09-21"
+
+[[task]]
+id = "455"
+phase = 22
+bundle = "audit-hygiene"
+status = "pending"
+title = "Repair model configuration isolation behind the integrated Cron and Maintenance failures"
+scores = { d = 4, b = 6, u = 5 }
+markers = ["bug"]
+acceptance_criteria = ["Trace the invalid model configuration reaching Keyword.get/3 to its writer and lifecycle; preserve failing input and predecessor evidence before changing code.", "Add a deterministic regression for the responsible configuration or fixture restoration boundary, including an originally absent setting. Do not mask the defect with a nil fallback or weaken assertions.", "Verify the focused producer/consumer test sequence and one integrated seed-731642 coverage run with full failure JSON, retaining any remaining failures honestly."]
+touches = ["test/harness/", "test/support/", "lib/harness/config.ex"]
+assignee = "cursor"
+model = "cursor-grok-4.6-high"
+body = "Post-merge QA at 03a7a8f5b1690a079e3609b9a65f2816140b0c68 failed 25 tests at seed 731642, while its failed-only rerun passed all 25. A same-seed detailed full run reproduced 25 Keyword.get/3 FunctionClauseError failures through Config.agent_model/1: 24 in test/harness/cron/roadmap_poller_test.exs and one in test/harness/maintenance/control_test.exs:18. This establishes integrated-order sensitivity but not which writer poisoned the model namespace. Read .audit/03a7a8f/repro.json.gz for names and stacks. The detailed run also exposed an independent AgentDriver fixture availability failure tracked separately. Task 362 repaired persisted ModelAvailability blocks; these failures instead reach the application-env keyword reader, so this is not that completed repair. Task 326's historical EPIPE investigation and Task 432 dependency bootstrap are also different causes. Route through implementation/review because the regression spans global configuration and multiple test modules. B6 reflects 25 failing integrated checks."
+created_at = "2026-09-21"
+scored_at = "2026-09-21"
+
+[[task]]
+id = "456"
+phase = 22
+bundle = "audit-hygiene"
+status = "pending"
+title = "Make the AgentDriver Codex-channel fixture available before asynchronous tests run"
+scores = { d = 2, b = 4, u = 4 }
+markers = ["bug"]
+acceptance_criteria = ["Identify and remove the fixture module availability race without retries, sleeps, skipped tests or weakened AGENTS.md assertions.", "Ensure CodexChannelEcho is compiled before any async case can invoke it; verify focused AgentDriver tests from a fresh test compilation and retain the original integrated failure evidence."]
+touches = ["test/harness/agent_driver_test.exs", "test/support/"]
+assignee = "grok"
+model = "grok-4.6"
+body = "The detailed integrated seed-731642 coverage run at 03a7a8f failed AgentDriverTest's Codex-channel tracked-AGENTS preservation test (line 72): CodexChannelEcho.rule_channel/0 was undefined because its module was unavailable. The async ExUnit case is defined before the CodexChannelEcho helper module in the same .exs file. This supports a helper compilation-order race; establish the precise cause and fix fixture placement/loading. Evidence is .audit/03a7a8f/repro.json.gz. It appeared in the second integrated run, separate from the 25 model-config failures; do not claim a deterministic reproduction or a production adapter failure. No existing pending task owns this fixture; Task 362 covers persisted registry/model-block isolation. B4 reflects one independently observed integrated failure."
+created_at = "2026-09-21"
+scored_at = "2026-09-21"
+
+[[task]]
+id = "457"
+phase = 22
+bundle = "audit-hygiene"
+status = "pending"
+title = "Complete private security triage from integrated QA"
+scores = { d = 4, b = 5, u = 4 }
+markers = ["bug"]
+acceptance_criteria = ["Read the private draft security advisory created by audit 03a7a8f and independently assess its evidence and deployment assumptions.", "Resolve the finding through a reviewed repair with relevant boundary/browser tests or a justified private disposition; retain complete security-check coverage without suppressing a genuine finding.", "Keep sensitive details out of public task, commit and report text until disclosure is appropriate, and record the final disposition privately."]
+touches = ["mix.exs", "lib/harness/dashboard/", "test/harness/dashboard/", "test/browser/"]
+assignee = "codex"
+model = "gpt-6-astra"
+body = "Audit 03a7a8f found one additional security-scanner signal while resolving a coverage warning. The mechanism and diagnostic output are confined to the repository's private draft security advisory created by this audit. No exploit is established and no severity is inferred from scanner confidence. Existing draft advisories and roadmap repairs were checked for semantic overlap; this finding was not already tracked. The agent can perform triage and a reviewed repair, so this is agent-routed. B5 reflects completing a concrete security-check boundary, not an asserted exploit. Preserve the operator-only deployment contract and use isolated test resources."
+created_at = "2026-09-21"
+scored_at = "2026-09-21"

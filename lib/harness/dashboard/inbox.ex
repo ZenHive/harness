@@ -2,6 +2,7 @@ defmodule Harness.Dashboard.Inbox do
   @moduledoc "Current operator actions projected from approvals, runs, roadmaps and unfinished jobs."
 
   alias Harness.Cron.PendingDispatch
+  alias Harness.Dashboard.LoadError
   alias Harness.Dashboard.TaskBoard
   alias Harness.Dispatch
   alias Harness.ProjectRegistry
@@ -70,7 +71,7 @@ defmodule Harness.Dashboard.Inbox do
           {Map.put(acc, project.name, tasks), errors}
 
         {failure, project}, {acc, errors} ->
-          {acc, [{project.name, stream_reason(failure)} | errors]}
+          {acc, [{project.name, LoadError.from_stream(failure)} | errors]}
       end)
 
     {task_map, Enum.reverse(errors)}
@@ -86,13 +87,6 @@ defmodule Harness.Dashboard.Inbox do
 
   @spec list_timeout_ms() :: pos_integer()
   defp list_timeout_ms, do: Application.get_env(:harness, :inbox_roadmap_timeout_ms, @list_timeout_ms)
-
-  @spec stream_reason(term()) :: term()
-  defp stream_reason({:ok, {:error, reason}}), do: reason
-  defp stream_reason({:ok, reason}), do: reason
-  defp stream_reason({:exit, :kill}), do: :timeout
-  defp stream_reason({:exit, reason}), do: reason
-  defp stream_reason(reason), do: reason
 
   @doc "Operator-facing named source error for an unreadable project roadmap."
   @spec format_coverage_error({String.t(), term()}) :: String.t()

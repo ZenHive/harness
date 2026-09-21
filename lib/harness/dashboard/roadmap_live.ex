@@ -25,6 +25,7 @@ defmodule Harness.Dashboard.RoadmapLive do
   use Phoenix.LiveView, layout: {Harness.Dashboard.Layouts, :app}
 
   alias Harness.Dashboard.Components
+  alias Harness.Dashboard.LoadError
   alias Harness.Dashboard.RunFeed
   alias Harness.Dashboard.TaskBoard
   alias Harness.Dashboard.TaskBoard.Card
@@ -399,7 +400,7 @@ defmodule Harness.Dashboard.RoadmapLive do
 
         {failure, project}, {acc, errors} ->
           {Map.put(acc, project.name, Map.get(previous, project.name, [])),
-           [{project.name, :roadmap, stream_reason(failure)} | errors]}
+           [{project.name, :roadmap, LoadError.from_stream(failure)} | errors]}
       end)
 
     ready_results =
@@ -414,7 +415,7 @@ defmodule Harness.Dashboard.RoadmapLive do
           {MapSet.union(acc, ids), errors}
 
         {failure, project}, {acc, errors} ->
-          {acc, [{project.name, :ready, stream_reason(failure)} | errors]}
+          {acc, [{project.name, :ready, LoadError.from_stream(failure)} | errors]}
       end)
 
     {tasks, ready, summarize_load_errors(Enum.reverse(errors))}
@@ -560,13 +561,6 @@ defmodule Harness.Dashboard.RoadmapLive do
   @spec blank_to_nil(String.t() | nil) :: String.t() | nil
   defp blank_to_nil(value) when value in [nil, ""], do: nil
   defp blank_to_nil(value), do: value
-
-  @spec stream_reason(term()) :: term()
-  defp stream_reason({:ok, {:error, reason}}), do: reason
-  defp stream_reason({:ok, reason}), do: reason
-  defp stream_reason({:exit, :kill}), do: :timeout
-  defp stream_reason({:exit, reason}), do: reason
-  defp stream_reason(reason), do: reason
 
   @spec summarize_load_errors([{String.t(), :roadmap | :ready, term()}]) :: [String.t()]
   defp summarize_load_errors(errors) do

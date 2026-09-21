@@ -4,7 +4,7 @@ defmodule Harness.Dispatch.ContractTest do
   alias Harness.Dispatch
   alias Harness.Manifest
 
-  # Captured from the public facade before Task 359's structural extraction.
+  # Public facade contract, including Task 386's persisted-delivery reland descriptions.
   # Fingerprints include descriptions, schemas, defaults, parameter order and specs.
   # MCP required-property lists are sets; sort their existing unstable order.
   @functions [
@@ -101,10 +101,10 @@ defmodule Harness.Dispatch.ContractTest do
   end
 
   test "preserves descripex declarations and the dispatch manifest" do
-    assert fingerprint(Dispatch.__api__()) == "fa1bd13754a303fbefd0c26707628918dee27cd905cab542431d02aac7594af6"
+    assert fingerprint(Dispatch.__api__()) == "3c842f741d103d6dfd60bad5351d49355ea9eadd60ff330cb812f7f3362c5425"
 
     manifest = Manifest.build().modules |> Enum.find(&(&1.namespace == "/dispatch")) |> normalize_manifest()
-    assert fingerprint(manifest) == "1cb442aaf412724706fc3aa90a5d818b200a55a7d8e76aefb12eb2acd63c7e49"
+    assert fingerprint(manifest) == "7bb6e8b12bd1f68d7d4e39b57f29b99080161ac8484eb69988c56c4b58179cae"
   end
 
   test "preserves generated MCP tools and keeps implementation modules off the driver surface" do
@@ -113,7 +113,7 @@ defmodule Harness.Dispatch.ContractTest do
       |> Enum.filter(&String.starts_with?(&1.name, "dispatch-"))
       |> Enum.map(fn tool -> update_in(tool.inputSchema.required, &Enum.sort/1) end)
 
-    assert fingerprint(tools) == "fa3c0f99c0eecbc6b8039fa69feeeac250306f4fa6a0bc840c9be2eb3c059f71"
+    assert fingerprint(tools) == "c4bc8db28c746d1a16605f2d8c51e235abbbc1b39fd04aeff9f98cb84a00b951"
 
     assert Enum.filter(Manifest.modules(), &(&1 |> Module.split() |> Enum.member?("Dispatch"))) == [Dispatch]
   end

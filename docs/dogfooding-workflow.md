@@ -409,8 +409,9 @@ inspection at `result.worktree_path`. Clean up a no-longer-needed retained workt
 
 ## Parallel dogfooding
 
-`Harness.Run.Supervisor` is a `DynamicSupervisor` — N runs are crash-isolated
-siblings, each forking its own worktree off `HEAD`. Fan them out from one
+`Harness.Run.Supervisor` owns an admission fence and an inner
+`Harness.Run.DynamicSupervisor`. Runs are crash-isolated siblings, each
+forking its own worktree off `HEAD`. Fan them out from one
 driver BEAM: ingest + `start_run` each task with `subscriber: self()`, then
 collect one `{:harness_run, run_id, result}` per run in a single receive loop.
 The first parallel batch dogfooded Tasks 14, 13 and 15 (the Codex / Cursor /

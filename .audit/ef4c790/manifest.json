@@ -1,0 +1,97 @@
+[
+  {
+    "file": "checks.jsonl.gz",
+    "uncompressed_sha256": "917ff88eaa6d633a8e0410e5574447fb1cdaa71abd69bc65781bf414a6208cd1",
+    "uncompressed_bytes": 214
+  },
+  {
+    "file": "clones.log.gz",
+    "uncompressed_sha256": "ef4de9646f46f8d66c57311b56470345d9d15c23b32321a81ab0180076c8993d",
+    "uncompressed_bytes": 1133
+  },
+  {
+    "file": "deps.log.gz",
+    "uncompressed_sha256": "3fcd1bdc52dde45a050b266ec18f1e445e75d9220a2563b5686847cb3f1d3246",
+    "uncompressed_bytes": 15235
+  },
+  {
+    "file": "dialyzer.log.gz",
+    "uncompressed_sha256": "e1902b04a0170bd7e7116d4fa85e845aa1ba2b582093db91037a76c4d8508525",
+    "uncompressed_bytes": 300
+  },
+  {
+    "file": "failed.json.gz",
+    "uncompressed_sha256": "ab0f88dbe40134a9b638fe67dfdba94ac52cc68fe9afd0648c9146b7f99687a1",
+    "uncompressed_bytes": 5340
+  },
+  {
+    "file": "failed.log.gz",
+    "uncompressed_sha256": "4092b5d7166b289ba1d9916a0354f40d78fac8edda1d5d00dc45e5c3ffd86e16",
+    "uncompressed_bytes": 529
+  },
+  {
+    "file": "fingerprints.log.gz",
+    "uncompressed_sha256": "1eaca7f76d7870e2964dd599d433b7e53afb7007de23719192f585ce8cd9af58",
+    "uncompressed_bytes": 270
+  },
+  {
+    "file": "fix-checks.jsonl.gz",
+    "uncompressed_sha256": "8e4aedf68583b03e1d448b2cd0489f0691f3fbf08396d98e679bc000eee3cadb",
+    "uncompressed_bytes": 453
+  },
+  {
+    "file": "fix-clones.log.gz",
+    "uncompressed_sha256": "7afa4e7a89f94b2f31d8b8b54b247662f126d0c8ba2bbf3b4c21973faf342e61",
+    "uncompressed_bytes": 123
+  },
+  {
+    "file": "fix-compile.log.gz",
+    "uncompressed_sha256": "56dc6188633bc5986a1efefcbcf2f783bd808fabac5d30833d0bba6fba50ff12",
+    "uncompressed_bytes": 47
+  },
+  {
+    "file": "fix-credo.log.gz",
+    "uncompressed_sha256": "66b44a948f6a7c23b8b39710f276720abbab6fe3fbf66252d89e6e33228a092e",
+    "uncompressed_bytes": 317
+  },
+  {
+    "file": "fix-format.log.gz",
+    "uncompressed_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "uncompressed_bytes": 0
+  },
+  {
+    "file": "focused.json.gz",
+    "uncompressed_sha256": "f297cdad98671c8b76d1cd6fe9c6338f06bef63e81e26cae393a5f6e8a968726",
+    "uncompressed_bytes": 162
+  },
+  {
+    "file": "focused.log.gz",
+    "uncompressed_sha256": "4f1562861c4646d44507912fbeceaae6e5de39fa1930bde1ed8727986b480e2e",
+    "uncompressed_bytes": 27478
+  },
+  {
+    "file": "full.log.gz",
+    "uncompressed_sha256": "dd37e07ab7f37640e5db9e94a2e550385db921e1d1b18ad33de87dfdcb7c696c",
+    "uncompressed_bytes": 2835
+  },
+  {
+    "file": "prepared.log.gz",
+    "uncompressed_sha256": "d3192f3755eaf5717a2aa1ce100de965106803ecb94ba25958ba6aa980081981",
+    "uncompressed_bytes": 151231
+  },
+  {
+    "file": "reach.log.gz",
+    "uncompressed_sha256": "251cd2eadbf5e09232a3f331c03079027a512e37852ceb6928693a8dcd40f1e8",
+    "uncompressed_bytes": 3871
+  },
+  {
+    "file": "sobelow.log.gz",
+    "uncompressed_sha256": "836468ac8e090257f082f12661c43f65adfb2b5ef9a2873fdbddf71420a4b8d2",
+    "uncompressed_bytes": 493
+  },
+  {
+    "file": "suite.json.gz",
+    "uncompressed_sha256": "3499a969c93833bfe16d42fed5ae1311618c05cd3ca4c57fdf6392dbf391ed50",
+    "uncompressed_bytes": 59183
+  }
+]
