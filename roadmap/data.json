@@ -21232,7 +21232,7 @@
       "id": "453",
       "phase": 22,
       "bundle": "core-loop",
-      "status": "in_progress",
+      "status": "done",
       "title": "Make Worktree Reclaim report incomplete inspection instead of an empty backlog",
       "scores": {
         "d": 4,
@@ -21265,10 +21265,17 @@
         "test/harness/worktree/",
         "test/mix/tasks/"
       ],
+      "shipped_in": "34bdc9d7cc5ab36a1d840db70c313c1a9b199480",
       "body": "Converges on Task 377. Insights findings ea178783-2c63-4105-815e-608e27d0e569 and 53f17314-980d-490a-98ed-95272d37568d describe the same defect, confirmed at cbd86f9d: default_projects returns [] for an absent registry, project_context silently omits unavailable local repos or missing targets, and harness_branches turns a Git error into []. A successful empty report therefore does not prove a completed inspection. Preserve conservative retention and expose factual coverage/errors through the existing report and CLI. Score rationale: cleanup inspection must be interpretable before an operator relies on its result; this changes a destructive maintenance boundary and needs independent review.",
       "created_at": "2026-09-21",
       "started_at": "2026-09-21",
+      "done_at": "2026-09-21",
       "scored_at": "2026-09-21",
+      "implemented": "Landed by cursor via merge-train; reviewer-approved (run run-1789980015160-2bfeeb1e, 34bdc9d7cc5ab36a1d840db70c313c1a9b199480).",
+      "delivered_by": "cursor",
+      "verified": true,
+      "verified_by": "codex",
+      "verification_ref": "harness-run:run-1789980015160-2bfeeb1e",
       "cross_repo": []
     }
   ]
