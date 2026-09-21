@@ -353,6 +353,8 @@
 | Task 455 | ⬜ | 🎁 **audit-hygiene** · 🐛 Repair model configuration isolation behind the integrated Cron and Maintenance failures [D:4/B:6/U:5 → Eff:1.38] 📋 |
 | Task 456 | ⬜ | 🎁 **audit-hygiene** · 🐛 Make the AgentDriver Codex-channel fixture available before asynchronous tests run [D:2/B:4/U:4 → Eff:2.0] 🎯 |
 | Task 457 | ⬜ | 🎁 **audit-hygiene** · 🐛 Complete private security triage from integrated QA [D:4/B:5/U:4 → Eff:1.12] 📋 |
+| Task 458 | ⬜ | 🎁 **core-loop** · 🐛 Stop Task 386's writeback gating from permanently stranding an already-pushed run [D:4/B:8/U:7 → Eff:1.88] 🚀 |
+| Task 460 `[P]` | ⬜ | 🎁 **core-loop** · 🐛 A project without a target branch must not disable Worktree Reclaim for the whole fleet [D:2/B:6/U:6 → Eff:3.0] 🎯 |
 <!-- TASKS:END -->
 
 ---
@@ -416,6 +418,7 @@
 | Task 449 | ✅ | 🎁 **audit-agent** · Provide a unified QA dashboard with evidence, start/retry and rollout visibility [D:5/B:8/U:6 → Eff:1.4] 📋 |
 | Task 451 | ✅ | 🎁 **operator-cockpit** · 🐛 Reconcile Insights with revision-bound inline repairs and current workflow decisions [D:6/B:8/U:7 → Eff:1.25] 📋 |
 | Task 452 | ✅ | 🎁 **operator-cockpit** · 🐛 Expose incomplete roadmap coverage in the Action Inbox [D:4/B:7/U:6 → Eff:1.62] 🚀 |
+| Task 459 | ⬜ | 🎁 **operator-cockpit** · 🐛 Bound Insights evidence assembly: per-pass project paging, honest completeness, and capped QA transcripts [D:4/B:7/U:7 → Eff:1.75] 🚀 |
 <!-- TASKS:END -->
 
 ---

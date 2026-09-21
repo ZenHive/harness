@@ -196,13 +196,13 @@ defmodule Harness.ResultStore.PostgresTest do
     end
   end
 
-  describe "tolerant row decode (Task 365)" do
-    test "a real jsonb row referencing an unknown atom is skipped, healthy siblings still return" do
+  describe "tolerant row decode (Task 365, contract narrowed by Task 411)" do
+    test "a real jsonb row referencing an unknown atom decodes with the key retained, siblings unaffected" do
       project = "tolerant-decode-#{System.unique_integer([:positive])}"
       unknown_key = "unknown_atom_key_#{System.unique_integer([:positive])}"
 
       # Guard the premise: the key must genuinely not be a loaded atom, otherwise
-      # the decode would succeed and the test would pass for the wrong reason.
+      # the decode would succeed for the wrong reason.
       assert_raise ArgumentError, fn -> String.to_existing_atom(unknown_key) end
 
       store = {Store, repo: Repo}
@@ -216,7 +216,7 @@ defmodule Harness.ResultStore.PostgresTest do
       end
 
       # Simulate a row persisted by an older/other BEAM: its jsonb reason carries a
-      # key whose atom is not loaded here, so decode_map_key/1 raises ArgumentError.
+      # key whose atom is not loaded here.
       SQL.query!(
         Repo,
         "UPDATE run_records SET reason = jsonb_build_object($1::text, 'value') WHERE run_id = $2",
@@ -227,13 +227,21 @@ defmodule Harness.ResultStore.PostgresTest do
         capture_log([level: :debug], fn ->
           assert {:ok, records} = ResultStore.list_run_records(store, project_name: project)
 
-          assert records |> Enum.map(& &1.run_id) |> Enum.sort() == ["healthy-1", "healthy-2"]
+          # Task 411 made decode_map_key/1 retain the unavailable key as a string
+          # instead of raising, so the row is returned rather than dropped:
+          # keeping the record beats losing it.
+          assert records |> Enum.map(& &1.run_id) |> Enum.sort() ==
+                   ["healthy-1", "healthy-2", "poisoned"]
+
+          poisoned = Enum.find(records, &(&1.run_id == "poisoned"))
+          assert poisoned.reason == %{unknown_key => "value"}
         end)
 
-      assert log =~ "skipped 1 undecodable run_records row(s) during list_run_records scan"
+      # Nothing was undecodable, so the tolerant scan must not claim a skip.
+      refute log =~ "undecodable run_records row(s)"
     end
 
-    test "a point lookup of the undecodable row degrades to an empty list, never an error tuple" do
+    test "a point lookup of that row returns the record with its unknown key as a string" do
       unknown_key = "unknown_atom_key_#{System.unique_integer([:positive])}"
       assert_raise ArgumentError, fn -> String.to_existing_atom(unknown_key) end
 
@@ -247,7 +255,9 @@ defmodule Harness.ResultStore.PostgresTest do
         [unknown_key, "poisoned-solo"]
       )
 
-      assert {:ok, []} = ResultStore.list_run_records(store, run_id: "poisoned-solo")
+      assert {:ok, [record]} = ResultStore.list_run_records(store, run_id: "poisoned-solo")
+      assert record.run_id == "poisoned-solo"
+      assert record.reason == %{unknown_key => "value"}
     end
   end
 

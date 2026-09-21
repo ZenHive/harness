@@ -68,8 +68,11 @@ defmodule Harness.Lander.PRPoller do
     is_binary(url) and url != "" and status in [nil, :opened]
   end
 
+  # `sha != ""` is load-bearing: an empty landed_sha is still a binary, and
+  # short-circuiting on it would skip GH.view forever while complete_merge/2
+  # fails to verify the empty rev — the PR's real state would never be observed.
   @spec poll_one(LogRecord.t()) :: :ok
-  defp poll_one(%LogRecord{landed_sha: sha} = record) when is_binary(sha) do
+  defp poll_one(%LogRecord{landed_sha: sha} = record) when is_binary(sha) and sha != "" do
     merge_once(record, sha)
   end
 

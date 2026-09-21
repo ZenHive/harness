@@ -14176,3 +14176,77 @@ model = "gpt-6-astra"
 body = "Audit 03a7a8f found one additional security-scanner signal while resolving a coverage warning. The mechanism and diagnostic output are confined to the repository's private draft security advisory created by this audit. No exploit is established and no severity is inferred from scanner confidence. Existing draft advisories and roadmap repairs were checked for semantic overlap; this finding was not already tracked. The agent can perform triage and a reviewed repair, so this is agent-routed. B5 reflects completing a concrete security-check boundary, not an asserted exploit. Preserve the operator-only deployment contract and use isolated test resources."
 created_at = "2026-09-21"
 scored_at = "2026-09-21"
+
+[[task]]
+id = "458"
+phase = 22
+bundle = "core-loop"
+status = "pending"
+title = "Stop Task 386's writeback gating from permanently stranding an already-pushed run"
+scores = { d = 4, b = 8, u = 7 }
+markers = ["bug"]
+acceptance_criteria = ["A run whose delivery commit is no longer an ancestor of the target (force-rewrite, revert, branch reset) is still recoverable: dispatch-reland falls back to rebasing and re-pushing the retained harness/<run-id> branch instead of returning {:delivery_not_on_target, _} on every attempt. A test pins the fallback and pins that a genuinely landed run still short-circuits.", "A roadmap writeback that fails deterministically (require_durable with no durable roadmap target, or a roadmap checkout that is not a git repo) no longer silently swallows the post-push effects. Decide and pin one contract: either the push is refused before it happens, or the local target sync, post-merge audit enqueue, prune and witness notification still run and the operator is notified that only the rmap transition is outstanding. Discarding the job after 3 attempts with no notification is not acceptable.", "A missing ResultStore record no longer blocks the land outright: ResultStore persistence is documented as best-effort at settle time, so a record that spilled to dead-letter must still allow the delivery to land, or the refusal must be surfaced as a distinct, notified outcome rather than {:error, :not_found} discarded after 3 attempts.", "A Writeback.prepare/1 failure inside PR.open/4 is no longer reported as {:gh_failed, _}: the :blocked witness names the store, not GitHub. A test asserts the outcome tag for a store failure differs from the tag for a gh failure.", "The post-merge audit covers the same commit range on the recovery path as on the direct path — a writeback retry that succeeds on a later attempt must not narrow the audited range to the final commit alone.", "write_landing_ref and Writeback agree on the coalesced member list, so --landing-ref is written for every member writeback later completes.", "mix format, mix compile --warnings-as-errors and focused lander/PR/poller tests pass."]
+touches = ["lib/harness/lander.ex", "lib/harness/lander/pr.ex", "lib/harness/lander/writeback.ex", "lib/harness/result_store.ex", "test/harness/lander_test.exs", "test/harness/lander/pr_test.exs", "test/harness/lander/writeback_test.exs"]
+assignee = "codex"
+model = "gpt-6-astra"
+body = """
+Architect-seat review of the wave landed as ef4c790 (tasks 386/451/452/453). Task 386 made the land conditional on a durable roadmap writeback, which is right, but it turned several degenerate-but-recoverable states into permanent strandings on a run whose commits are already on origin. Verified by reading the landed code, not by reproduction, except where noted.
+
+Verified in source: resume_or_land/5 branches on is_binary(landed_sha) and has no fallback to checkout_and_land/5 when verify_delivery/3 fails (lander.ex:136); deliver_auto/6 gates sync_local_target, enqueue_audit, prune_landed_run and {:landed, sha} behind writeback/3 while writeback_task/4 passes require_durable: true (lander.ex:759, roadmap.ex:580); Writeback.prepare/1 returns {:error, :not_found} for a configured store with no record and deliver/7 gates the push on it (writeback.ex:20, lander.ex:747); PR.open/4 runs prepare/1 in the same with as GH.create_pr/1 so a store error surfaces as {:gh_failed, _} (pr.ex:29); deliver_auto enqueues the audit with the pre-land base sha while resume_or_land derives its base as sha^ (lander.ex:142, 925-940); write_landing_ref/3 uses landed_task_ids(request) while Writeback.prepare/1 merges record.task_ids (pr.ex:134, writeback.ex:75).
+
+Premise unverified — confirm before building on it: the exact Oban discard behaviour after attempt 3 (no :blocked notification) was read from the Resilience path, not observed in a live run. Confirm it before treating "silent discard" as the failure mode.
+
+Open decision for the orchestrator to answer before dispatch: for the deterministic-writeback-failure case, should the lander refuse the push up front (fail fast, nothing lands) or push and then report an outstanding rmap transition (land completes, operator reconciles)? Pick one and pin it in the acceptance criterion above; do not implement both.
+
+Out of scope: the {:skipped, :github_source} crash in the PR poller and the empty-landed_sha guard — both already fixed inline with regression tests in the same commit that filed this task.
+"""
+created_at = "2026-09-21"
+scored_at = "2026-09-21"
+
+[[task]]
+id = "459"
+phase = 24
+bundle = "operator-cockpit"
+status = "pending"
+title = "Bound Insights evidence assembly: per-pass project paging, honest completeness, and capped QA transcripts"
+scores = { d = 4, b = 7, u = 7 }
+markers = ["bug"]
+acceptance_criteria = ["A sweep over an N-project fleet no longer forces N-1 back-to-back observer passes with no cadence delay: either a pass covers the fleet, or the pending cursor respects the configured cadence between passes. A test pins the scheduled next_pass for a multi-project fleet.", "Pass state is informative again: a pass with fully available evidence reports successful or no_findings rather than partial. A test pins each of the three states against a fixture whose source count is above and below the batch bound.", "QA evidence no longer inlines unbounded transcripts: the QA source is truncated the same way other sources are, and its retained snapshot is bounded. A test pins that a large QA transcript does not reach the retained snapshot in full.", "The QA evidence query is bounded by the same bootstrap/updated_at window the run-record query uses, instead of cycling through every QA attempt ever recorded.", "mix format, mix compile --warnings-as-errors, mix credo --strict on the touched files, and the Insights test suite pass."]
+touches = ["lib/harness/insights/evidence.ex", "lib/harness/insights.ex", "test/harness/insights/insights_test.exs", "test/harness/insights/project_evidence_test.exs"]
+assignee = "cursor"
+model = "grok-4.7-high"
+body = """
+Architect-seat review of Task 451's landed Insights evidence assembly (ef4c790). Three bounding defects, all read from the landed source.
+
+Verified in source: external/2 takes a two-project page but samples only Enum.take(page, 1), setting external_pending whenever a second project exists and advancing project_cursor by one name (evidence.ex:122); pending?/1 ORs that into the batch's pending flag (evidence.ex:94); Insights.next_pass/2 schedules the next pass at DateTime.utc_now() when progress["pending"] is true and the last pass committed (insights.ex:249). With the fleet currently registered, that is a run of consecutive paid observer invocations per sweep with no cadence gap.
+
+Verified in source: incomplete?/1 flags the cycle incomplete when the flattened source count exceeds @batch (12) (evidence.ex:88). A single full history page is 12 records, and each record contributes several sources, so the count clears 12 for any non-trivial fleet and the pass reports partial. The finding that it is *always* true is an overstatement — a very small fleet stays under the bound — but the informative states are unreachable in practice here.
+
+Verified in source: qa/2 inlines row maps with inspect(limit: :infinity, printable_limit: :infinity), which includes the attempt's full transcript and report, for up to 12 rows per pass; Evidence.source/5 truncates only the "text" field, so the full string is retained in snapshots and hashed (evidence.ex:154-174, 162). Integrated QA transcripts in this repo are routinely tens of MB. qa/2 also carries no bootstrap/updated_at bound, unlike records/3.
+
+Premise unverified — confirm before building on it: the exact wall-clock and token cost of the back-to-back passes was not measured, only derived from the scheduling code. Measure one sweep before sizing the fix.
+"""
+created_at = "2026-09-21"
+scored_at = "2026-09-21"
+
+[[task]]
+id = "460"
+phase = 22
+bundle = "core-loop"
+status = "pending"
+title = "A project without a target branch must not disable Worktree Reclaim for the whole fleet"
+scores = { d = 2, b = 6, u = 6 }
+markers = ["bug", "parallel"]
+acceptance_criteria = ["A registered project with no target_branch is excluded from reclaim contexts as a skip, not recorded as an inspection error, so Reclaim.run(dry_run: false) still applies for the remaining projects instead of returning {:error, {:incomplete_inspection, _}} fleet-wide.", "The skipped project is still reported in the CLI output with its reason, and is excluded from orphan-directory deletion candidates — a project harness cannot inspect must never have its directories treated as reclaimable.", "A project whose configured target branch exists but resolves to no commit ref stays an inspection error; Task 453's refusal-to-apply behaviour for genuinely failed inspection is unchanged, with the existing tests still passing.", "A regression test pins a mixed fleet: one project without a target branch plus one healthy project, dry_run: false applies for the healthy one.", "mix format, mix compile --warnings-as-errors, mix credo --strict on the touched files, and the reclaim test suites pass."]
+touches = ["lib/harness/worktree/reclaim.ex", "lib/mix/tasks/harness.worktree.reclaim.ex", "test/harness/worktree/reclaim_test.exs", "test/mix/tasks/harness.worktree.reclaim_test.exs"]
+assignee = "grok"
+model = "grok-4.7"
+body = """
+Architect-seat review of Task 453's landed reclaim guard (ef4c790). The guard correctly refuses --apply when inspection genuinely failed, but it classifies a legitimately unconfigured project as a failure.
+
+Verified in source: Project.target_branch/1 answers {:skipped, :no_target_branch} and %Harness.Project{} defaults target_branch to nil (project.ex:155-157); require_target/2 in reclaim.ex:157 turns that into an inspection_error, which makes complete? false and refuses apply for the entire fleet. A manual, non-landing project registration is a supported shape, so one such project permanently disables reclaim everywhere. The :github_source case is already handled as a skip — this is the same treatment applied to the other {:skipped, _} answer.
+
+Keep the distinction that Task 453 established: "this project is not configured for landing" is a skip; "this project is configured for landing but its ref does not resolve" stays an error that refuses apply.
+"""
+created_at = "2026-09-21"
+scored_at = "2026-09-21"

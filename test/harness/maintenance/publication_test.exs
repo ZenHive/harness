@@ -33,7 +33,12 @@ defmodule Harness.Maintenance.PublicationTest do
 
     on_exit(fn ->
       ProjectRegistry.unregister(project.name)
-      Application.put_env(:harness, :agent_model, old)
+      # `old` is nil when no earlier module configured a standing model, and
+      # writing that nil back leaves :agent_model set to a non-list. Every later
+      # Config.agent_model/1 then raises FunctionClauseError in Keyword.get/3
+      # instead of reading an unset key — a crash in whichever module the seed
+      # happens to run next. Delete rather than write the absence.
+      restore_agent_model(old)
       Application.delete_env(:harness, :maintenance_agent)
       Application.delete_env(:harness, :maintenance_test_mode)
       Application.delete_env(:harness, :maintenance_test_hook)
@@ -199,4 +204,8 @@ defmodule Harness.Maintenance.PublicationTest do
     assert :ok = Maintenance.sweep(project.name, Ecto.UUID.generate())
     assert Maintenance.status(project.name)["state"] == "partial_evidence"
   end
+
+  @spec restore_agent_model(keyword() | nil) :: :ok
+  defp restore_agent_model(nil), do: Application.delete_env(:harness, :agent_model)
+  defp restore_agent_model(models), do: Application.put_env(:harness, :agent_model, models)
 end

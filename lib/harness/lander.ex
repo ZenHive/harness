@@ -837,6 +837,15 @@ defmodule Harness.Lander do
          :ok <- fetch_origin(repo),
          :ok <- verify_delivery(repo, target, sha) do
       writeback(project, request, sha)
+    else
+      # Project.local_repo_path/1 answers {:skipped, :github_source} for a
+      # github-sourced project — neither :ok nor {:error, _}. Without this clause
+      # that value escapes through PR.complete_merge/2 into the poller's case and
+      # raises CaseClauseError on every tick. There is no local checkout to verify
+      # the delivery against, so the writeback genuinely cannot complete: report
+      # it as a failure the poller can log and retry, not as a silent success.
+      {:skipped, reason} -> {:error, {:writeback_skipped, reason}}
+      other -> other
     end
   end
 

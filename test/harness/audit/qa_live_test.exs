@@ -32,7 +32,17 @@ defmodule Harness.Audit.QALiveTest do
            "Run claude auth login or export ANTHROPIC_API_KEY from https://console.anthropic.com/settings/keys"
 
     prior = SettingsStore.fetch_map(:config)
-    on_exit(fn -> SettingsStore.put(:config, prior) end)
+    prior_agent_model = Application.get_env(:harness, :agent_model)
+
+    on_exit(fn ->
+      SettingsStore.put(:config, prior)
+      # Config.put/3 also writes the app env, which the SettingsStore restore
+      # above does not undo.
+      if is_nil(prior_agent_model),
+        do: Application.delete_env(:harness, :agent_model),
+        else: Application.put_env(:harness, :agent_model, prior_agent_model)
+    end)
+
     assert :ok = Config.put({:agent_model, :claude}, model, "qa-live-test")
 
     for {command, expected} <- [

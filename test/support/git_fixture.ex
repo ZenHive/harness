@@ -13,6 +13,7 @@ defmodule Harness.GitFixture do
     git!(repo, ["init", "-q", "--initial-branch=main"])
     git!(repo, ["config", "user.email", "harness-test@example.com"])
     git!(repo, ["config", "user.name", "Harness Test"])
+    pin_hooks_path(repo, Path.join(repo, ".git/hooks"))
     File.write!(Path.join(repo, "README.md"), "harness git fixture\n")
     git!(repo, ["add", "README.md"])
     git!(repo, ["commit", "-q", "-m", "init"])
@@ -65,8 +66,24 @@ defmodule Harness.GitFixture do
       {output, status} -> raise "git init --bare failed (#{status}):\n#{output}"
     end
 
+    pin_hooks_path(origin, Path.join(origin, "hooks"))
     ExUnit.Callbacks.on_exit(fn -> File.rm_rf(origin) end)
     origin
+  end
+
+  # An operator-global `core.hooksPath` (common on developer machines: a
+  # `~/.git-hooks` dispatcher in `~/.gitconfig`) REPLACES the repository's own
+  # hooks directory rather than adding to it. Fixtures that install a hook to
+  # drive a failure path — e.g. a `pre-receive` that rejects a roadmap push —
+  # would then never run it, the operation would silently succeed, and the test
+  # would fail only on that machine. Pinning each fixture repo to its own hooks
+  # directory restores git's default resolution regardless of operator config,
+  # and keeps the operator's hooks out of the suite.
+  @spec pin_hooks_path(String.t(), String.t()) :: :ok
+  defp pin_hooks_path(repo, hooks_dir) do
+    File.mkdir_p!(hooks_dir)
+    git!(repo, ["config", "core.hooksPath", hooks_dir])
+    :ok
   end
 
   @spec unique_tmp_dir(String.t()) :: String.t()

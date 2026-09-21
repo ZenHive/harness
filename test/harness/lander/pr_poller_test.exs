@@ -5,6 +5,8 @@ defmodule Harness.Lander.PRPollerTest do
   """
   use ExUnit.Case, async: false
 
+  import ExUnit.CaptureLog
+
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentAdapter.Codex
   alias Harness.Cron.Settings
@@ -210,6 +212,40 @@ defmodule Harness.Lander.PRPollerTest do
     end
 
     assert :ok = PRPoller.perform(%Job{})
+  end
+
+  test "an empty landed_sha still polls GitHub instead of short-circuiting forever", ctx do
+    :ok = ResultStore.record_run(%{open_record("pr-poll") | landed_sha: ""})
+    owner = self()
+
+    Application.put_env(:harness, :gh_cmd, fn args, _opts ->
+      send(owner, {:gh, args})
+      {Jason.encode!(%{"state" => "MERGED", "mergeCommit" => %{"oid" => ctx.merge_sha}}), 0}
+    end)
+
+    assert :ok = PRPoller.perform(%Job{})
+    assert_received {:gh, ["pr", "view", @pr_url | _]}
+    assert {:ok, record} = ResultStore.fetch_run_record("run-pr")
+    assert record.pr_writeback == :merged
+  end
+
+  test "a github-sourced project reports a skipped writeback instead of crashing the poller", ctx do
+    github = %{ctx.project | name: "pr-poll-github", source: {:github, "https://github.com/acme/harness.git"}}
+    :ok = ProjectRegistry.register(github)
+    on_exit(fn -> ProjectRegistry.unregister(github.name) end)
+
+    :ok = ResultStore.record_run(%{open_record(github.name) | run_id: "run-pr-github"})
+    stub_view(%{"state" => "MERGED", "mergeCommit" => %{"oid" => ctx.merge_sha}})
+
+    # There is no local checkout to verify the delivery against, so the writeback
+    # cannot complete — but it must degrade to a logged failure, never a
+    # CaseClauseError that aborts the whole poll tick.
+    log = capture_log(fn -> assert :ok = PRPoller.perform(%Job{}) end)
+
+    assert log =~ "merge writeback failed for run run-pr-github"
+    assert log =~ "writeback_skipped"
+    assert {:ok, record} = ResultStore.fetch_run_record("run-pr-github")
+    assert record.pr_writeback == :opened
   end
 
   @spec stub_view(map()) :: :ok

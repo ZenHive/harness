@@ -176,6 +176,7 @@ defmodule Harness.AuditTest do
     project = ProjectFixture.from_repo(repo, name: "audit-demo", target_branch: "main")
     prior_repo_enabled = Application.get_env(:harness, :repo_enabled)
     prior_settings_store = Application.get_env(:harness, :settings_store)
+    prior_agent_model = Application.get_env(:harness, :agent_model)
     Application.put_env(:harness, :repo_enabled, true)
     SettingsStoreMemory.reset(scope: :test_default)
 
@@ -185,6 +186,13 @@ defmodule Harness.AuditTest do
       # ephemeral store; restore it here so the deletion can't leak past this
       # module and silently flip every later settings read to the no-op store.
       restore(:settings_store, prior_settings_store)
+      # Config.put/3 writes the operator override through to the :harness app
+      # env, so a routing_pins test that pins a standing model leaves
+      # :agent_model set for every module that runs after this one — the later
+      # module then reads a model it never configured and fails only under the
+      # seed orders that put it downstream. Restoring the key here keeps the
+      # leak inside the test that created it.
+      restore(:agent_model, prior_agent_model)
       SettingsStoreMemory.reset(scope: :test_default)
     end)
 

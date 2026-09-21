@@ -84,7 +84,12 @@ defmodule Harness.Store.Documents do
       config.table
       |> :ets.tab2list()
       |> Enum.filter(&(elem(&1, 1) == kind and matches?(elem(&1, 2), filters)))
-      |> Enum.sort_by(&{elem(&1, 3), elem(&1, 0)}, :desc)
+      # Sort on a comparable key, never on the %DateTime{} struct itself: Erlang
+      # term order compares maps field-by-field in atom order (day, hour,
+      # microsecond, minute, month, second, …), so two stamps in the same hour
+      # order by their sub-second part and "newest first" silently becomes
+      # arbitrary. Only the ephemeral branch is affected — Postgres orders in SQL.
+      |> Enum.sort_by(&{DateTime.to_unix(elem(&1, 3), :microsecond), elem(&1, 0)}, :desc)
       |> Enum.drop(offset)
       |> Enum.take(limit)
       |> Enum.map(&elem(&1, 2))

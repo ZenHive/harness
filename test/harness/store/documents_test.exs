@@ -35,6 +35,41 @@ defmodule Harness.Store.DocumentsTest do
     assert Insights.list(kind, 0, 1) == [%{"updated" => true}]
   end
 
+  test "newest-first ordering follows write time, not %DateTime{} term order" do
+    # Erlang term order compares maps field-by-field in atom order — day, hour,
+    # MICROSECOND, minute, month, second — so sorting on the %DateTime{} struct
+    # ranks a stamp by its sub-second part before its second. These two rows sit
+    # one second apart with inverted sub-second parts, which is exactly where the
+    # struct comparison and chronology disagree. Written straight into the public
+    # ETS table because put_many/1 stamps rows with DateTime.utc_now/0 and a test
+    # cannot place a write on either side of a second boundary without sleeping.
+    kind = Ecto.UUID.generate()
+    _ = Insights.get(kind)
+    at = DateTime.utc_now()
+    older = %{at | second: 10, microsecond: {900_000, 6}}
+    newer = %{at | second: 11, microsecond: {100_000, 6}}
+    assert DateTime.before?(older, newer)
+
+    # Sorted by raw term order the OLDER stamp comes first — that inversion is
+    # the premise of this test. Expressed through Enum.sort/2 rather than a
+    # literal `older > newer` because Elixir 1.20's type checker warns on a
+    # struct comparison, and the warning would be about the very behavior being
+    # pinned here.
+    assert Enum.sort([older, newer], :desc) == [older, newer]
+
+    old_doc = %{"id" => "older"}
+    new_doc = %{"id" => "newer"}
+
+    true =
+      :ets.insert(Insights, [
+        {"older", kind, old_doc, older},
+        {"newer", kind, new_doc, newer}
+      ])
+
+    assert Insights.list(kind, 0, 100) == [new_doc, old_doc]
+    assert Insights.list(kind, 0, 1) == [new_doc]
+  end
+
   test "each store owns a separate lock and releases it after failure" do
     parent = self()
 

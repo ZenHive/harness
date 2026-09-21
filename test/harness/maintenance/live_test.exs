@@ -83,7 +83,14 @@ defmodule Harness.Maintenance.LiveTest do
     assert :ok = Maintenance.configure(project.name, true, 10_080, "codex", model, 300)
     old_models = Application.get_env(:harness, :agent_model)
     Application.put_env(:harness, :agent_model, codex: model)
-    on_exit(fn -> Application.put_env(:harness, :agent_model, old_models) end)
+    # Writing a nil `old_models` back would leave :agent_model set to a non-list
+    # and crash Config.agent_model/1 for every module that runs after this one.
+    on_exit(fn ->
+      if is_nil(old_models),
+        do: Application.delete_env(:harness, :agent_model),
+        else: Application.put_env(:harness, :agent_model, old_models)
+    end)
+
     id = Ecto.UUID.generate()
     assert :ok == Maintenance.sweep(project.name, id), inspect(Store.get("pass/" <> id), limit: :infinity)
     findings = Maintenance.findings(project.name)["items"]

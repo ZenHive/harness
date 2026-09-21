@@ -1093,7 +1093,11 @@ defmodule Harness.ResultStore.Postgres do
   defp decode_term(list) when is_list(list), do: Enum.map(list, &decode_term/1)
   defp decode_term(other), do: other
 
-  # Map keys restore existing atoms and retain unavailable ones as strings.
+  # Map keys restore existing atoms and retain unavailable ones as strings
+  # (Task 411). This narrows Task 365's original skip-the-row contract on
+  # purpose: retaining a string key keeps the record readable, where skipping
+  # lost it entirely. The tolerant scan below stays as a backstop for any other
+  # ArgumentError a future decoder may raise.
   @spec decode_map_key(String.t() | term()) :: atom() | String.t()
   defp decode_map_key(k) when is_binary(k) do
     String.to_existing_atom(k)

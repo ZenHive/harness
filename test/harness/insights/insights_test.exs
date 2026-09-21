@@ -302,7 +302,10 @@ defmodule Harness.InsightsTest do
     end)
 
     {pid, monitor} = spawn_monitor(fn -> Insights.observe("killed") end)
-    assert_receive {:witness_waiting, witness_pid}
+    # Evidence assembly (git snapshots, store reads) runs before the witness is
+    # invoked, so the 100ms assert_receive default is a machine-speed race, not a
+    # contract: give the pass room to reach the witness.
+    assert_receive {:witness_waiting, witness_pid}, 5_000
     witness_monitor = Process.monitor(witness_pid)
     assert Store.get("pass/killed")["state"] == "observing"
     Process.exit(pid, :kill)
