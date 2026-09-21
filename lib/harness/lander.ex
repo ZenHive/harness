@@ -179,7 +179,7 @@ defmodule Harness.Lander do
       project: project,
       run_id: record.run_id,
       task_id: record.task_id,
-      task_ids: progress["task_ids"] || record.task_ids,
+      task_ids: member_ids(progress, record),
       task_fingerprint: progress["task_fingerprint"] || record.task_fingerprint,
       task_fingerprints: progress["task_fingerprints"] || %{},
       agent: progress["agent"] || record.agent,
@@ -847,10 +847,15 @@ defmodule Harness.Lander do
     end
   end
 
+  @spec member_ids(map(), LogRecord.t()) :: [String.t()]
+  defp member_ids(%{"task_ids" => ids}, _record) when is_list(ids) and ids != [], do: ids
+  defp member_ids(_progress, record), do: record.task_ids
+
   @spec writeback_task(Project.t(), request(), String.t(), String.t()) :: :ok | {:error, term()}
   defp writeback_task(project, request, sha, task_id) do
-    fingerprint =
-      Map.get(request[:task_fingerprints] || %{}, task_id, if(task_id == request.task_id, do: request[:task_fingerprint]))
+    fingerprints = request[:task_fingerprints] || %{}
+    fallback = if(task_id == request.task_id, do: request[:task_fingerprint])
+    fingerprint = Map.get(fingerprints, task_id, fallback)
 
     case Roadmap.mark_landed(task_id,
            project: project,

@@ -107,6 +107,10 @@ defmodule Harness.ResultStoreContract do
     assert {:ok, [finished]} = ResultStore.list_run_records(store, run_id: "r-marked", include_transcripts: true)
     assert finished.roadmap_writeback == complete
 
+    assert :ok = ResultStore.record_run(%{rec_marked | roadmap_writeback: %{}}, store)
+    assert {:ok, [not_wiped]} = ResultStore.list_run_records(store, run_id: "r-marked")
+    assert not_wiped.roadmap_writeback == complete
+
     # non-match
     assert {:ok, []} = ResultStore.list_run_records(store, batch_id: "nope")
 

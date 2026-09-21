@@ -5,6 +5,7 @@ defmodule Harness.Lander.PR do
   """
 
   alias Harness.Lander.GH
+  alias Harness.Lander.Writeback
   alias Harness.Notification
   alias Harness.Notification.Event
   alias Harness.Project
@@ -24,7 +25,7 @@ defmodule Harness.Lander.PR do
   """
   @spec open(Project.t(), map(), String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
   def open(%Project{} = project, request, target, repo) when is_binary(target) and is_binary(repo) do
-    with {:ok, _progress} <- Harness.Lander.Writeback.prepare(request),
+    with {:ok, _progress} <- Writeback.prepare(request),
          {:ok, url} <- GH.create_pr(create_opts(project, request, target, repo)) do
       persist_opened(request.run_id, url)
       write_landing_ref(project, request, url)

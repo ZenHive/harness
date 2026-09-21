@@ -161,7 +161,7 @@ defmodule Harness.ResultStore.Memory do
        | dispatch_decision: non_empty_map(incoming.dispatch_decision, existing.dispatch_decision),
          task_ids: non_empty_list(incoming.task_ids, existing.task_ids),
          landed_sha: present(incoming.landed_sha, existing.landed_sha),
-         roadmap_writeback: present(incoming.roadmap_writeback, existing.roadmap_writeback),
+         roadmap_writeback: non_empty_map(incoming.roadmap_writeback, existing.roadmap_writeback),
          pr_url: present(incoming.pr_url, existing.pr_url),
          pr_writeback: present(incoming.pr_writeback, existing.pr_writeback),
          verdict: present(incoming.verdict, existing.verdict),

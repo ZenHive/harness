@@ -115,7 +115,8 @@ defmodule Harness.ResultStore.Postgres do
           updated_at: fragment("EXCLUDED.updated_at"),
           # rich evidence — incoming nil/empty never overwrites settled data
           landed_sha: fragment("COALESCE(EXCLUDED.landed_sha, ?)", r.landed_sha),
-          roadmap_writeback: fragment("COALESCE(EXCLUDED.roadmap_writeback, ?)", r.roadmap_writeback),
+          roadmap_writeback:
+            fragment("COALESCE(NULLIF(EXCLUDED.roadmap_writeback, '{}'::jsonb), ?)", r.roadmap_writeback),
           pr_url: fragment("COALESCE(EXCLUDED.pr_url, ?)", r.pr_url),
           pr_writeback: fragment("COALESCE(EXCLUDED.pr_writeback, ?)", r.pr_writeback),
           verdict: fragment("COALESCE(EXCLUDED.verdict, ?)", r.verdict),

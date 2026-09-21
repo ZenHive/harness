@@ -504,12 +504,12 @@ defmodule Harness.Dispatch do
 
   api(
     :reland,
-    "Re-enqueue a landing job for a run by run_id whose automatic land-train hit its cap and blocked the task: re-fetch, rebase the retained harness/<run-id> branch onto the current target, and push. ZERO agent tokens — pure git, the branch is already built and reviewer-approved. The JSON-native counterpart to Harness.Lander.enqueue/1; mechanical (the caller decides a re-land is warranted, harness only re-enqueues).",
+    "Re-enqueue a landing job for a settled approved run by run_id. If delivery already landed, resume durable roadmap completion from the persisted SHA and reviewer provenance even when harness/<run-id> is gone; otherwise re-fetch, rebase, and push. ZERO agent tokens. The JSON-native counterpart to Harness.Lander.enqueue/1.",
     params: [
       run_id: [
         kind: :value,
         description:
-          "Run id of a settled run with a retained harness/<run-id> branch (typically a run whose task is blocked by a land-cap). {:error, :not_found} when no persisted record exists, {:error, :unknown_project} when its project is no longer registered."
+          "Run id of a settled approved run. When `landed_sha` is already persisted, writeback resumes from that commit (the run branch may be absent). {:error, :not_found} when no persisted record exists, {:error, :unknown_project} when its project is no longer registered."
       ]
     ],
     returns: %{

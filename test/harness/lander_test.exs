@@ -1261,15 +1261,18 @@ defmodule Harness.LanderTest do
     :ok
   end
 
-  @spec log_record(String.t()) :: LogRecord.t()
+  @spec origin_task(String.t(), String.t()) :: map()
   defp origin_task(origin, id), do: Harness.LandingFixture.origin_task(origin, id)
 
+  @spec reject_roadmap_push(String.t()) :: :ok
   defp reject_roadmap_push(origin) do
     hook = Path.join(origin, "hooks/pre-receive")
     File.write!(hook, "#!/bin/sh\nexit 1\n")
     File.chmod!(hook, 0o755)
+    :ok
   end
 
+  @spec log_record(String.t()) :: LogRecord.t()
   defp log_record(run_id) do
     %LogRecord{
       batch_id: "batch-#{run_id}",

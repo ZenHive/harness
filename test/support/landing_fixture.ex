@@ -5,7 +5,12 @@ defmodule Harness.LandingFixture do
 
   @spec origin_task(String.t(), String.t()) :: map()
   def origin_task(origin, id) do
-    path = Path.join(GitFixture.tmp_base(), "tasks.toml")
+    path =
+      Path.join(
+        GitFixture.tmp_base(),
+        "landing-origin-#{System.unique_integer([:positive])}/tasks.toml"
+      )
+
     File.mkdir_p!(Path.dirname(path))
     File.write!(path, GitFixture.git!(origin, ["show", "main:roadmap/tasks.toml"]))
 

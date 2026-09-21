@@ -130,7 +130,7 @@ defmodule Harness.Lander.PRPoller do
   defp enqueue_audit(%LogRecord{} = record, sha) do
     case ProjectRegistry.lookup(record.project_name) do
       {:ok, %Project{} = project} ->
-        Lander.enqueue_pr_audit(project, request_from_record(record, project), sha)
+        Lander.enqueue_pr_audit(project, Lander.request_from_record(record, project), sha)
 
       {:error, reason} ->
         Logger.warning("harness pr poller: audit enqueue skipped for run #{record.run_id}: #{inspect(reason)}")
@@ -149,19 +149,6 @@ defmodule Harness.Lander.PRPoller do
       branch: "harness/" <> record.run_id,
       outcome: sha
     })
-  end
-
-  @spec request_from_record(LogRecord.t(), Project.t()) :: map()
-  defp request_from_record(record, project) do
-    %{
-      project: project,
-      run_id: record.run_id,
-      task_id: record.task_id,
-      task_fingerprint: record.task_fingerprint,
-      agent: record.agent,
-      reviewer: record.reviewer_adapter,
-      branch: "harness/" <> record.run_id
-    }
   end
 
   @spec poll_repo(LogRecord.t()) :: String.t() | nil

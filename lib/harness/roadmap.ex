@@ -570,13 +570,19 @@ defmodule Harness.Roadmap do
         )
 
       :none ->
-        if opts[:require_durable] do
-          {:error, :durable_roadmap_target_required}
-        else
-          with_roadmap_lock(ctx, fn ->
-            run_verified_mutation(args, ctx, task_id, fingerprint)
-          end)
-        end
+        apply_undurable_mutation(args, ctx, opts, task_id, fingerprint)
+    end
+  end
+
+  @spec apply_undurable_mutation([String.t()], Ctx.t(), keyword(), String.t(), String.t() | nil) ::
+          {:ok, String.t()} | {:error, term()}
+  defp apply_undurable_mutation(args, ctx, opts, task_id, fingerprint) do
+    if opts[:require_durable] do
+      {:error, :durable_roadmap_target_required}
+    else
+      with_roadmap_lock(ctx, fn ->
+        run_verified_mutation(args, ctx, task_id, fingerprint)
+      end)
     end
   end
 
