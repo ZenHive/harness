@@ -21,6 +21,9 @@ defmodule Harness.Dashboard.InboxLive do
         rows: %{},
         selected_project: nil,
         count: 0,
+        count_label: "—",
+        coverage_errors: [],
+        coverage_notices: [],
         loading: true,
         error: nil,
         notice: nil,
@@ -57,15 +60,18 @@ defmodule Harness.Dashboard.InboxLive do
   @spec handle_async(term(), term(), Socket.t()) :: {:noreply, Socket.t()}
   def handle_async(_name, {:exit, {:shutdown, :cancel}}, socket), do: {:noreply, socket}
 
-  def handle_async(:facts, {:ok, {:ok, rows}}, socket) do
+  def handle_async(:facts, {:ok, {:ok, %{rows: rows} = snapshot}}, socket) when is_list(rows) do
+    errors = Map.get(snapshot, :coverage_errors, [])
+
     {:noreply,
      socket
      |> assign(
        rows: Map.new(rows, &{&1.id, &1}),
+       coverage_errors: errors,
        loading: false,
        error: nil,
        submitted: MapSet.intersection(socket.assigns.submitted, MapSet.new(rows, & &1.id)),
-       projects: rows |> Enum.map(& &1.project) |> Enum.uniq() |> Enum.sort()
+       projects: snapshot_projects(rows, errors)
      )
      |> show_rows()}
   end
@@ -145,10 +151,7 @@ defmodule Harness.Dashboard.InboxLive do
   def render(%{compact: true} = assigns) do
     ~H"""
     <a href="/harness/inbox" id="inbox-navigation">
-      Inbox
-      <span class="count" style="margin-left: 0.35em;">{if @loading or @error,
-        do: "—",
-        else: @count}</span>
+      Inbox <span class="count" style="margin-left: 0.35em;">{@count_label}</span>
     </a>
     """
   end
@@ -157,9 +160,7 @@ defmodule Harness.Dashboard.InboxLive do
     ~H"""
     <div class="topbar">
       <h1>Action Inbox</h1>
-      <span id="inbox-count" class="count" aria-live="polite">{if @loading or @error,
-        do: "—",
-        else: @count} unresolved</span>
+      <span id="inbox-count" class="count" aria-live="polite">{@count_label} unresolved</span>
       <form id="inbox-project-filter" phx-change="select_project">
         <label for="inbox-project">Project</label>
         <select id="inbox-project" name="project">
@@ -193,7 +194,13 @@ defmodule Harness.Dashboard.InboxLive do
       </details>
     </div>
     <p :if={@notice} role="status">{@notice}</p>
-    <p :if={not @loading and is_nil(@error) and @count == 0} class="empty-state">
+    <p :for={notice <- @coverage_notices} class="operator-notice" data-kind="error" role="alert">
+      {notice}
+    </p>
+    <p
+      :if={not @loading and is_nil(@error) and @count == 0 and @coverage_notices == []}
+      class="empty-state"
+    >
       No unresolved actions in this project scope.
     </p>
     <div id="inbox-actions" phx-update="stream">
@@ -244,15 +251,44 @@ defmodule Harness.Dashboard.InboxLive do
 
   @spec show_rows(Socket.t()) :: Socket.t()
   defp show_rows(socket) do
+    selected = socket.assigns.selected_project
+
     rows =
       socket.assigns.rows
       |> Map.values()
       |> Enum.reject(&MapSet.member?(socket.assigns.submitted, &1.id))
-      |> Enum.filter(&(socket.assigns.selected_project in [nil, "", &1.project]))
+      |> Enum.filter(&(selected in [nil, "", &1.project]))
       |> Enum.sort_by(&{&1.project, &1.task_id, &1.id})
 
-    socket |> assign(:count, length(rows)) |> stream(:actions, rows, reset: true)
+    notices =
+      socket.assigns.coverage_errors
+      |> Enum.filter(&(selected in [nil, "", elem(&1, 0)]))
+      |> Enum.map(&Inbox.format_coverage_error/1)
+
+    count = length(rows)
+
+    socket
+    |> assign(
+      count: count,
+      coverage_notices: notices,
+      count_label: count_label(socket.assigns.loading, socket.assigns.error, notices != [], count)
+    )
+    |> stream(:actions, rows, reset: true)
   end
+
+  @spec snapshot_projects([map()], [{String.t(), term()}]) :: [String.t()]
+  defp snapshot_projects(rows, errors) do
+    (Enum.map(rows, & &1.project) ++ Enum.map(errors, &elem(&1, 0)))
+    |> Enum.reject(&(&1 in [nil, ""]))
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  @spec count_label(boolean(), term(), boolean(), non_neg_integer()) :: String.t() | non_neg_integer()
+  defp count_label(true, _error, _incomplete, _count), do: "—"
+  defp count_label(_loading, error, _incomplete, _count) when not is_nil(error), do: "—"
+  defp count_label(_loading, _error, true, 0), do: "—"
+  defp count_label(_loading, _error, _incomplete, count), do: count
 
   @spec schedule_tick() :: reference()
   defp schedule_tick, do: Process.send_after(self(), :inbox_tick, 5_000)

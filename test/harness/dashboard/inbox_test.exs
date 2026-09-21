@@ -4,6 +4,7 @@ defmodule Harness.Dashboard.InboxTest do
   alias Harness.AgentAdapter.Codex
   alias Harness.Cron.PendingDispatch
   alias Harness.Dashboard.Inbox
+  alias Harness.Dashboard.InboxBadgeLive
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
   alias Harness.Run.LogRecord
@@ -16,6 +17,8 @@ defmodule Harness.Dashboard.InboxTest do
     on_exit(fn ->
       Application.delete_env(:harness, :inbox_facts)
       Application.delete_env(:harness, :inbox_action)
+      Application.delete_env(:harness, :roadmap_list)
+      Application.delete_env(:harness, :inbox_roadmap_timeout_ms)
     end)
 
     %{source: source}
@@ -62,7 +65,7 @@ defmodule Harness.Dashboard.InboxTest do
 
     Application.put_env(:harness, :inbox_action, fn _, _ -> flunk("stale operation invoked") end)
     assert {:error, :stale_action} = Inbox.perform(row, "resume_failed")
-    {:ok, rows} = Inbox.load()
+    {:ok, %{rows: rows}} = Inbox.load()
     assert Enum.any?(rows, &(&1.run_id == "new-failed"))
     refute Enum.any?(rows, &(&1.run_id == "failed"))
   end
@@ -127,7 +130,7 @@ defmodule Harness.Dashboard.InboxTest do
   end
 
   test "navigation count updates from current facts", %{conn: conn, source: source} do
-    {:ok, view, _} = live_isolated(conn, Harness.Dashboard.InboxBadgeLive)
+    {:ok, view, _} = live_isolated(conn, InboxBadgeLive)
     assert render_async(view) =~ "5</span>"
     Agent.update(source, &%{&1 | pending: []})
     send(view.pid, :inbox_changed)
@@ -142,6 +145,222 @@ defmodule Harness.Dashboard.InboxTest do
 
     assert [%{run_id: "held", actions: [:resume]}] =
              Inbox.compose(%{facts | tasks: %{}, pending: []})
+  end
+
+  test "a readable empty roadmap is not a coverage error; a failed source is named" do
+    missing =
+      ProjectFixture.from_repo("/tmp/inbox-missing", name: "missing", landing_policy: :manual, target_branch: "main")
+
+    healthy = facts()
+    failed = record("missing-failed", "9", :failed, "missing")
+
+    mixed = %{
+      healthy
+      | projects: healthy.projects ++ [missing],
+        tasks: Map.put(healthy.tasks, "empty", []),
+        records: [failed | healthy.records],
+        coverage_errors: [{"missing", :roadmap_not_found}]
+    }
+
+    {:ok, %{rows: rows, coverage_errors: errors}} = snapshot_facts(mixed)
+    assert {"missing", :roadmap_not_found} in errors
+    refute Enum.any?(errors, &(elem(&1, 0) == "inbox"))
+    assert Enum.any?(rows, &(&1.run_id == "failed"))
+    assert Enum.any?(rows, &(&1.run_id == "held" and :resume in &1.actions))
+    assert Enum.any?(rows, &(&1.pending && :approve in &1.actions))
+    refute Enum.any?(rows, &(&1.run_id == "missing-failed"))
+
+    empty = %{healthy | tasks: %{"inbox" => []}, pending: [], live_runs: [], records: [], coverage_errors: []}
+    assert {:ok, %{rows: [], coverage_errors: []}} = snapshot_facts(empty)
+  end
+
+  test "restoring a source returns recovery rows without duplicating healthy actions" do
+    missing =
+      ProjectFixture.from_repo("/tmp/inbox-missing", name: "missing", landing_policy: :manual, target_branch: "main")
+
+    healthy = facts()
+    failed = record("missing-failed", "9", :failed, "missing")
+
+    broken = %{
+      healthy
+      | projects: healthy.projects ++ [missing],
+        records: [failed | healthy.records],
+        coverage_errors: [{"missing", :timeout}]
+    }
+
+    {:ok, %{rows: before}} = snapshot_facts(broken)
+    refute Enum.any?(before, &(&1.run_id == "missing-failed"))
+    healthy_ids = MapSet.new(Enum.filter(before, &(&1.project == "inbox")), & &1.id)
+
+    restored = %{
+      broken
+      | tasks: Map.put(broken.tasks, "missing", [%{"id" => "9", "status" => "in_progress", "title" => "Recovered"}]),
+        coverage_errors: []
+    }
+
+    {:ok, %{rows: after_rows, coverage_errors: []}} = snapshot_facts(restored)
+    assert [%{run_id: "missing-failed", actions: actions}] = Enum.filter(after_rows, &(&1.run_id == "missing-failed"))
+    assert :resume_failed in actions
+    restored_healthy = Enum.filter(after_rows, &(&1.project == "inbox"))
+    assert MapSet.new(restored_healthy, & &1.id) == healthy_ids
+  end
+
+  test "mixed, all-source failure and genuine empty coverage render distinctly", %{conn: conn, source: source} do
+    missing =
+      ProjectFixture.from_repo("/tmp/inbox-missing", name: "missing", landing_policy: :manual, target_branch: "main")
+
+    failed = record("missing-failed", "9", :failed, "missing")
+
+    Agent.update(source, fn facts ->
+      %{
+        facts
+        | projects: facts.projects ++ [missing],
+          records: [failed | facts.records],
+          coverage_errors: [{"missing", :roadmap_not_found}]
+      }
+    end)
+
+    {:ok, view, _} = live(conn, "/harness/inbox")
+    html = render_async(view)
+    assert html =~ "5 unresolved"
+    assert html =~ "missing: roadmap unavailable (no local roadmap)"
+    assert html =~ "Hold: interrupt"
+    assert has_element?(view, "button:not([disabled])", "Approve")
+    refute html =~ "missing-failed"
+    refute html =~ "No unresolved actions"
+    filtered = render_change(view, "select_project", %{"project" => "missing"})
+    assert filtered =~ "missing: roadmap unavailable (no local roadmap)"
+    refute filtered =~ "No unresolved actions"
+    refute filtered =~ "0 unresolved"
+    assert render_change(view, "select_project", %{"project" => ""}) =~ "5 unresolved"
+
+    Agent.update(source, fn facts ->
+      %{
+        facts
+        | pending: [],
+          live_runs: [],
+          records: [],
+          tasks: %{},
+          coverage_errors: [{"missing", :timeout}, {"inbox", :rmap_failed}]
+      }
+    end)
+
+    send(view.pid, :inbox_tick)
+    html = render_async(view)
+    assert html =~ "— unresolved"
+    assert html =~ "missing: roadmap unavailable (timeout)"
+    assert html =~ "inbox: roadmap unavailable (rmap_failed)"
+    refute html =~ "No unresolved actions"
+    refute html =~ "0 unresolved"
+
+    Agent.update(source, fn facts ->
+      %{facts | pending: [], live_runs: [], records: [], tasks: %{"inbox" => [], "missing" => []}, coverage_errors: []}
+    end)
+
+    send(view.pid, :inbox_tick)
+    html = render_async(view)
+    assert html =~ "0 unresolved"
+    assert html =~ "No unresolved actions"
+    refute html =~ "roadmap unavailable"
+  end
+
+  test "restoring a source on refresh removes the warning and the recovery row once", %{conn: conn, source: source} do
+    missing =
+      ProjectFixture.from_repo("/tmp/inbox-missing", name: "missing", landing_policy: :manual, target_branch: "main")
+
+    failed = record("missing-failed", "9", :failed, "missing")
+
+    Agent.update(source, fn facts ->
+      %{
+        facts
+        | projects: facts.projects ++ [missing],
+          records: [failed | facts.records],
+          coverage_errors: [{"missing", :timeout}]
+      }
+    end)
+
+    {:ok, view, _} = live(conn, "/harness/inbox")
+    assert render_async(view) =~ "missing: roadmap unavailable (timeout)"
+
+    Agent.update(source, fn facts ->
+      %{
+        facts
+        | tasks: Map.put(facts.tasks, "missing", [%{"id" => "9", "status" => "in_progress"}]),
+          coverage_errors: []
+      }
+    end)
+
+    render_click(view, "refresh")
+    html = render_async(view)
+    refute html =~ "roadmap unavailable"
+    assert html =~ "Resume Failed"
+    assert html |> :binary.matches("data-run-id=\"missing-failed\"") |> length() == 1
+  end
+
+  test "navigation count stays incomplete when every source fails", %{conn: conn, source: source} do
+    {:ok, view, _} = live_isolated(conn, InboxBadgeLive)
+    assert render_async(view) =~ "5</span>"
+
+    Agent.update(source, fn facts ->
+      %{facts | pending: [], live_runs: [], records: [], tasks: %{}, coverage_errors: [{"inbox", :timeout}]}
+    end)
+
+    send(view.pid, :inbox_changed)
+    assert render_async(view) =~ "—</span>"
+    refute render(view) =~ ">0</span>"
+  end
+
+  test "load_current names mixed, timed-out and empty sources without hiding approvals" do
+    Application.delete_env(:harness, :inbox_facts)
+    original = ProjectRegistry.list()
+    Enum.each(original, &ProjectRegistry.unregister(&1.name))
+    PendingDispatch.reset()
+
+    on_exit(fn ->
+      PendingDispatch.reset()
+      Enum.each(["inbox-healthy", "inbox-blank", "inbox-down", "inbox-slow"], &ProjectRegistry.unregister/1)
+      Enum.each(original, &ProjectRegistry.register/1)
+    end)
+
+    healthy = ProjectFixture.from_repo("/tmp/inbox-healthy", name: "inbox-healthy")
+    blank = ProjectFixture.from_repo("/tmp/inbox-blank", name: "inbox-blank")
+    down = ProjectFixture.from_repo("/tmp/inbox-down", name: "inbox-down")
+    slow = ProjectFixture.from_repo("/tmp/inbox-slow", name: "inbox-slow")
+    Enum.each([healthy, blank, down, slow], &ProjectRegistry.register/1)
+    {:parked, pending} = PendingDispatch.park(down.name, "7", Codex, %{})
+
+    Application.put_env(:harness, :inbox_roadmap_timeout_ms, 50)
+
+    Application.put_env(:harness, :roadmap_list, fn
+      %{name: "inbox-healthy"} ->
+        {:ok, [%{"id" => "2", "status" => "in_progress"}]}
+
+      %{name: "inbox-blank"} ->
+        {:ok, []}
+
+      %{name: "inbox-down"} ->
+        {:error, :roadmap_not_found}
+
+      %{name: "inbox-slow"} ->
+        Process.sleep(200)
+        {:ok, []}
+    end)
+
+    assert {:ok, %{rows: rows, coverage_errors: errors}} = Inbox.load()
+    assert Enum.any?(rows, &(&1.pending && &1.pending.id == pending.id))
+    assert {"inbox-down", :roadmap_not_found} in errors
+    assert {"inbox-slow", :timeout} in errors
+    refute Enum.any?(errors, &(elem(&1, 0) in ["inbox-healthy", "inbox-blank"]))
+
+    Application.put_env(:harness, :roadmap_list, fn
+      %{name: "inbox-healthy"} -> {:ok, [%{"id" => "2", "status" => "in_progress"}]}
+      %{name: "inbox-blank"} -> {:ok, []}
+      %{name: "inbox-down"} -> {:ok, [%{"id" => "7", "status" => "pending"}]}
+      %{name: "inbox-slow"} -> {:ok, []}
+    end)
+
+    assert {:ok, %{rows: restored, coverage_errors: []}} = Inbox.load()
+    assert Enum.any?(restored, &(&1.pending && &1.pending.id == pending.id))
   end
 
   test "unknown operations and cross-project submissions cannot invoke actions", %{conn: conn} do
@@ -187,19 +406,30 @@ defmodule Harness.Dashboard.InboxTest do
     on_exit(fn ->
       PendingDispatch.reset()
       ProjectRegistry.unregister("inbox-loader")
+      ProjectRegistry.unregister("inbox-empty")
       Enum.each(original, &ProjectRegistry.register/1)
     end)
 
     sample = Path.expand("../../fixtures/sample_roadmap", __DIR__)
+    empty = Path.expand("../../fixtures/empty_roadmap", __DIR__)
     project = ProjectFixture.from_repo(sample, name: "inbox-loader")
+    empty_project = ProjectFixture.from_repo(empty, name: "inbox-empty")
     :ok = ProjectRegistry.register(project)
-    assert {:ok, rows} = Inbox.load()
+    :ok = ProjectRegistry.register(empty_project)
+    assert {:ok, %{rows: rows, coverage_errors: []}} = Inbox.load()
     assert is_list(rows)
     :ok = ProjectRegistry.unregister(project.name)
     :ok = ProjectRegistry.register(%{project | roadmap_path: Path.join(sample, "absent")})
     {:parked, pending} = PendingDispatch.park(project.name, "7", Codex, %{})
-    assert {:ok, loaded} = Inbox.load()
+    assert {:ok, %{rows: loaded, coverage_errors: errors}} = Inbox.load()
     assert Enum.any?(loaded, &(&1.pending && &1.pending.id == pending.id))
+    assert {"inbox-loader", reason} = Enum.find(errors, &(elem(&1, 0) == "inbox-loader"))
+    assert Inbox.format_coverage_error({"inbox-loader", reason}) =~ "inbox-loader: roadmap unavailable"
+    refute Enum.any?(errors, &(elem(&1, 0) == "inbox-empty"))
+    :ok = ProjectRegistry.unregister(project.name)
+    :ok = ProjectRegistry.register(project)
+    assert {:ok, %{rows: restored, coverage_errors: []}} = Inbox.load()
+    assert Enum.any?(restored, &(&1.pending && &1.pending.id == pending.id))
   end
 
   test "perform surfaces a source error instead of invoking" do
@@ -291,17 +521,23 @@ defmodule Harness.Dashboard.InboxTest do
       records: [record("failed", "2", :failed), record("land", "3", :done), record("reland", "4", :done)],
       pending: [pending],
       queued_tasks: %{},
-      landing_branches: %{}
+      landing_branches: %{},
+      coverage_errors: []
     }
   end
 
-  defp record(id, task, state) do
+  defp snapshot_facts(facts) do
+    Application.put_env(:harness, :inbox_facts, fn -> {:ok, facts} end)
+    Inbox.load()
+  end
+
+  defp record(id, task, state, project \\ "inbox") do
     %LogRecord{
       batch_id: "batch",
       run_id: id,
       task_id: task,
       task_ids: [task],
-      project_name: "inbox",
+      project_name: project,
       adapter: Codex,
       state: state,
       reason: :test,

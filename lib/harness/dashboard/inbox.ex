@@ -10,26 +10,32 @@ defmodule Harness.Dashboard.Inbox do
   alias Harness.StatusView
 
   @actions [:resume_failed, :rereview, :land, :reland]
+  @list_timeout_ms 5_000
+
+  @typedoc "Current Inbox projection, including named roadmap source errors."
+  @type snapshot :: %{rows: [map()], coverage_errors: [{String.t(), term()}]}
 
   @doc "Loads current facts without fetching Git or reading an activity log."
-  @spec load() :: {:ok, [map()]} | {:error, term()}
+  @spec load() :: {:ok, snapshot()} | {:error, term()}
   def load do
     case Application.get_env(:harness, :inbox_facts) do
-      fun when is_function(fun, 0) -> with {:ok, facts} <- fun.(), do: {:ok, compose(facts)}
+      fun when is_function(fun, 0) -> with {:ok, facts} <- fun.(), do: {:ok, snapshot(facts)}
       nil -> load_current()
     end
   end
 
-  @spec load_current() :: {:ok, [map()]} | {:error, term()}
+  @spec load_current() :: {:ok, snapshot()} | {:error, term()}
   defp load_current do
     projects = ProjectRegistry.list()
 
-    with {:ok, records} <- ResultStore.list_run_records(),
-         {:ok, tasks} <- tasks(projects) do
+    with {:ok, records} <- ResultStore.list_run_records() do
+      {tasks, coverage_errors} = tasks(projects)
+
       {:ok,
-       compose(%{
+       snapshot(%{
          projects: projects,
          tasks: tasks,
+         coverage_errors: coverage_errors,
          records: records,
          live_runs: Enum.map(StatusView.live_runs(), & &1.status),
          pending: PendingDispatch.list(),
@@ -39,23 +45,66 @@ defmodule Harness.Dashboard.Inbox do
     end
   end
 
-  # A missing or timed-out rmap for one project must not hide fleet-wide
-  # pending approvals or held runs. Recovery/land rows for that project stay
-  # off the board until its task list is readable again — same degrade as
-  # RoadmapLive, without a new warning store.
-  @spec tasks([Harness.Project.t()]) :: {:ok, map()}
+  @spec snapshot(map()) :: snapshot()
+  defp snapshot(facts) do
+    %{
+      rows: compose(facts),
+      coverage_errors: facts |> Map.get(:coverage_errors, []) |> Enum.sort_by(&elem(&1, 0))
+    }
+  end
+
+  # A missing, unreadable or timed-out rmap for one project must not hide
+  # fleet-wide pending approvals or held runs, and must not look like a
+  # readable empty roadmap. Recovery/land rows for that project stay off
+  # the board until its task list is readable again.
+  @spec tasks([Harness.Project.t()]) :: {map(), [{String.t(), term()}]}
   defp tasks(projects) do
     listed =
       projects
-      |> Task.async_stream(&Roadmap.list(&1.name), timeout: 5_000, on_timeout: :kill_task)
+      |> Task.async_stream(&list_tasks/1, timeout: list_timeout_ms(), on_timeout: :kill_task)
       |> Enum.zip(projects)
 
-    {:ok,
-     Enum.reduce(listed, %{}, fn
-       {{:ok, {:ok, tasks}}, project}, acc -> Map.put(acc, project.name, tasks)
-       {_failure, project}, acc -> Map.put(acc, project.name, [])
-     end)}
+    {task_map, errors} =
+      Enum.reduce(listed, {%{}, []}, fn
+        {{:ok, {:ok, tasks}}, project}, {acc, errors} when is_list(tasks) ->
+          {Map.put(acc, project.name, tasks), errors}
+
+        {failure, project}, {acc, errors} ->
+          {acc, [{project.name, stream_reason(failure)} | errors]}
+      end)
+
+    {task_map, Enum.reverse(errors)}
   end
+
+  @spec list_tasks(Harness.Project.t()) :: {:ok, [map()]} | {:error, term()}
+  defp list_tasks(project) do
+    case Application.get_env(:harness, :roadmap_list) do
+      fun when is_function(fun, 1) -> fun.(project)
+      _other -> Roadmap.list(project.name)
+    end
+  end
+
+  @spec list_timeout_ms() :: pos_integer()
+  defp list_timeout_ms, do: Application.get_env(:harness, :inbox_roadmap_timeout_ms, @list_timeout_ms)
+
+  @spec stream_reason(term()) :: term()
+  defp stream_reason({:ok, {:error, reason}}), do: reason
+  defp stream_reason({:ok, reason}), do: reason
+  defp stream_reason({:exit, :kill}), do: :timeout
+  defp stream_reason({:exit, reason}), do: reason
+  defp stream_reason(reason), do: reason
+
+  @doc "Operator-facing named source error for an unreadable project roadmap."
+  @spec format_coverage_error({String.t(), term()}) :: String.t()
+  def format_coverage_error({project, reason}) do
+    "#{project}: roadmap unavailable (#{format_reason(reason)})"
+  end
+
+  @spec format_reason(term()) :: String.t()
+  defp format_reason(:roadmap_not_found), do: "no local roadmap"
+  defp format_reason(:timeout), do: "timeout"
+  defp format_reason(reason) when is_atom(reason), do: Atom.to_string(reason)
+  defp format_reason(reason), do: inspect(reason)
 
   @doc "One unresolved row per approval or selected run attempt; action alternatives do not inflate counts."
   @spec compose(map()) :: [map()]
@@ -155,7 +204,7 @@ defmodule Harness.Dashboard.Inbox do
 
   @spec claim(map(), String.t()) :: {:ok, map()} | {:error, term()}
   defp claim(row, action) do
-    with {:ok, rows} <- load(),
+    with {:ok, %{rows: rows}} <- load(),
          current when not is_nil(current) <- Enum.find(rows, &(&1.id == row.id)),
          name when not is_nil(name) <- Enum.find(current.actions, &(Atom.to_string(&1) == action)) do
       dispatch(name, current)
