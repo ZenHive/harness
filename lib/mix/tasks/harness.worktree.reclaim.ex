@@ -23,7 +23,7 @@ defmodule Mix.Tasks.Harness.Worktree.Reclaim do
 
   alias Harness.Worktree.Reclaim
 
-  @error_bound 240
+  @fact_bound 240
 
   @impl Mix.Task
   @spec run([String.t()]) :: :ok
@@ -66,12 +66,12 @@ defmodule Mix.Tasks.Harness.Worktree.Reclaim do
 
   @spec render_inspected(Reclaim.inspected()) :: String.t()
   defp render_inspected(entry) do
-    "inspected: #{entry.project} repo=#{entry.repo} target=#{entry.target}"
+    bound("inspected: #{entry.project} repo=#{entry.repo} target=#{entry.target}")
   end
 
   @spec render_skipped(Reclaim.skipped()) :: String.t()
   defp render_skipped(entry) do
-    "skipped: #{entry.project} #{inspect(entry.reason)}"
+    bound("skipped: #{entry.project} #{inspect(entry.reason)}")
   end
 
   @spec render_item(Reclaim.item()) :: String.t()
@@ -82,19 +82,19 @@ defmodule Mix.Tasks.Harness.Worktree.Reclaim do
 
   @spec render_error(Reclaim.inspection_error() | {Reclaim.item(), term()}) :: String.t()
   defp render_error(%{scope: scope} = error) do
-    "error: #{scope} #{error[:project] || "-"} #{bound(inspect(error.reason))}"
+    bound("error: #{scope} #{error[:project] || "-"} #{inspect(error.reason)}")
   end
 
   defp render_error({item, reason}) do
-    "error: #{item[:run_id] || item[:path]} #{bound(inspect(reason))}"
+    bound("error: #{item[:run_id] || item[:path]} #{inspect(reason)}")
   end
 
   @spec bound(String.t()) :: String.t()
   defp bound(text) do
-    if String.length(text) <= @error_bound do
+    if String.length(text) <= @fact_bound do
       text
     else
-      String.slice(text, 0, @error_bound) <> "…"
+      String.slice(text, 0, @fact_bound) <> "…"
     end
   end
 end

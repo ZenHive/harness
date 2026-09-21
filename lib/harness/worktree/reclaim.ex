@@ -155,7 +155,8 @@ defmodule Harness.Worktree.Reclaim do
   defp inspect_local(project, repo, base_dir) do
     with :ok <- require_repo_dir(project, repo),
          {:ok, target} <- require_target(project, repo),
-         {:ok, branches} <- require_branches(project, repo) do
+         {:ok, branches} <- require_branches(project, repo),
+         :ok <- require_target_ref(project, repo, target) do
       {:ok, %{project: project.name, repo: repo, target: target, base_dir: base_dir, branches: branches}}
     end
   end
@@ -179,6 +180,21 @@ defmodule Harness.Worktree.Reclaim do
     case Project.target_branch(project) do
       {:ok, target} -> {:ok, target}
       {:skipped, :no_target_branch} -> {:error, inspection_error(:target, project.name, repo, :no_target_branch)}
+    end
+  end
+
+  @spec require_target_ref(Project.t(), String.t(), String.t()) :: :ok | {:error, inspection_error()}
+  defp require_target_ref(project, repo, target) do
+    results =
+      Enum.map(["refs/remotes/origin/" <> target, "refs/heads/" <> target], fn ref ->
+        Git.run(["rev-parse", "--verify", ref <> "^{commit}"], repo)
+      end)
+
+    if Enum.any?(results, &match?({:ok, _}, &1)) do
+      :ok
+    else
+      reasons = Enum.map(results, fn {:error, reason} -> reason end)
+      {:error, inspection_error(:target, project.name, repo, {:unresolved_target, target, reasons})}
     end
   end
 

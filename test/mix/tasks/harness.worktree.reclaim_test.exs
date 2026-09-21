@@ -93,6 +93,28 @@ defmodule Mix.Tasks.Harness.Worktree.ReclaimTest do
     assert output =~ "error: target cli-no-target :no_target_branch"
   end
 
+  test "apply reports an unresolved target without deleting or repairing valid leftovers" do
+    {repo, base, valid, landed, unlanded} = fixture_pair()
+    backlink = "gitdir: /nonexistent/.git/worktrees/cli-unlanded\n"
+    File.write!(Path.join(unlanded.path, ".git"), backlink)
+    invalid = %{valid | name: "cli-bad-target", target_branch: "absent"}
+
+    output =
+      capture_io(fn ->
+        assert_raise Mix.Error, ~r/incomplete inspection; refusing apply/, fn ->
+          Reclaim.emit(dry_run: false, base_dir: base, projects: [valid, invalid])
+        end
+      end)
+
+    assert output =~ "(apply, incomplete)"
+    assert output =~ "error: target cli-bad-target"
+    assert output =~ "unresolved_target"
+    assert File.dir?(landed.path)
+    assert branch_exists?(repo, landed.branch)
+    assert File.read!(Path.join(unlanded.path, ".git")) == backlink
+    assert branch_exists?(repo, unlanded.branch)
+  end
+
   test "dry-run prints a git enumeration failure with bounded raw context" do
     plain = GitFixture.tmp_base(name: "cli-plain")
     File.mkdir_p!(plain)
@@ -128,6 +150,28 @@ defmodule Mix.Tasks.Harness.Worktree.ReclaimTest do
     assert File.dir?(unlanded.path)
     assert branch_exists?(repo, landed.branch)
     assert branch_exists?(repo, unlanded.branch)
+  end
+
+  test "coverage lines bound long inspected, skipped, and error facts" do
+    repo = GitFixture.init_repo()
+    name = String.duplicate("long-name", 100)
+    valid = ProjectFixture.from_repo(repo, name: name, target_branch: "main")
+    skipped = %{valid | source: {:github, "https://github.com/example/demo.git"}}
+    invalid = %{valid | target_branch: nil}
+
+    output =
+      capture_io(fn ->
+        Reclaim.emit(base_dir: GitFixture.tmp_base(), projects: [valid, skipped, invalid])
+      end)
+
+    facts =
+      output
+      |> String.split("\n", trim: true)
+      |> Enum.filter(&String.starts_with?(&1, ["inspected:", "skipped:", "error:"]))
+
+    assert [_, _, _] = facts
+    assert Enum.all?(facts, &(String.length(&1) <= 241))
+    assert Enum.all?(facts, &String.ends_with?(&1, "…"))
   end
 
   @spec fixture_pair() :: {String.t(), String.t(), Harness.Project.t(), Worktree.t(), Worktree.t()}

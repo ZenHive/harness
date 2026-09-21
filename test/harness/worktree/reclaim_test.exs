@@ -175,6 +175,39 @@ defmodule Harness.Worktree.ReclaimTest do
       assert [%{scope: :target, project: "no-target", repo: ^repo, reason: :no_target_branch}] = report.errors
     end
 
+    test "an unresolved target blocks deletion and repair across the selection" do
+      {repo, base, valid, landed, unlanded} = fixture_pair()
+      stale_backlink(unlanded)
+      backlink = File.read!(Path.join(unlanded.path, ".git"))
+      invalid = %{valid | name: "missing-target", target_branch: "absent"}
+
+      {:ok, dry} = Reclaim.run(base_dir: base, projects: [valid, invalid])
+      refute dry.complete?
+      assert Enum.any?(dry.items, &(&1.action == :repair))
+      assert Enum.any?(dry.items, &(&1.action == :reclaim))
+      assert [%{scope: :target, reason: {:unresolved_target, "absent", errors}}] = dry.errors
+      assert [_, _] = errors
+      assert Enum.all?(errors, &match?({:git_failed, ["rev-parse" | _], 128, _}, &1))
+
+      assert {:error, {:incomplete_inspection, report}} =
+               Reclaim.run(dry_run: false, base_dir: base, projects: [valid, invalid])
+
+      assert report.applied == []
+      assert File.dir?(landed.path)
+      assert branch_exists?(repo, landed.branch)
+      assert File.read!(Path.join(unlanded.path, ".git")) == backlink
+      assert branch_exists?(repo, unlanded.branch)
+    end
+
+    test "a remote-only target remains a valid inspection target" do
+      repo = GitFixture.init_repo()
+      GitFixture.git!(repo, ["update-ref", "refs/remotes/origin/remote-only", "HEAD"])
+      project = ProjectFixture.from_repo(repo, target_branch: "remote-only")
+      {:ok, report} = Reclaim.run(base_dir: GitFixture.tmp_base(), projects: [project])
+      assert report.complete?
+      assert report.errors == []
+    end
+
     test "git enumeration failure preserves the raw git error" do
       plain = GitFixture.tmp_base(name: "plain")
       File.mkdir_p!(plain)
