@@ -17684,7 +17684,7 @@
       "id": "386",
       "phase": 22,
       "bundle": "core-loop",
-      "status": "in_progress",
+      "status": "done",
       "title": "Make roadmap writeback recoverable after delivery has landed",
       "scores": {
         "d": 5,
@@ -17717,10 +17717,17 @@
         "test/harness/lander/",
         "test/harness/dispatch_test.exs"
       ],
+      "shipped_in": "bc5a93a03a47361f8e50ba47f4578684064a74bb",
       "body": "Observed twice on trading_dashboard on 2026-08-14: delivery commits landed and landed_sha was persisted, but the roadmap completion commit did not reach origin; reland then failed because the run branch had been removed. Current Lander.writeback/3 still persists landed_sha before invoking task writeback. Preserve that truthful delivery fact. Make roadmap completion a separately observable, idempotent operation whose failure cannot be mistaken for full landing completion. Recovery must use the persisted landed commit and reviewer provenance even without the original branch. Cover automatic landing and the PR-merged path, which shares writeback, as well as coalesced task membership.\n",
       "created_at": "2026-08-14",
       "started_at": "2026-09-21",
+      "done_at": "2026-09-21",
       "scored_at": "2026-08-14",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1789980012236-54aefd03, bc5a93a03a47361f8e50ba47f4578684064a74bb).",
+      "delivered_by": "codex",
+      "verified": true,
+      "verified_by": "cursor",
+      "verification_ref": "harness-run:run-1789980012236-54aefd03",
       "cross_repo": []
     },
     {
