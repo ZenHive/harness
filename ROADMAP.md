@@ -348,7 +348,7 @@
 | Task 437 | ✅ | 🎁 **operator-surface** · 🐛 Suite-health never runs deps.get — its guard is unreachable because warm paths always seed deps/ [D:3/B:7/U:6 → Eff:2.17] 🎯 |
 | Task 438 | ⬜ | 🎁 **operator-surface** · 🐛 A failed suite-health bootstrap is silently dropped — inspect(reason) overflows skip_reason varchar(255) [D:4/B:8/U:7 → Eff:1.88] 🚀 |
 | Task 450 | ✅ | 🎁 **audit-hygiene** · Clear the 10 ex_dna clones that fail mix precommit.full [D:5/B:7/U:6 → Eff:1.3] 📋 |
-| Task 453 | ⬜ | 🎁 **core-loop** · 🐛 Make Worktree Reclaim report incomplete inspection instead of an empty backlog [D:4/B:6/U:5 → Eff:1.38] 📋 |
+| Task 453 | 🔄 | 🎁 **core-loop** · 🐛 Make Worktree Reclaim report incomplete inspection instead of an empty backlog [D:4/B:6/U:5 → Eff:1.38] 📋 |
 <!-- TASKS:END -->
 
 ---
