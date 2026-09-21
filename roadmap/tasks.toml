@@ -14034,7 +14034,7 @@ shipped_in = "dbea588d6ef2ac672bda07248a1666d0186c79dd"
 id = "451"
 phase = 24
 bundle = "operator-cockpit"
-status = "pending"
+status = "in_progress"
 title = "Reconcile Insights with revision-bound inline repairs and current workflow decisions"
 scores = { d = 6, b = 8, u = 7 }
 markers = ["bug"]
@@ -14045,6 +14045,7 @@ assignee = "codex"
 model = "gpt-6-astra"
 body = "Converges on Tasks 443/445. At origin cbd86f9d on 2026-09-21, Insights findings 1c2094d1-929f-4c5d-a61f-3001de87971c, a4cb28ea-af09-4043-a329-014b03ed75bb and 7f961142-3b55-4eb3-bf4c-211c73ee4b6f still describe the rejected 326/448 and stalled 427 runs without the later inline repair evidence in docs/verification/task-326/investigation.json, docs/verification/task-427/inline.json and docs/verification/qa/task-448.json. Evidence.batch currently supplies run records and active transcripts; Consultation can only retrieve finding pages and continuations of supplied sources. Give the advisory AI bounded, immutable, revision-attributed access to current roadmap intent, canonical workflow decisions, dedicated QA attempts and explicitly referenced repair evidence. Historical reports remain evidence, not current instructions: the old green-QA-before-rollout demand and automatic reviewer-rewrite threshold contradict the current workflow. The AI judges resolution from evidence; a done flag, merged commit or operator assertion alone never proves correctness. Preserve the read-only observation boundary and existing findings/history. Score rationale: the deployed observer cannot see the evidence used to close work outside a run, causing obsolete diagnoses and conflicting recommendations."
 created_at = "2026-09-21"
+started_at = "2026-09-21"
 scored_at = "2026-09-21"
 
 [[task]]
