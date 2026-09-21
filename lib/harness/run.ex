@@ -109,6 +109,7 @@ defmodule Harness.Run do
   alias Harness.Run.Actions.Timeouts, as: RunTimeouts
   alias Harness.Run.Actions.Transcript, as: RunTranscript
   alias Harness.Run.Actions.Worktree, as: RunWorktree
+  alias Harness.Run.Admission
   alias Harness.Run.Recovery
   alias Harness.Run.Result
   alias Harness.Run.Review
@@ -139,6 +140,10 @@ defmodule Harness.Run do
 
   @typep data :: %{
            run_id: String.t(),
+           run_pid: pid(),
+           admission: GenServer.server(),
+           shutdown_token: :atomics.atomics_ref(),
+           discernment_run: AgentRun.t() | nil,
            item: Item.t(),
            project: Project.t(),
            adapter: module(),
@@ -237,7 +242,7 @@ defmodule Harness.Run do
   @spec child_spec(init_arg()) :: Supervisor.child_spec()
   def child_spec(arg) do
     # reach:disable-next-line fixed_shape_map — standard OTP Supervisor.child_spec/1 literal
-    %{id: __MODULE__, start: {__MODULE__, :start_link, [arg]}, restart: :temporary, type: :worker}
+    %{id: __MODULE__, start: {__MODULE__, :start_link, [arg]}, restart: :temporary, type: :worker, shutdown: 30_000}
   end
 
   @doc false
@@ -463,6 +468,7 @@ defmodule Harness.Run do
   @impl :gen_statem
   @spec init(init_arg()) :: {:ok, :dispatched, data(), [:gen_statem.action()]}
   def init({item, %Project{} = project, adapter, opts}) do
+    Process.flag(:trap_exit, true)
     run_id = Keyword.fetch!(opts, :run_id)
 
     # The project arrives already landing-overlaid: every dispatch path resolves
@@ -475,6 +481,11 @@ defmodule Harness.Run do
 
     data = %{
       run_id: run_id,
+      run_pid: self(),
+      discernment_run: nil,
+      admission: Keyword.get(opts, :admission, Admission),
+      shutdown_token:
+        Keyword.get_lazy(opts, :shutdown_token, fn -> Admission.token(Keyword.get(opts, :admission, Admission)) end),
       item: item,
       project: project,
       adapter: adapter,
@@ -574,6 +585,24 @@ defmodule Harness.Run do
     :ok
   end
 
+  @spec dispatch_state(module(), term(), term(), data()) :: term()
+  defp dispatch_state(module, event_type, event_content, data) do
+    data =
+      case event_content do
+        {:discernment_handle, run} -> %{data | discernment_run: run}
+        _ -> data
+      end
+
+    if Admission.closed?(data.shutdown_token) and data.result == nil do
+      {:stop, :shutdown, RunSettlement.capture_handle(event_content, data)}
+    else
+      case event_content do
+        {:discernment_handle, _run} -> {:keep_state, data}
+        _ -> module.handle(event_type, event_content, data)
+      end
+    end
+  end
+
   @doc false
   @spec recoverable_code_reload_states() :: [atom()]
   defdelegate recoverable_code_reload_states, to: RunSettlement
@@ -618,33 +647,33 @@ defmodule Harness.Run do
 
   @doc false
   @spec dispatched(event(), term(), data()) :: handler_result()
-  def dispatched(event_type, event_content, data), do: States.Dispatched.handle(event_type, event_content, data)
+  def dispatched(event_type, event_content, data), do: dispatch_state(States.Dispatched, event_type, event_content, data)
 
   @doc false
   @spec running(event(), term(), data()) :: handler_result()
-  def running(event_type, event_content, data), do: States.Running.handle(event_type, event_content, data)
+  def running(event_type, event_content, data), do: dispatch_state(States.Running, event_type, event_content, data)
 
   @doc false
   @spec committing(event(), term(), data()) :: handler_result()
-  def committing(event_type, event_content, data), do: States.Committing.handle(event_type, event_content, data)
+  def committing(event_type, event_content, data), do: dispatch_state(States.Committing, event_type, event_content, data)
 
   @doc false
   @spec recovering(event(), term(), data()) :: handler_result()
-  def recovering(event_type, event_content, data), do: States.Recovering.handle(event_type, event_content, data)
+  def recovering(event_type, event_content, data), do: dispatch_state(States.Recovering, event_type, event_content, data)
 
   @doc false
   @spec reviewing(event(), term(), data()) :: handler_result()
-  def reviewing(event_type, event_content, data), do: States.Reviewing.handle(event_type, event_content, data)
+  def reviewing(event_type, event_content, data), do: dispatch_state(States.Reviewing, event_type, event_content, data)
 
   @doc false
   @spec held(event(), term(), data()) :: handler_result()
-  def held(event_type, event_content, data), do: States.Held.handle(event_type, event_content, data)
+  def held(event_type, event_content, data), do: dispatch_state(States.Held, event_type, event_content, data)
 
   @doc false
   @spec done(event(), term(), data()) :: handler_result()
-  def done(event_type, event_content, data), do: States.Done.handle(event_type, event_content, data)
+  def done(event_type, event_content, data), do: dispatch_state(States.Done, event_type, event_content, data)
 
   @doc false
   @spec failed(event(), term(), data()) :: handler_result()
-  def failed(event_type, event_content, data), do: States.Failed.handle(event_type, event_content, data)
+  def failed(event_type, event_content, data), do: dispatch_state(States.Failed, event_type, event_content, data)
 end

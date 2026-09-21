@@ -22,6 +22,7 @@ defmodule Harness.AgentDriver do
   alias Harness.AgentAdapter.Invocation
   alias Harness.AgentAdapter.Outcome
   alias Harness.AgentRuleDelivery
+  alias Harness.Run.Admission
 
   api(:run, "Spawn an adapter after applying harness rule-delivery policy and drive it to completion.",
     params: [
@@ -51,6 +52,28 @@ defmodule Harness.AgentDriver do
 
   @spec run(module(), Invocation.t(), keyword()) :: {:ok, Outcome.t()} | {:error, term()}
   def run(adapter, %Invocation{} = invocation, opts \\ []) do
-    Driver.run(adapter, AgentRuleDelivery.prepare(adapter, invocation), opts)
+    case Keyword.get(opts, :admission) do
+      nil -> Driver.run(adapter, AgentRuleDelivery.prepare(adapter, invocation), opts)
+      admission -> admitted_run(admission, adapter, invocation, opts)
+    end
+  end
+
+  @spec admitted_run(GenServer.server(), module(), Invocation.t(), keyword()) :: {:ok, Outcome.t()} | {:error, term()}
+  defp admitted_run(admission, adapter, invocation, opts) do
+    with :ok <- Admission.acquire(admission) do
+      on_spawn = Keyword.get(opts, :on_spawn)
+
+      opts =
+        Keyword.put(opts, :on_spawn, fn run ->
+          if on_spawn, do: on_spawn.(run)
+          Admission.release(admission)
+        end)
+
+      try do
+        Driver.run(adapter, AgentRuleDelivery.prepare(adapter, invocation), opts)
+      after
+        Admission.release(admission)
+      end
+    end
   end
 end

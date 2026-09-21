@@ -659,6 +659,38 @@ Run records and status/verdict responses expose `dispatch_decision`; durable
 `20260918230000_add_dispatch_decision_to_run_records` before activating this code.
 The driving orchestrator owns runtime activation and installed-skill propagation.
 
+### Graceful shutdown recovery
+
+Application shutdown settles runs in `Harness.Application.prep_stop/1`, before
+Oban, the endpoint, task supervision or storage stop. Stopping
+`Harness.Run.Supervisor` directly uses the same admission fence. Its shutdown
+child closes admission before the inner DynamicSupervisor terminates run children
+concurrently; the admission process remains alive until settlement finishes.
+Run processes trap supervisor exits and persist `state: :failed` with
+`reason: {:shutdown, interrupted_state}`. Dispatch jobs retain that reason in
+their cancellation error; this is an interrupted attempt, not an operator cancel.
+
+Admission is serialized at the agent-driver boundary, including reviewer
+reprompts/rotation, recovery and the in-run grader. Already-admitted invocations
+have five seconds to deliver their spawn handle; no new invocation is admitted
+after the fence closes. A hung pre-spawn driver is killed and logged. The fence
+child has a seven-second shutdown budget, run children have thirty seconds in
+parallel, and admission teardown has one second: a 38-second run-layer budget,
+below the documented 120-second service stop timeout. This budget does not cover
+transport drain or promise persistence when storage/callbacks exceed the budget;
+OTP reports forced termination. Store errors are logged and spill through the
+existing ResultStore dead-letter/replay path. A spill failure remains a visible
+persistence failure, never a successful write.
+
+Retained branches and worktrees are recovery evidence. After restart, inspect the
+shutdown record and compare its branch with `origin`; use `dispatch-rereview` for
+review-ready commits or `dispatch-resume_failed` for incomplete implementation.
+Both operations validate and pin the retained commit through the ordinary queue.
+A missing branch returns `source_unavailable_or_landed`; shutdown does not invent
+a commit or justify a hand-built `start_run`. If persistence spilled, repair the
+store and replay the spill before using record-based recovery. SIGKILL and power
+loss cannot run these callbacks and carry no graceful-cleanup guarantee.
+
 
 > **Trimmed 2026-05-30; re-aligned 2026-06-22.** The original `@`-imported 14 includes + the 43 KB harness-driver SKILL (~44k tokens always-on), which drove compulsive re-reading on Opus 4.8. The eager floor is now the two above — `critical-rules` (guardrails, ambient by necessity) + `harness-workflow` (the implement→review→land loop + delegation roster, load-bearing every session in this dogfooding repo — the setup-guide's "second eager include for harness-registered repos"). `code-style` (KPIs) and `rmap` (roadmap decision layer) are now **load-on-demand skills** (`elixir:code-style` / `tasks:rmap`) — Opus 4.8 self-invokes them when the action calls for it. `response-conventions` is inherited from `~/.claude/CLAUDE.md`, not re-imported here. Everything else is **load-on-demand** — pull it only when the trigger matches.
 

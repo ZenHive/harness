@@ -1,9 +1,10 @@
 defmodule Harness.Run.Supervisor do
   @moduledoc """
-  The `DynamicSupervisor` under which every `Harness.Run` lifecycle starts.
+  Supervises admission, concurrent run lifecycles, and the shutdown fence.
 
   One harness instance runs many concurrent jobs; each is a `Harness.Run`
-  `:gen_statem` started here as a `:temporary` child. The `:one_for_one`
+  `:gen_statem` started under the inner DynamicSupervisor as a `:temporary`
+  child. The `:one_for_one`
   strategy is the crash-isolation guarantee — a run that crashes is removed
   without restart and without touching a sibling. A failed run is a *reported
   outcome*, not a fault to retry, so children are never restarted.
@@ -13,13 +14,14 @@ defmodule Harness.Run.Supervisor do
   the caller can later query `Harness.Run.status/1` or `Harness.Run.cancel/1`.
   """
 
-  use DynamicSupervisor
+  use Supervisor
   use Descripex, namespace: "/run/supervisor"
 
   alias Harness.AgentRegistry
   alias Harness.Project
   alias Harness.Roadmap.Item
   alias Harness.Run
+  alias Harness.Run.Admission
 
   @registry Harness.Run.Registry
 
@@ -29,27 +31,39 @@ defmodule Harness.Run.Supervisor do
     %{id: __MODULE__, start: {__MODULE__, :start_link, [init_arg]}, type: :supervisor}
   end
 
-  api(:start_link, "Start the Harness.Run DynamicSupervisor (one per node, registered as Harness.Run.Supervisor).",
+  api(:start_link, "Start the Harness.Run supervision tree (one per node, registered as Harness.Run.Supervisor).",
     params: [
       init_arg: [
         kind: :value,
         default: [],
-        description: "DynamicSupervisor init term — typically [] from the Application supervision tree."
+        description: "Options for the run supervision tree — typically [] from the Application."
       ]
     ],
-    returns: %{type: :tuple, description: "{:ok, pid()} or DynamicSupervisor.on_start error."}
+    returns: %{type: :tuple, description: "{:ok, pid()} or Supervisor.on_start error."}
   )
 
   @spec start_link(term()) :: Supervisor.on_start()
   def start_link(init_arg \\ []) do
-    DynamicSupervisor.start_link(__MODULE__, init_arg, name: __MODULE__)
+    Supervisor.start_link(__MODULE__, init_arg, name: Keyword.get(init_arg, :name, __MODULE__))
   end
 
   @doc false
-  @impl DynamicSupervisor
-  @spec init(term()) :: {:ok, DynamicSupervisor.sup_flags()}
-  def init(_init_arg) do
-    DynamicSupervisor.init(strategy: :one_for_one)
+  @impl Supervisor
+  @spec init(keyword()) :: {:ok, {Supervisor.sup_flags(), [Supervisor.child_spec()]}}
+  def init(opts) do
+    admission = Keyword.get(opts, :admission, Admission)
+    runs = Keyword.get(opts, :runs, Harness.Run.DynamicSupervisor)
+
+    # Reverse OTP teardown closes admission, then stops runs concurrently, then
+    # stops the gate. The task supervisor and stores are owned by the parent.
+    Supervisor.init(
+      [
+        Supervisor.child_spec({Admission, name: admission, runs: runs}, shutdown: 1_000),
+        {DynamicSupervisor, name: runs, strategy: :one_for_one},
+        Supervisor.child_spec({Harness.Run.Shutdown, admission: admission}, shutdown: 7_000)
+      ],
+      strategy: :one_for_all
+    )
   end
 
   api(
@@ -91,9 +105,11 @@ defmodule Harness.Run.Supervisor do
     with {:ok, ^adapter} <-
            AgentRegistry.select(adapter, required_capabilities: Keyword.get(opts, :required_capabilities, [])) do
       run_id = Keyword.get(opts, :run_id) || generate_run_id()
+      admission = Keyword.get(opts, :admission, Admission)
       opts = opts |> Keyword.put(:run_id, run_id) |> Keyword.put_new(:subscriber, self())
+      opts = Keyword.put(opts, :shutdown_token, Admission.token(admission))
 
-      case DynamicSupervisor.start_child(__MODULE__, {Run, {item, project, adapter, opts}}) do
+      case Admission.start_run(admission, {Run, {item, project, adapter, opts}}) do
         {:ok, pid} -> {:ok, run_id, pid}
         {:error, _reason} = error -> error
       end

@@ -15,6 +15,14 @@ defmodule Harness.Application do
     Supervisor.start_link(children(), opts)
   end
 
+  @impl true
+  @spec prep_stop(term()) :: term()
+  def prep_stop(state) do
+    # Settle runs before endpoint/Oban teardown, while Repo and subscribers live.
+    :ok = Supervisor.terminate_child(Harness.Supervisor, Harness.Run.Supervisor)
+    state
+  end
+
   @spec load_application_modules() :: :ok
   defp load_application_modules do
     :harness

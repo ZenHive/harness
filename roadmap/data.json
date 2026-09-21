@@ -14795,7 +14795,7 @@
       "phase": 22,
       "bundle": "core-loop",
       "milestone": "v0_16",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Stabilize residual erl_child_setup spawn flake in worktree-heavy suite (Harness.AuditTest noop)",
       "scores": {
         "d": 4,
@@ -19859,7 +19859,7 @@
       "id": "427",
       "phase": 25,
       "bundle": "core-loop",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Persist recoverable run outcomes during graceful node shutdown",
       "scores": {
         "d": 6,

@@ -43,6 +43,8 @@ defmodule Harness.Run.ReviewingWatchdogTest do
       # doing so crashed the run with :bad_state_enter_action_from_state_function.
       # The error branch must instead defer via a zero-delay :state_timeout.
       data = %{
+        shutdown_token: :atomics.new(1, []),
+        result: nil,
         reviewer_adapter: Codex,
         reviewer_agent_resolver: fn Codex -> {:ok, :missing_model_reviewer} end,
         reason: nil

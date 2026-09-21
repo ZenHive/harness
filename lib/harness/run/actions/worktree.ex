@@ -221,7 +221,9 @@ defmodule Harness.Run.Actions.Worktree do
   @doc false
   @spec run_driver(data(), module(), Invocation.t(), keyword()) :: {:ok, Outcome.t()} | {:error, term()}
   def run_driver(data, adapter, %Invocation{} = invocation, opts) do
-    retry_substrate(data.substrate_retry, fn -> AgentDriver.run(adapter, invocation, opts) end)
+    retry_substrate(data.substrate_retry, fn ->
+      AgentDriver.run(adapter, invocation, Keyword.put(opts, :admission, data.admission))
+    end)
   end
 
   @doc false

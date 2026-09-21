@@ -105,7 +105,7 @@ defmodule Harness.AuditReview do
          {:ok, prompt} <- fetch_prompt(opts),
          {:ok, grader_module} <- resolve_grader(implementer, opts),
          invocation = build_invocation(sha, prompt, opts),
-         driver_opts = Keyword.take(opts, [:total_timeout, :idle_timeout]),
+         driver_opts = Keyword.take(opts, [:total_timeout, :idle_timeout, :admission, :on_spawn]),
          {:ok, %Outcome{} = outcome} <- AgentDriver.run(grader_module, invocation, driver_opts) do
       {:ok,
        %{

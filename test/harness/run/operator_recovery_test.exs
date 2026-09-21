@@ -1,6 +1,20 @@
 defmodule Harness.Run.OperatorRecoveryTest do
   use Harness.RunCase, async: true
 
+  test "fixture cleanup stops a held run before its worktree is removed" do
+    {run_id, pid} = start(adapter_opts: [command: :sleep])
+    wait_until_running(run_id)
+    await_agent_os_pid(run_id)
+    assert :ok = Run.hold(run_id, true)
+    assert {:ok, %Status{state: :held, worktree_path: path}} = Run.status(run_id)
+    ref = Process.monitor(pid)
+
+    assert :ok = Harness.RunCase.stop_fixture_run(pid)
+    assert_receive {:DOWN, ^ref, :process, ^pid, :shutdown}
+    assert File.dir?(path)
+    assert :ok = Harness.RunCase.stop_fixture_run(pid)
+  end
+
   describe "operator recovery — hold / steer / resume" do
     test "graceful hold parks in :held at the next agent settle boundary" do
       gate = Path.join(System.tmp_dir!(), "hold-gate-#{System.unique_integer([:positive])}")

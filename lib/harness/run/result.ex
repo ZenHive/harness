@@ -36,6 +36,7 @@ defmodule Harness.Run.Result do
       checkout instead of its isolated worktree.
     * `{:checkout_pollution_check_failed, r}` — the pollution diff itself
       could not run.
+    * `{:shutdown, state}` — graceful application/run-supervisor shutdown interrupted this state.
     * `:cancelled` — the run was cancelled via `Harness.Run.cancel/1`.
     * `:timed_out` — the whole-job lifetime budget elapsed. Question-held time
       counts against this budget (the timer is not suspended); expiry is the
@@ -76,6 +77,7 @@ defmodule Harness.Run.Result do
           | {:review_stuck, String.t()}
           | {:checkout_polluted, String.t()}
           | {:checkout_pollution_check_failed, term()}
+          | {:shutdown, atom()}
           | :cancelled
           | :timed_out
           | {:memory_runaway, map()}

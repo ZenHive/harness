@@ -44,7 +44,9 @@ defmodule Harness.Run.Actions.Discernment do
         implementer: data.item.agent,
         sha: current_sha(data),
         prompt: discernment_prompt(data, evidence),
-        cwd: data.worktree.path
+        cwd: data.worktree.path,
+        admission: data.admission,
+        on_spawn: fn run -> send(data.run_pid, {:discernment_handle, run}) end
       ]
       |> put_opt(:grader, grader)
       |> put_opt(:model, Keyword.get(opts, :model))

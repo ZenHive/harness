@@ -17,6 +17,7 @@ defmodule Harness.Run.Actions.Settlement do
   alias Harness.Project
   alias Harness.ResultStore
   alias Harness.Run.Actions.Control
+  alias Harness.Run.Admission
   alias Harness.Run.LogRecord
   alias Harness.Run.Result
   alias Harness.Run.Review
@@ -80,21 +81,54 @@ defmodule Harness.Run.Actions.Settlement do
   # worker gets a Result instead of a bare {:DOWN, {:undef, _}}.
   @doc false
   @spec crash_settle(data(), state(), term()) :: :ok
-  def crash_settle(_data, state, _reason) when state in [:done, :failed], do: :ok
-
   def crash_settle(data, state, reason) do
+    if Admission.closed?(data.shutdown_token), do: Admission.await(data.admission)
+    data = collect_shutdown_handles(data)
+
+    if data.discernment_task && data.discernment_run && Port.info(data.discernment_run.port) do
+      data.discernment_run.adapter.terminate(data.discernment_run)
+    end
+
     Control.terminate_agent(data)
     Control.terminate_recovery(data)
     Control.terminate_reviewer(data)
-    crash_reason = {:run_crashed, normalize_crash_reason(state, reason)}
+    Control.cancel_task(data.task)
+    Control.cancel_task(data.discernment_task)
+
+    crash_reason =
+      if reason == :shutdown or Admission.closed?(data.shutdown_token),
+        do: {:shutdown, state},
+        else: {:run_crashed, normalize_crash_reason(state, reason)}
+
     result = build_crash_result(data, crash_reason)
     data = stamp_state_entry(:failed, %{data | result: result, reason: crash_reason})
-    persist_run_record(data, result)
     finish_worktree(data.worktree, :failed)
+    persist_run_record(data, result)
     Reaper.untrack(data.run_id)
     notify_subscriber(data.subscriber, data.run_id, result)
     RunFeed.broadcast_settled(status_snapshot(:failed, data))
     :ok
+  end
+
+  @doc false
+  @spec capture_handle(term(), data()) :: data()
+  def capture_handle({:run_handle, run}, data), do: %{data | agent_run: run}
+  def capture_handle({:reviewer_handle, run}, data), do: %{data | reviewer_run: run}
+  def capture_handle({:recovery_handle, run}, data), do: %{data | recovery_run: run}
+  def capture_handle({:discernment_handle, run}, data), do: %{data | discernment_run: run}
+  def capture_handle(_event, data), do: data
+
+  # A system stop can arrive before the state callback consumes a spawn handle.
+  @spec collect_shutdown_handles(data()) :: data()
+  defp collect_shutdown_handles(data) do
+    receive do
+      {:discernment_handle, run} -> collect_shutdown_handles(%{data | discernment_run: run})
+      {:run_handle, run} -> collect_shutdown_handles(%{data | agent_run: run})
+      {:reviewer_handle, run} -> collect_shutdown_handles(%{data | reviewer_run: run})
+      {:recovery_handle, run} -> collect_shutdown_handles(%{data | recovery_run: run})
+    after
+      0 -> data
+    end
   end
 
   @doc false

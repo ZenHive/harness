@@ -344,6 +344,16 @@ defmodule Harness.RunCase do
     end
   end
 
+  @doc false
+  @spec stop_fixture_run(pid()) :: :ok
+  # Stop before GitFixture's earlier on_exit callbacks remove the worktree.
+  # Test assertions may fail or deliberately leave a run held indefinitely.
+  def stop_fixture_run(pid) do
+    :gen_statem.stop(pid, :shutdown, 10_000)
+  catch
+    :exit, :noproc -> :ok
+  end
+
   # Leak guard (Task 319): a fake adapter/reviewer writes its `.harness/review.json`
   # relative to the Port cwd, which in a real run is the isolated worktree. A test
   # that misconfigures that cwd leaks an auto-"approve" verdict file into the main
@@ -443,6 +453,7 @@ defmodule Harness.RunCase do
           base |> default_opts() |> Keyword.merge(overrides) |> maybe_suppress_configured_model(adapter, explicit_model?)
 
         {:ok, run_id, pid} = Run.Supervisor.start_run(item, project, adapter, opts)
+        on_exit(fn -> Harness.RunCase.stop_fixture_run(pid) end)
         {run_id, pid}
       end
 
@@ -459,6 +470,7 @@ defmodule Harness.RunCase do
           |> maybe_suppress_configured_model(adapter, explicit_model?)
 
         {:ok, run_id, pid} = Run.Supervisor.start_run(item(), project, adapter, opts)
+        on_exit(fn -> Harness.RunCase.stop_fixture_run(pid) end)
         {run_id, pid}
       end
 

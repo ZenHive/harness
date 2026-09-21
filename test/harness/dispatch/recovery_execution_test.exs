@@ -349,6 +349,74 @@ defmodule Harness.Dispatch.RecoveryExecutionTest do
     assert prompt =~ "Exact reviewer report\nsecond line"
   end
 
+  test "shutdown records recover through public APIs and the dispatch job keeps the shutdown cause", ctx do
+    owner = self()
+    admission = __MODULE__.ShutdownAdmission
+
+    sup =
+      start_supervised!(
+        {Harness.Run.Supervisor, name: __MODULE__.ShutdownSupervisor, admission: admission, runs: __MODULE__.ShutdownRuns}
+      )
+
+    Application.put_env(:harness, :run_starter, fn item, project, _adapter, opts ->
+      {:ok, id, pid} =
+        Harness.Run.Supervisor.start_run(
+          item,
+          project,
+          WitnessAdapter,
+          Keyword.merge(opts,
+            admission: admission,
+            requested_model: nil,
+            adapter_opts: [command: :write],
+            reviewer: Harness.Test.ShutdownAdapter,
+            reviewer_adapter_opts: [owner: owner],
+            terminal_linger: 0
+          )
+        )
+
+      send(owner, {:shutdown_run, id, pid})
+      {:ok, id, pid}
+    end)
+
+    assert {:ok, old_id, job} = Worker.enqueue(ctx.project, ctx.item, Codex)
+    draining = Task.async(fn -> drain(ctx.project) end)
+    assert_receive {:shutdown_run, ^old_id, pid}, 10_000
+    assert_receive {:invoking, driver, cwd}, 10_000
+    :erlang.trace(pid, true, [:receive, {:tracer, self()}])
+    send(driver, :spawn)
+    assert_receive {:trace, ^pid, :receive, {:reviewer_handle, _handle}}, 5_000
+    sha = String.trim(GitFixture.git!(cwd, ["rev-parse", "HEAD"]))
+    assert :ok = Supervisor.stop(sup)
+    assert %{cancelled: 1} = Task.await(draining, 10_000)
+    assert {:ok, record} = ResultStore.fetch_run_record(old_id)
+    assert record.reason == {:shutdown, :reviewing}
+    persisted_job = Harness.Repo.get!(Oban.Job, job.id)
+    assert persisted_job.state == "cancelled"
+    assert inspect(persisted_job.errors) =~ "shutdown"
+    refute inspect(persisted_job.errors) =~ ":cancelled"
+    assert_received {:invocation, "435", _}
+
+    starter(owner, "approve")
+    assert {:ok, %{run_id: reviewed}} = Dispatch.rereview(old_id)
+    assert %{success: 1} = drain(ctx.project)
+    assert_received {:invocation, "435-review", _}
+    refute_received {:invocation, "435", _}
+    assert {:ok, reviewed_record} = ResultStore.fetch_run_record(reviewed)
+    assert reviewed_record.dispatch_decision["selected_sha"] == sha
+
+    assert {:ok, %{run_id: resumed}} = Dispatch.resume_failed(old_id)
+    assert %{success: 1} = drain(ctx.project)
+    assert_received {:invocation, "435", prompt}
+    assert prompt =~ "shutdown"
+    assert {:ok, resumed_record} = ResultStore.fetch_run_record(resumed)
+    assert resumed_record.dispatch_decision["selected_sha"] == sha
+
+    GitFixture.git!(ctx.repo, ["worktree", "remove", "--force", cwd])
+    GitFixture.git!(ctx.repo, ["branch", "-D", "harness/" <> old_id])
+    assert {:error, :source_unavailable_or_landed} = Dispatch.rereview(old_id)
+    assert {:error, :source_unavailable_or_landed} = Dispatch.resume_failed(old_id)
+  end
+
   test "legacy membership and stale first-attempt jobs cannot narrow or erase prior work", ctx do
     {old_id, decision} = retained(ctx)
     assert {:ok, record} = ResultStore.fetch_run_record(old_id)

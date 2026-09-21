@@ -1,0 +1,52 @@
+{
+  "source_delivery": "826225b60251f996852a0a2de13e8f4542ed16eb",
+  "base_revision": "dbea588d6ef2",
+  "checks": [
+    {
+      "name": "shutdown",
+      "seed": 848859,
+      "summary": {
+        "invalid": 0,
+        "total": 21,
+        "failed": 0,
+        "result": "passed",
+        "excluded": 12,
+        "passed": 9,
+        "skipped": 0,
+        "duration_us": 11995216
+      },
+      "failures": []
+    },
+    {
+      "name": "postgres_recovery",
+      "seed": 694410,
+      "summary": {
+        "invalid": 0,
+        "total": 12,
+        "failed": 0,
+        "result": "passed",
+        "excluded": 0,
+        "passed": 12,
+        "skipped": 0,
+        "duration_us": 18910148
+      },
+      "failures": []
+    },
+    {
+      "name": "callback_and_fixture_regressions",
+      "seed": 680820,
+      "summary": {
+        "invalid": 0,
+        "total": 21,
+        "failed": 0,
+        "result": "passed",
+        "excluded": 0,
+        "passed": 21,
+        "skipped": 0,
+        "duration_us": 10639279
+      },
+      "failures": []
+    }
+  ],
+  "activation": "Requires a fresh supervision tree through idle root autodeploy; hot reload alone is insufficient."
+}
