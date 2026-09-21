@@ -411,7 +411,7 @@
 | Task 448 | ✅ | 🎁 **audit-agent** · Roll out focused dispatch checks and full audit QA across all registered projects [D:6/B:8/U:7 → Eff:1.25] 📋 |
 | Task 449 | ✅ | 🎁 **audit-agent** · Provide a unified QA dashboard with evidence, start/retry and rollout visibility [D:5/B:8/U:6 → Eff:1.4] 📋 |
 | Task 451 | 🔄 | 🎁 **operator-cockpit** · 🐛 Reconcile Insights with revision-bound inline repairs and current workflow decisions [D:6/B:8/U:7 → Eff:1.25] 📋 |
-| Task 452 | 🔄 | 🎁 **operator-cockpit** · 🐛 Expose incomplete roadmap coverage in the Action Inbox [D:4/B:7/U:6 → Eff:1.62] 🚀 |
+| Task 452 | ✅ | 🎁 **operator-cockpit** · 🐛 Expose incomplete roadmap coverage in the Action Inbox [D:4/B:7/U:6 → Eff:1.62] 🚀 |
 <!-- TASKS:END -->
 
 ---

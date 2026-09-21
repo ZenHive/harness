@@ -14053,7 +14053,7 @@ scored_at = "2026-09-21"
 id = "452"
 phase = 24
 bundle = "operator-cockpit"
-status = "in_progress"
+status = "done"
 title = "Expose incomplete roadmap coverage in the Action Inbox"
 scores = { d = 4, b = 7, u = 6 }
 markers = ["bug"]
@@ -14063,9 +14063,16 @@ touches = ["lib/harness/dashboard/inbox.ex", "lib/harness/dashboard/inbox_live.e
 assignee = "grok"
 model = "grok-4.6"
 body = "Converges on Task 388. Insights finding 6f2587af-f306-4d55-81ae-2e84ca94874d is confirmed at cbd86f9d: Inbox.tasks/1 replaces each failed or timed-out Roadmap.list with an empty list, and load_current returns an apparently complete success. Preserve healthy-project actions and source-independent held/approval actions while making unavailable project sources visible. This is current Inbox coverage, not Task 441 historical Activity or Task 374 event storage. Score rationale: an operator can otherwise miss recoverable paid work while seeing an apparently empty Inbox."
+implemented = "Landed by grok via merge-train; reviewer-approved (run run-1789980013750-bfa4b949, 990f0a37a2406e2e62793883458a82ac9dcab0d8)."
+delivered_by = "grok"
+verified = true
+verified_by = "cursor"
+verification_ref = "harness-run:run-1789980013750-bfa4b949"
 created_at = "2026-09-21"
 started_at = "2026-09-21"
 scored_at = "2026-09-21"
+done_at = "2026-09-21"
+shipped_in = "990f0a37a2406e2e62793883458a82ac9dcab0d8"
 
 [[task]]
 id = "453"
