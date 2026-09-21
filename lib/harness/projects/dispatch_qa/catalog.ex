@@ -160,10 +160,10 @@ defmodule Harness.Projects.DispatchQA.Catalog do
       languages: [:rust],
       kind: :rust,
       before_check_command: "cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test",
-      dispatch: "cargo fmt --check && cargo clippy --all-targets -- -D warnings; focused cargo test for touched crates",
+      dispatch: "cargo fmt --check && cargo check --all-targets; focused cargo test for touched crates",
       qa: "cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test",
       write_set: ["Cargo.toml", "CLAUDE.md", "AGENTS.md"],
-      notes: "Native cargo commands. Full cargo test stays in QA."
+      notes: "Native cargo commands. Clippy and the full cargo test suite stay in QA."
     }
   end
 end

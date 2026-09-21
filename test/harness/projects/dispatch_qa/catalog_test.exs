@@ -62,7 +62,9 @@ defmodule Harness.Projects.DispatchQA.CatalogTest do
     distill = Catalog.entry("ccxt-distill")
 
     assert rmap.dispatch =~ "cargo fmt"
-    assert rmap.dispatch =~ "cargo clippy"
+    assert rmap.dispatch =~ "cargo check --all-targets"
+    refute rmap.dispatch =~ "clippy"
+    assert rmap.qa =~ "cargo clippy --all-targets -- -D warnings"
     refute rmap.dispatch =~ "&& cargo test"
     assert rmap.qa =~ "cargo test"
     refute Catalog.requires_qa_pass?(rmap)

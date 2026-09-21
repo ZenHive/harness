@@ -136,6 +136,7 @@ defmodule Harness.Run.OperatorRecoveryTest do
         )
 
       {:ok, run_id, pid} = Run.Supervisor.start_run(item(), project, FakeAdapter, opts)
+      on_exit(fn -> Harness.RunCase.stop_fixture_run(pid) end)
 
       wait_until_running(run_id, 20, 5_000)
       # Resume requires the run to actually be :held — interrupt-hold only parks
@@ -205,7 +206,8 @@ defmodule Harness.Run.OperatorRecoveryTest do
         |> default_opts()
         |> Keyword.put(:adapter_opts, [])
 
-      {:ok, run_id, _pid} = Run.Supervisor.start_run(item(), project, NoResumeAdapter, opts)
+      {:ok, run_id, pid} = Run.Supervisor.start_run(item(), project, NoResumeAdapter, opts)
+      on_exit(fn -> Harness.RunCase.stop_fixture_run(pid) end)
 
       wait_until_running(run_id)
       assert :ok = Run.hold(run_id, true)
