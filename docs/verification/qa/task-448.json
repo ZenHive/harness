@@ -1,0 +1,946 @@
+{
+  "captured_at": "2026-09-21T00:03:31Z",
+  "source_capture_sha256": "f647ae28031c89da0a81787209d20dd728dfd4789bb9bb31fe986e78c3820a66",
+  "projects": [
+    {
+      "name": "aave_sim",
+      "reason": null,
+      "status": "unchanged",
+      "write_set": [
+        "mix.exs",
+        "CLAUDE.md",
+        "AGENTS.md"
+      ],
+      "prior": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "auto",
+        "qa_command": "mix precommit.full",
+        "reviewer": null,
+        "target_branch": "main"
+      },
+      "desired": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "qa_command": "mix precommit.full"
+      },
+      "readback": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "auto",
+        "qa_command": "mix precommit.full",
+        "reviewer": null,
+        "target_branch": "main"
+      }
+    },
+    {
+      "name": "blockwatch",
+      "reason": null,
+      "status": "unchanged",
+      "write_set": [
+        "mix.exs",
+        "CLAUDE.md",
+        "AGENTS.md"
+      ],
+      "prior": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "auto",
+        "qa_command": "mix precommit.full && mix test.json --cover",
+        "reviewer": null,
+        "target_branch": "development"
+      },
+      "desired": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "qa_command": "mix precommit.full && mix test.json --cover"
+      },
+      "readback": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "auto",
+        "qa_command": "mix precommit.full && mix test.json --cover",
+        "reviewer": null,
+        "target_branch": "development"
+      }
+    },
+    {
+      "name": "bourse",
+      "reason": null,
+      "status": "unchanged",
+      "write_set": [
+        "mix.exs",
+        "CLAUDE.md",
+        "AGENTS.md"
+      ],
+      "prior": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "auto",
+        "qa_command": "mix ci",
+        "reviewer": null,
+        "target_branch": "main"
+      },
+      "desired": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "qa_command": "mix ci"
+      },
+      "readback": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "auto",
+        "qa_command": "mix ci",
+        "reviewer": null,
+        "target_branch": "main"
+      }
+    },
+    {
+      "name": "bourse_trading",
+      "reason": null,
+      "status": "unchanged",
+      "write_set": [
+        "mix.exs",
+        "CLAUDE.md",
+        "AGENTS.md"
+      ],
+      "prior": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "manual",
+        "qa_command": "mix precommit.full && mix ex_dna --max-clones 0 && mix reach.check --arch --dead-code --smells",
+        "reviewer": null,
+        "target_branch": null
+      },
+      "desired": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "qa_command": "mix precommit.full && mix ex_dna --max-clones 0 && mix reach.check --arch --dead-code --smells"
+      },
+      "readback": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "manual",
+        "qa_command": "mix precommit.full && mix ex_dna --max-clones 0 && mix reach.check --arch --dead-code --smells",
+        "reviewer": null,
+        "target_branch": null
+      }
+    },
+    {
+      "name": "ccxt-distill",
+      "reason": "unregistered",
+      "status": "unavailable",
+      "write_set": [
+        "package.json",
+        "CLAUDE.md",
+        "AGENTS.md"
+      ],
+      "prior": null,
+      "desired": {
+        "check_command": "npm run typecheck && npm run lint; focused tests for touched behavior",
+        "qa_command": "npm run check"
+      },
+      "readback": null
+    },
+    {
+      "name": "delta_calc",
+      "reason": null,
+      "status": "unchanged",
+      "write_set": [
+        "mix.exs",
+        "CLAUDE.md",
+        "AGENTS.md"
+      ],
+      "prior": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "auto",
+        "qa_command": "mix ci && mix doctor --raise && mix sobelow --skip --exit Low && mix test.json --cover",
+        "reviewer": null,
+        "target_branch": "development"
+      },
+      "desired": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "qa_command": "mix ci && mix doctor --raise && mix sobelow --skip --exit Low && mix test.json --cover"
+      },
+      "readback": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "auto",
+        "qa_command": "mix ci && mix doctor --raise && mix sobelow --skip --exit Low && mix test.json --cover",
+        "reviewer": null,
+        "target_branch": "development"
+      }
+    },
+    {
+      "name": "harness",
+      "reason": null,
+      "status": "unchanged",
+      "write_set": [
+        "mix.exs",
+        "CLAUDE.md",
+        "AGENTS.md"
+      ],
+      "prior": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "auto",
+        "qa_command": "mix precommit.full",
+        "reviewer": null,
+        "target_branch": "development"
+      },
+      "desired": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "qa_command": "mix precommit.full"
+      },
+      "readback": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "auto",
+        "qa_command": "mix precommit.full",
+        "reviewer": null,
+        "target_branch": "development"
+      }
+    },
+    {
+      "name": "harness_agent_adapter",
+      "reason": null,
+      "status": "unchanged",
+      "write_set": [
+        "mix.exs",
+        "CLAUDE.md",
+        "AGENTS.md"
+      ],
+      "prior": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 2,
+        "landing_policy": "auto",
+        "qa_command": "mix precommit.full",
+        "reviewer": null,
+        "target_branch": "main"
+      },
+      "desired": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "qa_command": "mix precommit.full"
+      },
+      "readback": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 2,
+        "landing_policy": "auto",
+        "qa_command": "mix precommit.full",
+        "reviewer": null,
+        "target_branch": "main"
+      }
+    },
+    {
+      "name": "mpp",
+      "reason": null,
+      "status": "unchanged",
+      "write_set": [
+        "mix.exs",
+        "CLAUDE.md",
+        "AGENTS.md"
+      ],
+      "prior": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "auto",
+        "qa_command": "mix precommit.full",
+        "reviewer": null,
+        "target_branch": "main"
+      },
+      "desired": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "qa_command": "mix precommit.full"
+      },
+      "readback": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "auto",
+        "qa_command": "mix precommit.full",
+        "reviewer": null,
+        "target_branch": "main"
+      }
+    },
+    {
+      "name": "onchain_stack",
+      "reason": null,
+      "status": "unchanged",
+      "write_set": [
+        "mix.exs",
+        "CLAUDE.md",
+        "AGENTS.md",
+        "packages/hieroglyph/mix.exs",
+        "packages/hieroglyph/CLAUDE.md",
+        "packages/hieroglyph/AGENTS.md",
+        "packages/cartouche/mix.exs",
+        "packages/cartouche/CLAUDE.md",
+        "packages/cartouche/AGENTS.md",
+        "packages/onchain/mix.exs",
+        "packages/onchain/CLAUDE.md",
+        "packages/onchain/AGENTS.md",
+        "packages/onchain_aave/mix.exs",
+        "packages/onchain_aave/CLAUDE.md",
+        "packages/onchain_aave/AGENTS.md",
+        "packages/onchain_aerodrome/mix.exs",
+        "packages/onchain_aerodrome/CLAUDE.md",
+        "packages/onchain_aerodrome/AGENTS.md",
+        "packages/onchain_evm/mix.exs",
+        "packages/onchain_evm/CLAUDE.md",
+        "packages/onchain_evm/AGENTS.md",
+        "packages/onchain_js/mix.exs",
+        "packages/onchain_js/CLAUDE.md",
+        "packages/onchain_js/AGENTS.md",
+        "packages/onchain_tempo/mix.exs",
+        "packages/onchain_tempo/CLAUDE.md",
+        "packages/onchain_tempo/AGENTS.md"
+      ],
+      "prior": {
+        "check_command": "For each touched package under packages/<name>: mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "auto",
+        "qa_command": "mix ci",
+        "reviewer": null,
+        "target_branch": "main"
+      },
+      "desired": {
+        "check_command": "For each touched package under packages/<name>: mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "qa_command": "mix ci"
+      },
+      "readback": {
+        "check_command": "For each touched package under packages/<name>: mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "auto",
+        "qa_command": "mix ci",
+        "reviewer": null,
+        "target_branch": "main"
+      }
+    },
+    {
+      "name": "rmap",
+      "reason": null,
+      "status": "unchanged",
+      "write_set": [
+        "Cargo.toml",
+        "CLAUDE.md",
+        "AGENTS.md"
+      ],
+      "prior": {
+        "check_command": "cargo fmt --check && cargo clippy --all-targets -- -D warnings; focused cargo test for touched crates",
+        "concurrency_cap": 2,
+        "landing_policy": "auto",
+        "qa_command": "cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test",
+        "reviewer": null,
+        "target_branch": "main"
+      },
+      "desired": {
+        "check_command": "cargo fmt --check && cargo clippy --all-targets -- -D warnings; focused cargo test for touched crates",
+        "qa_command": "cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test"
+      },
+      "readback": {
+        "check_command": "cargo fmt --check && cargo clippy --all-targets -- -D warnings; focused cargo test for touched crates",
+        "concurrency_cap": 2,
+        "landing_policy": "auto",
+        "qa_command": "cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test",
+        "reviewer": null,
+        "target_branch": "main"
+      }
+    },
+    {
+      "name": "starconiq",
+      "reason": null,
+      "status": "unchanged",
+      "write_set": [
+        "mix.exs",
+        "CLAUDE.md",
+        "AGENTS.md"
+      ],
+      "prior": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "manual",
+        "qa_command": "mix precommit.full",
+        "reviewer": null,
+        "target_branch": null
+      },
+      "desired": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "qa_command": "mix precommit.full"
+      },
+      "readback": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "manual",
+        "qa_command": "mix precommit.full",
+        "reviewer": null,
+        "target_branch": null
+      }
+    },
+    {
+      "name": "tapakly",
+      "reason": null,
+      "status": "unchanged",
+      "write_set": [
+        "mix.exs",
+        "CLAUDE.md",
+        "AGENTS.md"
+      ],
+      "prior": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 2,
+        "landing_policy": "auto",
+        "qa_command": "mix precommit.full",
+        "reviewer": null,
+        "target_branch": "main"
+      },
+      "desired": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "qa_command": "mix precommit.full"
+      },
+      "readback": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 2,
+        "landing_policy": "auto",
+        "qa_command": "mix precommit.full",
+        "reviewer": null,
+        "target_branch": "main"
+      }
+    },
+    {
+      "name": "trading_dashboard",
+      "reason": null,
+      "status": "unchanged",
+      "write_set": [
+        "mix.exs",
+        "CLAUDE.md",
+        "AGENTS.md"
+      ],
+      "prior": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "auto",
+        "qa_command": "mix ci && mix doctor --raise && mix test.json --cover",
+        "reviewer": null,
+        "target_branch": "development"
+      },
+      "desired": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "qa_command": "mix ci && mix doctor --raise && mix test.json --cover"
+      },
+      "readback": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "auto",
+        "qa_command": "mix ci && mix doctor --raise && mix test.json --cover",
+        "reviewer": null,
+        "target_branch": "development"
+      }
+    },
+    {
+      "name": "zen_quant",
+      "reason": null,
+      "status": "unchanged",
+      "write_set": [
+        "mix.exs",
+        "CLAUDE.md",
+        "AGENTS.md"
+      ],
+      "prior": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "auto",
+        "qa_command": "mix ci",
+        "reviewer": null,
+        "target_branch": "development"
+      },
+      "desired": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "qa_command": "mix ci"
+      },
+      "readback": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "auto",
+        "qa_command": "mix ci",
+        "reviewer": null,
+        "target_branch": "development"
+      }
+    },
+    {
+      "name": "zen_websocket",
+      "reason": null,
+      "status": "unchanged",
+      "write_set": [
+        "mix.exs",
+        "CLAUDE.md",
+        "AGENTS.md"
+      ],
+      "prior": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "manual",
+        "qa_command": "mix precommit.full",
+        "reviewer": null,
+        "target_branch": null
+      },
+      "desired": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "qa_command": "mix precommit.full"
+      },
+      "readback": {
+        "check_command": "mix format --check-formatted && mix compile --warnings-as-errors; focused mix test.json and risk-relevant security/live checks.",
+        "concurrency_cap": 4,
+        "landing_policy": "manual",
+        "qa_command": "mix precommit.full",
+        "reviewer": null,
+        "target_branch": null
+      }
+    }
+  ],
+  "inspection_limits": "Raw scoped settings retained; shell expressions and plugin scope require operator review.",
+  "remaining_at_capture": [
+    "rmap dispatch still contains Clippy; corrected in 4ec140c9, live readback pending",
+    "Tapakly generated instructions corrected after capture in b9666ae2"
+  ],
+  "hook_sources": [
+    {
+      "command": "[ ! -f '/home/harness/.claude/skills/impeccable/scripts/hook.mjs' ] || node '/home/harness/.claude/skills/impeccable/scripts/hook.mjs'",
+      "configuration": "/home/harness/.claude/settings.json",
+      "resolution": "Literal file arguments only; no shell evaluation or recursive script execution.",
+      "sources": [
+        {
+          "path": "/home/harness/.claude/skills/impeccable/scripts/hook.mjs",
+          "sha256": "c10d8b31213c5179cde45277eae517d4ef6fcd621b14261b7de54c64faac22a3"
+        }
+      ]
+    },
+    {
+      "command": "bash '/home/harness/.claude/hooks/herdr-agent-state.sh' session",
+      "configuration": "/home/harness/.claude/settings.json",
+      "resolution": "Literal file arguments only; no shell evaluation or recursive script execution.",
+      "sources": [
+        {
+          "path": "/home/harness/.claude/hooks/herdr-agent-state.sh",
+          "sha256": "4deaaa7b12399358d9506db6e6ee3fe9b6ef06abde94922f919056854511d9ba"
+        }
+      ]
+    },
+    {
+      "command": "[ ! -f '/home/harness/.claude/skills/impeccable/scripts/hook.mjs' ] || node '/home/harness/.claude/skills/impeccable/scripts/hook.mjs'",
+      "configuration": "/home/harness/.claude/settings.json",
+      "resolution": "Literal file arguments only; no shell evaluation or recursive script execution.",
+      "sources": [
+        {
+          "path": "/home/harness/.claude/skills/impeccable/scripts/hook.mjs",
+          "sha256": "c10d8b31213c5179cde45277eae517d4ef6fcd621b14261b7de54c64faac22a3"
+        }
+      ]
+    },
+    {
+      "command": "bash '/home/harness/.cursor/herdr-agent-state.sh' session",
+      "configuration": "/home/harness/.cursor/hooks.json",
+      "resolution": "Literal file arguments only; no shell evaluation or recursive script execution.",
+      "sources": [
+        {
+          "path": "/home/harness/.cursor/herdr-agent-state.sh",
+          "sha256": "186c6b4b9e0f8ca59288cb74c3c2c9131c0e3ca086004b1a26d0617c843a38a2"
+        }
+      ]
+    },
+    {
+      "command": "git -C refs/mpp-specs pull --rebase --quiet && git -C refs/mppx pull --rebase --quiet && git -C refs/mpp-rs pull --rebase --quiet",
+      "configuration": "/data/postgresql/code/mpp/.claude/settings.json",
+      "resolution": "Literal file arguments only; no shell evaluation or recursive script execution.",
+      "sources": []
+    },
+    {
+      "command": "bash .claude/hooks/sdk-watch-reminder.sh",
+      "configuration": "/data/postgresql/code/mpp/.claude/settings.json",
+      "resolution": "Literal file arguments only; no shell evaluation or recursive script execution.",
+      "sources": [
+        {
+          "path": "/data/postgresql/code/mpp/.claude/hooks/sdk-watch-reminder.sh",
+          "sha256": "34e972848f01b2240c2af6295c20d31d859e512b846c5c30a2b5ffb012aff720"
+        }
+      ]
+    },
+    {
+      "command": "[ ! -f \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" ] || \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook",
+      "configuration": "/data/postgresql/code/starconiq/.claude/settings.local.json",
+      "resolution": "Literal file arguments only; no shell evaluation or recursive script execution.",
+      "sources": []
+    },
+    {
+      "command": "[ ! -f \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" ] || \"${CLAUDE_PROJECT_DIR}/.claude/skills/impeccable/scripts/impeccable\" hook",
+      "configuration": "/data/postgresql/code/starconiq/.claude/settings.local.json",
+      "resolution": "Literal file arguments only; no shell evaluation or recursive script execution.",
+      "sources": []
+    },
+    {
+      "command": "[ ! -f \".cursor/skills/impeccable/scripts/impeccable\" ] || \".cursor/skills/impeccable/scripts/impeccable\" hook-before-edit",
+      "configuration": "/data/postgresql/code/starconiq/.cursor/hooks.json",
+      "resolution": "Literal file arguments only; no shell evaluation or recursive script execution.",
+      "sources": [
+        {
+          "path": "/data/postgresql/code/starconiq/.cursor/skills/impeccable/scripts/impeccable",
+          "sha256": "39d9600489073e227e4f4d55c451ce4252a6632ed7ae37923efbbcbc91f16d07"
+        }
+      ]
+    }
+  ],
+  "zenhive_plugin_installation_matches": [],
+  "consumer_reviews": {
+    "blockwatch": {
+      "checks": {
+        "mix agents.check && git diff --check": {
+          "output": "OK: ./AGENTS.md is up to date; diff whitespace check passed.",
+          "passed": "true"
+        },
+        "mix check.dispatch && git diff --check": {
+          "output": "Exit 0 on final code; dispatch executes format --check-formatted and compile --warnings-as-errors only.",
+          "passed": "true"
+        },
+        "mix format --check-formatted && mix compile --warnings-as-errors": {
+          "output": "Exit 0; no warnings or formatting failures.",
+          "passed": "true"
+        },
+        "mix format test/blockwatch/mix_project_test.exs && mix test.json test/blockwatch/mix_project_test.exs": {
+          "output": "12 passed, 0 failed, 0 excluded, 0 skipped. Covers retained QA steps, dispatch separation, script fallback and precedence, missing candidates, nonzero exit propagation, rendered-content comparison, and transitive @-import drift.",
+          "passed": "true"
+        }
+      },
+      "concerns": [
+        "The supplied implementer transcript records an out-of-scope external wiki update. This reviewer did not independently verify or modify that external document. The repository change is acceptable after the scoped fixes."
+      ],
+      "run_id": "run-1789946962119-9040f3b8",
+      "task_id": "58",
+      "verdict": "approve"
+    },
+    "harness_agent_adapter": {
+      "checks": {
+        "git diff --check HEAD^ HEAD && git status --short": {
+          "output": "Exit 0; clean worktree before verdict.",
+          "passed": "true"
+        },
+        "mix agents.check": {
+          "output": "OK: ./AGENTS.md is up to date; no skip.",
+          "passed": "true"
+        },
+        "mix compile --warnings-as-errors": {
+          "output": "Exit 0.",
+          "passed": "true"
+        },
+        "mix format --check-formatted": {
+          "output": "Exit 0.",
+          "passed": "true"
+        },
+        "mix test.json test/mix_project_test.exs": {
+          "output": "10 passed; 0 failed, invalid, excluded or skipped. Covers alias separation, retained full QA, lookup ordering, missing-script success and nonzero-script failure.",
+          "passed": "true"
+        },
+        "python3 isolated real-generator fixture: generate, mix agents.check, mutate transitive import, mix agents.check": {
+          "output": "Confirmed operator checkout absent. Fresh generated fixture exits 0. Changing inner.md imported through outer.md causes STALE and Mix freshness check failed using Claude marketplace script, exit 1. Temporary fixture cleaned up.",
+          "passed": "true"
+        }
+      },
+      "concerns": [],
+      "run_id": "run-1789946965017-e7dfaf3e",
+      "task_id": "2",
+      "verdict": "approve"
+    },
+    "starconiq": {
+      "checks": {
+        "/home/harness/.grok/marketplace-cache/aa32eb6949818402/scripts/sync-agents-md.sh --check": {
+          "output": "OK: ./AGENTS.md is up to date.",
+          "passed": "true"
+        },
+        "git diff --check": {
+          "output": "Exit 0; no whitespace errors.",
+          "passed": "true"
+        },
+        "mix check.dispatch": {
+          "output": "Exit 0; inspected alias executes format --check-formatted and compile --warnings-as-errors only.",
+          "passed": "true"
+        },
+        "mix format test/starpatron_web/live/post_live_test.exs && mix test.json test/starpatron_web/live/post_live_test.exs --quiet --summary-only": {
+          "output": "Reviewer regression: 9 passed, 0 failed, excluded, skipped or invalid.",
+          "passed": "true"
+        },
+        "mix reach.check --smells": {
+          "output": "Exit 0; Analyzing 308 files, roots=lib; Cross-Function Smell Detection: (no issues). Source analysis is freshly built; strict=true.",
+          "passed": "true"
+        },
+        "mix test.json test/mix/aliases_test.exs test/mix/architecture_test.exs test/starpatron_web/components/roll_layout_test.exs test/starpatron/email_test.exs test/starpatron_web/live/billing/billing_live_test.exs test/starpatron_web/live/post_live_test.exs test/starpatron_web/live/auth test/starpatron_web/live/passwordless_auth_live_test.exs test/starpatron_web/live/user_settings/user_onboarding_live_test.exs test/starpatron_web/controllers/user_totp_controller_test.exs --quiet --summary-only": {
+          "output": "121 passed, 0 failed, excluded, skipped or invalid. Expected negative-path logs include provider no-answer and blank profile validation; assertions pass.",
+          "passed": "true"
+        }
+      },
+      "concerns": [
+        "Full-project coverage and full QA were not run during review, per the explicit focused-review/post-merge policy. Threshold 53 is preserved; absence of a coverage drop must be measured by post-merge mix precommit.full.",
+        "Reach supports module/path exclusions rather than exact key-shape exclusions here. The named exclusions affect fixed_shape_map only, but can also suppress future fixed-shape maps in those listed modules. Domain maps were nevertheless extracted rather than relying on those exclusions."
+      ],
+      "run_id": "run-1789946913872-608c074e",
+      "task_id": "47",
+      "verdict": "approve"
+    },
+    "zen_websocket": {
+      "checks": {
+        "bash -n bin/sync-agents-md.sh bin/advisory-freshness.sh": {
+          "output": "Both scripts passed syntax validation.",
+          "passed": "true"
+        },
+        "git diff --check": {
+          "output": "No whitespace errors.",
+          "passed": "true"
+        },
+        "mix check.dispatch": {
+          "output": "Exited 0; alias contains only format --check-formatted and compile --warnings-as-errors.",
+          "passed": "true"
+        },
+        "mix format --check-formatted && mix compile --warnings-as-errors && mix agents.check": {
+          "output": "Exited 0; OK: ./AGENTS.md is up to date.",
+          "passed": "true"
+        },
+        "mix test.json --quiet test/zen_websocket/mix_project_test.exs test/zen_websocket/freshness_test.exs --include integration --include external_network": {
+          "output": "19 passed, 0 failed, 0 excluded, 0 skipped; seed 168257. Durable run output: .harness/reviewer-focused.json. Live cold deps.audit.gated succeeded; subsequent dirty/offline runs failed as asserted without a clean audit message.",
+          "passed": "true"
+        }
+      },
+      "concerns": [
+        "Full precommit.full success and >=90 coverage remain unmeasured in this review; the later operator instruction explicitly assigns complete QA to the asynchronous post-merge audit. Configure its command as mix precommit.full."
+      ],
+      "run_id": "run-1789946967845-28a49337",
+      "task_id": "23",
+      "verdict": "approve"
+    },
+    "bourse": {
+      "checks": {
+        "mix bourse.agents_md --check": {
+          "output": "OK: AGENTS.md is up to date",
+          "passed": "true"
+        },
+        "mix bourse.claude_check": {
+          "output": "CLAUDE.md mechanical claims match the tree.",
+          "passed": "true"
+        },
+        "mix check.dispatch": {
+          "output": "exit 0; format --check-formatted + compile --warnings-as-errors, silent success. log=/tmp/harness-check-dispatch.R1vN4f.log",
+          "passed": "true"
+        },
+        "mix test.json --quiet --output /tmp/review-705-tests.json test/mix/check_dispatch_config_test.exs test/mix/tasks/bourse_agents_md_test.exs test/mix/tasks/bourse_check_lighter_signer_test.exs test/mix/tasks/bourse_claude_check_test.exs": {
+          "output": "summary.result=passed total=52 passed=52 failed=0",
+          "passed": "true"
+        }
+      },
+      "concerns": [],
+      "run_id": "run-1789946918442-f80d89cf",
+      "task_id": "705",
+      "verdict": "approve"
+    },
+    "bourse_trading": {
+      "checks": {
+        "bash /data/postgresql/code/claude-marketplace/scripts/sync-agents-md.sh --check": {
+          "output": "OK: ./AGENTS.md is up to date after regeneration.",
+          "passed": "true"
+        },
+        "git diff --check": {
+          "output": "Initial trailing whitespace introduced during review was corrected in CLAUDE.md and regenerated AGENTS.md; final check clean.",
+          "passed": "true"
+        },
+        "mix check.dispatch": {
+          "output": "Exit 0 after reviewer code changes; format --check-formatted and compile --warnings-as-errors.",
+          "passed": "true"
+        },
+        "mix format --check-formatted && mix compile --warnings-as-errors": {
+          "output": "Exit 0 on implementer revision.",
+          "passed": "true"
+        },
+        "mix test.json test/alias_policy_test.exs": {
+          "output": "Reviewer-fixed alias graph: 3 passed, 0 failed, 0 excluded, 0 skipped.",
+          "passed": "true"
+        }
+      },
+      "concerns": [],
+      "run_id": "run-1789946920144-21696031",
+      "task_id": "12",
+      "verdict": "approve"
+    },
+    "delta_calc": {
+      "checks": {
+        "bash /data/postgresql/code/claude-marketplace/scripts/sync-agents-md.sh --check": {
+          "output": "OK: ./AGENTS.md is up to date",
+          "passed": "true"
+        },
+        "mix check.dispatch": {
+          "output": "exit 0; log empty after prior compile \u2014 no ExUnit/Credo/ex_dna/Dialyzer/Reach output, consistent with format+compile only",
+          "passed": "true"
+        },
+        "mix compile --warnings-as-errors": {
+          "output": "exit 0 under MIX_ENV=test (Elixir 1.20.4-otp-29 / OTP 29.1)",
+          "passed": "true"
+        },
+        "mix format --check-formatted": {
+          "output": "exit 0; mix.exs and test/mix_aliases_test.exs formatted",
+          "passed": "true"
+        },
+        "mix test.json test/mix_aliases_test.exs": {
+          "output": "{\"summary\":{\"failed\":0,\"passed\":3,\"result\":\"passed\",\"total\":3}}",
+          "passed": "true"
+        }
+      },
+      "concerns": [
+        "Project .tool-versions pins elixir 1.19.1-otp-28 / erlang 28.4, which are not installed in this worktree. Checks ran under Elixir 1.20.4-otp-29 / OTP 29.1, the same pair the implementer used. Not a defect in the alias split."
+      ],
+      "run_id": "run-1789946969594-d555ffb5",
+      "task_id": "61",
+      "verdict": "approve"
+    },
+    "mpp": {
+      "checks": {
+        "bash /data/postgresql/code/claude-marketplace/scripts/sync-agents-md.sh --check": {
+          "output": "OK: ./AGENTS.md is up to date",
+          "passed": "true"
+        },
+        "git diff --check HEAD^ HEAD": {
+          "output": "Exit 0; clean working tree.",
+          "passed": "true"
+        },
+        "mix format --check-formatted && mix compile --warnings-as-errors": {
+          "output": "Exit 0; no warnings or formatting errors.",
+          "passed": "true"
+        },
+        "mix test.json test/mix/aliases_test.exs test/mix/tasks/mpp.cover.critical_test.exs test/mutation/security_campaign_test.exs --no-retry --output /tmp/mpp-review-133-confirmed.json": {
+          "output": "28 passed, 0 failed, 0 excluded, 0 skipped; retries disabled.",
+          "passed": "true"
+        },
+        "mix test.json test/mix/aliases_test.exs test/mix/tasks/mpp.cover.critical_test.exs test/mutation/security_campaign_test.exs --quiet --output /tmp/mpp-review-133-tests.json": {
+          "mechanism": "--quiet sets Mix.shell(Mix.Shell.Quiet) in deps/ex_unit_json/lib/mix/tasks/test_json.ex:405; the existing coverage task test at line 173 asserts captured Mix shell output, which becomes empty.",
+          "output": "28 total; 27 passed and one output assertion failed on initial execution, classified flaky after automatic retry. Not accepted as clean evidence.",
+          "passed": "false"
+        },
+        "mix test.json test/mix/tasks/mpp.cover.critical_test.exs:173 --quiet --output /tmp/mpp-review-133-isolated.json": {
+          "mechanism": "Confirmed quiet-shell suppression of the existing output assertion; unchanged by this alias diff.",
+          "output": "Exit 2: 1 failed, 17 excluded. Reproduced empty captured output.",
+          "passed": "false"
+        }
+      },
+      "concerns": [
+        "Existing test.json --quiet incompatibility reproduced in isolation: coverage task test line 173 receives empty captured output because quiet mode selects Mix.Shell.Quiet. Non-quiet focused execution passes all 28 tests with retries disabled. Full-QA repair remains outside this task, as specified."
+      ],
+      "run_id": "run-1789946972013-3f955096",
+      "task_id": "133",
+      "verdict": "approve"
+    },
+    "onchain_stack": {
+      "checks": {
+        "/data/postgresql/code/claude-marketplace/scripts/sync-agents-md.sh --check (root, cartouche, onchain_aerodrome, onchain_tempo)": {
+          "mechanism": "",
+          "output": "OK: AGENTS.md is up to date in all four regenerated trees",
+          "passed": "true"
+        },
+        "MIX_ENV=test mix format --check-formatted && MIX_ENV=test mix compile --warnings-as-errors (all 8 packages)": {
+          "mechanism": "First compile without deps.get failed with 'lock mismatch: the dependency is out of date' in MIX_ENV=test (json_spec, dialyxir, reach, muex, mint, cowlib, gun). Reproduced: worktree deps/ lagged the committed mix.lock. mix deps.get --check-locked restored locked versions without rewriting mix.lock; compile then passed. Not a defect in this change.",
+          "output": "HIEROGLYPH_EXIT=0; PKG_EXIT cartouche/onchain/onchain_aave/onchain_aerodrome/onchain_evm/onchain_js/onchain_tempo=0 after locked deps.get",
+          "passed": "true"
+        },
+        "elixir test/alias_separation_test.exs": {
+          "mechanism": "",
+          "output": "17 passed in 0.2s (seed 643589)",
+          "passed": "true"
+        },
+        "git diff --check": {
+          "mechanism": "",
+          "output": "exit 0",
+          "passed": "true"
+        },
+        "mix deps.get --check-locked (packages/*)": {
+          "mechanism": "",
+          "output": "fetched locked Hex packages (dialyxir/reach/json_spec/mint/gun/cowlib/\u2026); mix.lock unchanged",
+          "passed": "true"
+        },
+        "mix format --check-formatted packages/*/mix.exs test/alias_graph.exs test/alias_separation_test.exs test/fixtures/aliases_before.exs": {
+          "mechanism": "",
+          "output": "exit 0",
+          "passed": "true"
+        }
+      },
+      "concerns": [],
+      "run_id": "run-1789946973749-8074a22a",
+      "task_id": "9022",
+      "verdict": "approve"
+    },
+    "trading_dashboard": {
+      "checks": {
+        "$HOME/.claude/plugins/marketplaces/zenhive/scripts/sync-agents-md.sh --check": {
+          "output": "OK: ./AGENTS.md is up to date",
+          "passed": "true"
+        },
+        "env -u MIX_ENV mix check.dispatch": {
+          "output": "Exit 0; executes format --check-formatted and compile --warnings-as-errors after the environment guard.",
+          "passed": "true"
+        },
+        "env -u MIX_ENV mix test.json test/trading_dashboard/check_aliases_test.exs --output .harness-review-tests.json": {
+          "output": "10 passed, 0 failed, 0 skipped, 0 excluded. Evidence moved to .harness/review-tests.json.",
+          "passed": "true"
+        },
+        "git diff HEAD^ HEAD --check": {
+          "output": "Exit 0; no whitespace errors.",
+          "passed": "true"
+        },
+        "git status --short": {
+          "output": "Clean tracked and untracked working tree after checks; review evidence is ignored.",
+          "passed": "true"
+        },
+        "python3 ordered alias comparison of git show HEAD^:mix.exs ci and current precommit.full": {
+          "output": "Former ci and current precommit.full have identical ordered steps.",
+          "passed": "true"
+        },
+        "scripts/verify-format-gates": {
+          "output": "Exit 0. Both check.dispatch and ci rejected the intentionally unformatted probe and preserved its bytes; probe removed by script cleanup.",
+          "passed": "true"
+        }
+      },
+      "concerns": [],
+      "run_id": "run-1789946925904-a2c7ac4f",
+      "task_id": "297",
+      "verdict": "approve"
+    },
+    "zen_quant": {
+      "checks": {
+        "/data/postgresql/code/claude-marketplace/scripts/sync-agents-md.sh --check": {
+          "output": "OK: ./AGENTS.md is up to date",
+          "passed": "true"
+        },
+        "mix check.dispatch": {
+          "output": "exit 0; stdout empty (format+compile already clean); no credo/doctor/sobelow/dialyzer/ex_dna/reach/cover/clone tokens",
+          "passed": "true"
+        },
+        "mix compile --warnings-as-errors": {
+          "output": "exit 0 (log /tmp/harness-review-compile.GY2uxr.log)",
+          "passed": "true"
+        },
+        "mix format --check-formatted": {
+          "output": "exit 0; already formatted after reviewer test edit",
+          "passed": "true"
+        },
+        "mix test.json --quiet test/alias_policy_test.exs test/docs_freshness_test.exs": {
+          "output": "summary.result=passed total=7 passed=7 failed=0",
+          "passed": "true"
+        }
+      },
+      "concerns": [],
+      "run_id": "run-1789946927688-521b4896",
+      "task_id": "82",
+      "verdict": "approve"
+    }
+  },
+  "tapakly": {
+    "task": "462",
+    "delivery": "0c072a5dcde6",
+    "landed": "6a026c65",
+    "canonical_doc_repair": "b9666ae2",
+    "checks": [
+      "Server ash.md synchronized from local canonical Ash 3.33.0 include",
+      "AGENTS regenerated from CLAUDE imports",
+      "sync-agents-md.sh --check passed"
+    ],
+    "reviewer_concern": "Resolved stale server Ash include which previously prevented generation without losing Ash guidance."
+  },
+  "activation": "All Elixir registrations already have focused check_command and explicit qa_command. Rmap live Clippy removal awaits safe runtime activation/readback; no complete-fleet-QA-green claim."
+}

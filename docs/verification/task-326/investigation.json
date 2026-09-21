@@ -1,0 +1,177 @@
+{
+  "date": "2026-09-21",
+  "toolchain": {
+    "elixir": "1.20.4",
+    "otp": "29.1",
+    "platform": "macOS arm64"
+  },
+  "historical_failure": "Harness.AuditTest noop worktree cleanup with erl_child_setup EPIPE",
+  "conclusion": "Historical AuditTest failure not reproduced. Raw EPIPE diagnostics in an earlier focused run alone do not establish that historical failure or a production fix.",
+  "probe_bound": "Each full-suite invocation bounded to 600 seconds; repeated pair stopped on first nonzero result. No retries.",
+  "runs": [
+    {
+      "seed": 326004,
+      "revision": "bde07467d5e734c14e51ed868aed9c4d1af70c7b",
+      "command": "mix test.json --quiet --cover --cover-threshold 80 --exclude integration --no-retry --seed 326004 --output /tmp/326-final-326004.json",
+      "summary": {
+        "duration_us": 449404132,
+        "excluded": 175,
+        "failed": 2,
+        "invalid": 0,
+        "passed": 2671,
+        "result": "failed",
+        "skipped": 0,
+        "total": 2848
+      },
+      "coverage": {
+        "covered_lines": 12135,
+        "threshold": 80.0,
+        "threshold_met": true,
+        "total_lines": 14682,
+        "total_percentage": 82.65
+      },
+      "failures": [
+        {
+          "file": "test/harness/dashboard/live_mount_test.exs",
+          "line": 70,
+          "name": "test index mount + render empty states report the fleet's condition, not a list's length"
+        },
+        {
+          "file": "test/harness/dashboard/live_mount_test.exs",
+          "line": 247,
+          "name": "test index with an in-flight run renders the run row with a kill control, and the kill button cancels it"
+        }
+      ],
+      "artifacts": [
+        {
+          "path": "seed-326004.json.gz",
+          "uncompressed_sha256": "c5eef5e3d43a30505e804ed865c5e852fb7698ff7a82979c7965e0210329830c"
+        },
+        {
+          "path": "seed-326004.log.gz",
+          "uncompressed_sha256": "7bc636d5110fe35f0d4c823dd3a0f5a87677ebc694559e0e5b067649a870ce95"
+        }
+      ]
+    },
+    {
+      "seed": 326006,
+      "revision": "4ec140c9f40bdeb563a00d2465fadcb6e800d03a",
+      "command": "mix test.json --quiet --cover --cover-threshold 80 --exclude integration --no-retry --seed 326006 --output /tmp/326-final-326006.json",
+      "summary": {
+        "duration_us": 452491111,
+        "excluded": 175,
+        "failed": 0,
+        "invalid": 0,
+        "passed": 2673,
+        "result": "passed",
+        "skipped": 0,
+        "total": 2848
+      },
+      "coverage": {
+        "covered_lines": 12150,
+        "threshold": 80.0,
+        "threshold_met": true,
+        "total_lines": 14682,
+        "total_percentage": 82.75
+      },
+      "failures": [],
+      "artifacts": [
+        {
+          "path": "seed-326006.json.gz",
+          "uncompressed_sha256": "0951ae353f5d874c045ada41ed61d127ba11c0f4dee5db3f5293e7a56b0d188d"
+        },
+        {
+          "path": "seed-326006.log.gz",
+          "uncompressed_sha256": "932aa7f05041ec505bead56d469f3aa667987dbe8146edc4868aa912bcb14962"
+        }
+      ]
+    },
+    {
+      "seed": 326007,
+      "revision": "4ec140c9f40bdeb563a00d2465fadcb6e800d03a",
+      "command": "mix test.json --quiet --cover --cover-threshold 80 --exclude integration --no-retry --seed 326007 --output /tmp/326-final-326007.json",
+      "summary": {
+        "duration_us": 451811764,
+        "excluded": 175,
+        "failed": 3,
+        "invalid": 0,
+        "passed": 2670,
+        "result": "failed",
+        "skipped": 0,
+        "total": 2848
+      },
+      "coverage": {
+        "covered_lines": 12146,
+        "threshold": 80.0,
+        "threshold_met": true,
+        "total_lines": 14682,
+        "total_percentage": 82.73
+      },
+      "failures": [
+        {
+          "file": "test/harness/config_test.exs",
+          "line": 133,
+          "name": "test config MCP read surface get_config/1 accepts a dotted key and returns the projected entry"
+        },
+        {
+          "file": "test/harness/dispatch_test.exs",
+          "line": 780,
+          "name": "test rereview_opts/3 \u2014 review-only failed-run salvage starts from the retained branch and skips the implementer phase entirely"
+        },
+        {
+          "file": "test/harness/project_cache/command_test.exs",
+          "line": 19,
+          "name": "test missing host executable and child executable report mechanical failures"
+        }
+      ],
+      "artifacts": [
+        {
+          "path": "seed-326007.json.gz",
+          "uncompressed_sha256": "c182b7f5f3c1e62cd505832a5057e31797311d00a4ba26dd94ab4510bf14849f"
+        },
+        {
+          "path": "seed-326007.log.gz",
+          "uncompressed_sha256": "0d181412c6f3d4c5f8f55179fbfb2eb6adc14b655b6d29584f913adda8792e9b"
+        }
+      ]
+    }
+  ],
+  "limitations": [
+    "Repeated full-suite green is not established: seed 326006 passed and seed 326007 exposed three other failures, all passing one isolated rerun.",
+    "No production spawn-path change was made for task 326. Task 427 production changes independently address graceful shutdown.",
+    "macOS setsid occasionally reported startup exit 11 instead of expected 127; isolated rerun passed, cause unproven."
+  ],
+  "isolated_rerun": {
+    "seed": 326007,
+    "summary": {
+      "invalid": 0,
+      "total": 134,
+      "failed": 0,
+      "result": "passed",
+      "excluded": 131,
+      "passed": 3,
+      "skipped": 0,
+      "duration_us": 1047543
+    },
+    "command": "mix test.json test/harness/config_test.exs:133 test/harness/dispatch_test.exs:780 test/harness/project_cache/command_test.exs:19 --no-retry --seed 326007"
+  },
+  "final_fixture_checks": {
+    "command": "mix test.json test/harness/config_test.exs test/harness/dispatch_test.exs test/harness/oban_dispatch_test.exs --no-retry --seed 326007",
+    "summary": {
+      "invalid": 0,
+      "total": 187,
+      "failed": 0,
+      "result": "passed",
+      "excluded": 9,
+      "passed": 178,
+      "skipped": 0,
+      "duration_us": 9093707
+    },
+    "fixes": [
+      "Synchronous run cleanup before GitFixture removal, including direct-start held fixtures and dashboard helpers",
+      "Config fixture restores prior model environment instead of persisting an empty value",
+      "Dispatch tests using global application environment run synchronously; rereview fixture is stopped on exit",
+      "Focused dispatch alias expectations and cold-start timeout test synchronized with actual contracts"
+    ]
+  }
+}

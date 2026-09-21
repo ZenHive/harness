@@ -9945,7 +9945,7 @@ id = "326"
 phase = 22
 bundle = "core-loop"
 milestone = "v0_16"
-status = "in_progress"
+status = "done"
 title = "Stabilize residual erl_child_setup spawn flake in worktree-heavy suite (Harness.AuditTest noop)"
 scores = { d = 4, b = 4, u = 3 }
 markers = ["bug"]
@@ -9962,9 +9962,13 @@ If the failure still reproduces, trace the concrete spawn/interleaving path befo
 
 2026-09-20 scope refinement: This is a dispatchable bounded diagnosis; no human-only action is required. Choose and record the probe budget before running it, and preserve historical failure evidence even if the current revision does not reproduce.
 '''
+implemented = "Historical AuditTest EPIPE failure not reproduced in bounded current-toolchain probes; durable commands, revisions, seeds, raw logs and limitations in docs/verification/task-326/investigation.json. Repaired test-run and global-state fixture leaks. Full seed 326006 passed; 326007 had three unrelated failures, all passing one isolated rerun. Final affected modules: 178 passed, 9 excluded. No production EPIPE fix or repeated full-suite green claim."
+delivered_by = "codex"
 created_at = "2026-06-21"
 started_at = "2026-09-20"
 scored_at = "2026-08-07"
+done_at = "2026-09-21"
+shipped_in = "4ec140c9"
 
 [[task]]
 id = "327"

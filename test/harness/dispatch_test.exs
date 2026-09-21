@@ -1,5 +1,6 @@
 defmodule Harness.DispatchTest do
-  use ExUnit.Case, async: true
+  # This module changes application env and reads the shared registry/store.
+  use ExUnit.Case, async: false
 
   alias Harness.AgentAdapter.Claude
   alias Harness.AgentAdapter.Codex
@@ -818,13 +819,15 @@ defmodule Harness.DispatchTest do
       assert {:ok, item} = Harness.Roadmap.ingest({:id, "1"}, project: project, agent: :claude)
       assert {:ok, prior} = ResultStore.fetch_run_record(old_run_id)
 
-      assert {:ok, new_run_id, _pid} =
+      assert {:ok, new_run_id, pid} =
                Run.Supervisor.start_run(
                  item,
                  project,
                  RereviewCountingAdapter,
                  Dispatch.rereview_opts(item, prior, old_run_id)
                )
+
+      on_exit(fn -> Harness.RunCase.stop_fixture_run(pid) end)
 
       assert_receive {:rereview_adapter_invoked, "1-review"}, 10_000
       refute_receive {:rereview_adapter_invoked, "1"}, 200
