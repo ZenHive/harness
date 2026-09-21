@@ -13303,7 +13303,7 @@ shipped_in = "4fb9118867fae739d0b31ce31be210c455717fcd"
 id = "427"
 phase = 25
 bundle = "core-loop"
-status = "in_progress"
+status = "done"
 title = "Persist recoverable run outcomes during graceful node shutdown"
 scores = { d = 6, b = 9, u = 8 }
 markers = ["bug"]
@@ -13318,9 +13318,13 @@ September 13–14 incident evidence recorded committed run branches with no Resu
 
 2026-09-20 scope refinement: Score rationale: Recoverable shutdown protects already-committed work; supervisor/store ordering and spawn races require integrated tests even after separating Lifeline and SSE.
 '''
+implemented = "Recovered retained delivery 826225b inline; verified bounded graceful shutdown, invocation fencing, persistence failure and queued recovery with 9 shutdown and 12 Postgres tests. Corrected callback fixtures and test-run cleanup; evidence docs/verification/task-427/inline.json. Runtime activation requires the root idle restart."
+delivered_by = "codex"
 created_at = "2026-09-13"
 started_at = "2026-09-20"
 scored_at = "2026-09-20"
+done_at = "2026-09-21"
+shipped_in = "55fc50c1"
 
 [[task]]
 id = "428"

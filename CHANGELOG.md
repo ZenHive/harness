@@ -17,7 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **QA rollout hook inventory is read-only (Task 448 rescue).** `mix harness.projects.use_dispatch_check` is retired. `mix harness.projects.rollout_dispatch_qa` never installs, wraps, or bypasses hooks; failed apply restores captured settings and surfaces restoration failures. QA eligibility pins to matching command, target branch, and current revision.
+- **QA rollout hook inventory is read-only (Task 448 rescue).** `mix harness.projects.use_dispatch_check` is retired. `mix harness.projects.rollout_dispatch_qa` never installs, wraps, or bypasses hooks; failed apply restores captured settings and surfaces restoration failures. Focused dispatch and full QA commands are installed together; prior QA outcomes do not gate the switch.
 
 - **Dashboard: task board and Run Insights match the operator chrome.** The fleet Kanban on `/harness/roadmap` now uses the existing dispatch/hold/resume/land button vocabulary, lane-tinted headings, snap-scrolling full-bleed columns, and a compact empty-lane line instead of the page-level dashed empty state. Dead "Cost —" rows are gone; cards with a run link through to run detail. Run Insights keeps headings as headings (status is no longer a heading role), wraps each revision as a scanable panel, and shortens the navbar label to Insights.
 
@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Node-pressure admission reads headroom, not an RSS sum (Task 428).** `config :harness, :run, mem_highwater_kb` is removed and ignored; the gate now compares Linux `MemAvailable` (`MemoryGuard.host_available_kb/1`) against `mem_lowwater_kb`, defaulting to a 10% reserve of detected host RAM and overridable at boot with `HARNESS_NODE_MEM_LOWWATER_GB` (integer GiB; `0` disables). Unavailable samples — including every non-Linux platform — admit. `host_rss_kb/0` remains as a diagnostic and is documented as *not* a pressure measure: resident sets double-count shared pages and are host-wide, so on a shared box another tenant's memory counted against harness' admission budget. Migrating an old `mem_highwater_kb` value means choosing a headroom reserve, not converting the old ceiling.
 
 ### Fixed
+
+- **Graceful shutdown retains recoverable run outcomes (Task 427).** Close invocation admission, terminate owned processes and persist shutdown facts before application storage stops. Recovered the retained implementation inline and verified application shutdown, spawn races and queued recovery. Test-owned runs are stopped before their temporary worktrees are deleted.
 
 - **A model id pinned from memory no longer reaches a run.** `Harness.ModelAvailability.available?/2` now gates on catalog membership as well as blocks: a task `model` (or a configured standing/reviewer model) that is not an id in the assignee's live catalog is rejected at dispatch with `{:unavailable, agent, model, available: [...]}` and a `:model_unavailable` witness — the cron poller suppresses it the same way. A nil model (model-incapable adapter) and an agent with no catalog at all stay unverifiable and pass. Observed 2026-09-14 on trading_dashboard `run-1789394453452-509ac91f`: a post-merge audit agent (claude/claude-opus-5) filed task 268 with `model = "gpt-5.1-codex-max-xhigh"`, the advisory check let it through, Codex returned HTTP 400 on its first turn, and the run still went to review.
 

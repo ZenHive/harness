@@ -1,7 +1,7 @@
 defmodule Harness.MixProjectTest do
   use ExUnit.Case, async: true
 
-  @heavy_dispatch_steps ~w(dialyzer reach.check ex_dna --cover)
+  @heavy_dispatch_steps ~w(dialyzer reach.check ex_dna --cover credo doctor sobelow test)
 
   test "precommit enforces sobelow exit status while honoring skips" do
     aliases = Keyword.fetch!(Harness.MixProject.project(), :aliases)
@@ -26,11 +26,12 @@ defmodule Harness.MixProjectTest do
 
     assert [
              "format --check-formatted",
-             "compile --warnings-as-errors",
-             "credo --strict --ignore TagTODO,TagFIXME",
-             "doctor --raise",
-             "sobelow --exit --skip"
+             "compile --warnings-as-errors"
            ] = Map.fetch!(aliases, :"check.dispatch")
+
+    for analyzer <- ["credo --strict --ignore TagTODO,TagFIXME", "doctor --raise", "sobelow --exit --skip"] do
+      assert analyzer in Map.fetch!(aliases, :precommit)
+    end
 
     dispatch_steps = Enum.join(Map.fetch!(aliases, :"check.dispatch"), "\n")
 

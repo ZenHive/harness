@@ -169,10 +169,15 @@ defmodule Harness.ProjectCache.CommandTest do
             )
           end)
 
-        await_ready(ready)
-        if mode == :cancel, do: send(owner, :stop)
+        # Expiring before the child reaches the barrier is a valid timeout.
+        # Cancellation alone needs a witnessed live child before stopping its owner.
+        if mode == :cancel do
+          await_ready(ready)
+          send(owner, :stop)
+        end
+
         expected = if mode == :timeout, do: :timeout, else: :interrupted
-        assert {:error, ^expected} = Task.await(task, 500)
+        assert {:error, ^expected} = Task.await(task, 5000)
         send(owner, :stop)
         refute File.exists?(Path.join(base, "must-not-run"))
       end

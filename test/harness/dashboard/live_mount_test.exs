@@ -564,7 +564,7 @@ defmodule Harness.Dashboard.LiveMountTest do
         subscriber: self()
       )
 
-    on_exit(fn -> Run.cancel(run_id) end)
+    on_exit(fn -> Harness.RunCase.stop_fixture_run(pid) end)
     {run_id, pid}
   end
 

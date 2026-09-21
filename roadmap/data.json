@@ -19859,7 +19859,7 @@
       "id": "427",
       "phase": 25,
       "bundle": "core-loop",
-      "status": "in_progress",
+      "status": "done",
       "title": "Persist recoverable run outcomes during graceful node shutdown",
       "scores": {
         "d": 6,
@@ -19905,10 +19905,14 @@
         "test/harness/run_test.exs",
         "test/harness/dispatch_test.exs"
       ],
+      "shipped_in": "55fc50c1",
       "body": "September 13–14 incident evidence recorded committed run branches with no ResultStore record after a service shutdown exceeded its stop timeout. Missing records prevented ordinary rereview/resume_failed recovery. This task owns graceful run shutdown only: stop admitting/spawning agent work, settle live runs with the shutdown fact, retain committed work and persist recoverable records while the stores remain available. Verify actual OTP termination and supervisor ordering before choosing an implementation; trap_exit or terminate callbacks alone are not proof. Lifeline job anchoring is Task 439; transport drain is Task 440. Those are independent failure causes and must not be hidden inside this task. The guarantee is bounded graceful shutdown, not persistence after uncatchable SIGKILL or power loss.\n\n2026-09-20 scope refinement: Score rationale: Recoverable shutdown protects already-committed work; supervisor/store ordering and spawn races require integrated tests even after separating Lifeline and SSE.\n",
       "created_at": "2026-09-13",
       "started_at": "2026-09-20",
+      "done_at": "2026-09-21",
       "scored_at": "2026-09-20",
+      "implemented": "Recovered retained delivery 826225b inline; verified bounded graceful shutdown, invocation fencing, persistence failure and queued recovery with 9 shutdown and 12 Postgres tests. Corrected callback fixtures and test-run cleanup; evidence docs/verification/task-427/inline.json. Runtime activation requires the root idle restart.",
+      "delivered_by": "codex",
       "cross_repo": []
     },
     {
