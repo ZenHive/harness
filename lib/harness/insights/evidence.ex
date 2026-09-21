@@ -23,50 +23,98 @@ defmodule Harness.Insights.Evidence do
     cursor = Map.get(progress, "cursor", "")
 
     with {:ok, records, history_partial} <- records(projects, bootstrap, cursor) do
-      active_ids = Enum.sort(Harness.Run.Supervisor.list_runs())
-      active_cursor = Map.get(progress, "active_cursor", "")
-      active_page = active_ids |> Enum.filter(&(&1 > active_cursor)) |> Enum.take(@batch + 1)
-      active_partial = length(active_page) > @batch
-      active_page = Enum.take(active_page, @batch)
-      historical = Enum.map(records, &historical/1)
-      active = active_page |> Enum.map(&active/1) |> Enum.filter(&included?(&1, projects))
-      {qa, qa_next, qa_pending} = qa(projects, progress)
-      relevant = Enum.map(historical ++ active ++ qa, & &1.project)
-      {external, external_next, external_pending} = external(progress, relevant)
-      samples = historical ++ active ++ external ++ qa
-      changed = Enum.reject(samples, &(Store.get("seen/" <> &1.key) == %{"digest" => &1.digest}))
-      snapshots = if changed == [], do: [], else: Enum.flat_map(changed ++ (samples -- changed), & &1.sources)
-      sources = snapshots |> Enum.take(12) |> Enum.map(&Map.delete(&1, "content"))
-      all_sources = Enum.flat_map(samples, & &1.sources)
-      incomplete = length(all_sources) > 12 or Enum.any?(all_sources, &(&1["availability"] != "available"))
-      cycle_incomplete = Map.get(progress, "cycle_incomplete", false) or incomplete
-      pending = history_partial or active_partial or external_pending or qa_pending
-
-      next = %{
-        "bootstrap" => bootstrap,
-        "project_cursor" => external_next,
-        "qa_cursor" => qa_next,
-        "cursor" => if(history_partial, do: List.last(records).run_id, else: ""),
-        "active_cursor" => if(active_partial, do: List.last(active_page), else: ""),
-        "cycle_incomplete" => pending and cycle_incomplete,
-        "scanned" => Map.get(progress, "scanned", 0) + length(historical ++ active)
-      }
-
-      {:ok,
-       %{
-         sources: sources,
-         snapshots: snapshots,
-         catalog: Enum.map(snapshots, &Map.drop(&1, ["text", "content"])),
-         next: next,
-         changed: length(changed),
-         changed_runs:
-           Enum.count(changed, &(String.starts_with?(&1.key, "record/") or String.starts_with?(&1.key, "active/"))),
-         partial: pending or cycle_incomplete,
-         pending: pending,
-         seen: Enum.map(changed, &{"seen/" <> &1.key, "seen", %{"digest" => &1.digest}})
-       }}
+      collect(progress, bootstrap, projects, records, history_partial)
     end
   end
+
+  @spec collect(map(), String.t(), [String.t()], [map()], boolean()) :: {:ok, map()}
+  defp collect(progress, bootstrap, projects, records, history_partial) do
+    active_ids = Enum.sort(Harness.Run.Supervisor.list_runs())
+    active_cursor = Map.get(progress, "active_cursor", "")
+    active_page = active_ids |> Enum.filter(&(&1 > active_cursor)) |> Enum.take(@batch + 1)
+    active_partial = length(active_page) > @batch
+    active_page = Enum.take(active_page, @batch)
+    historical = Enum.map(records, &historical/1)
+    active = active_page |> Enum.map(&active/1) |> Enum.filter(&included?(&1, projects))
+    {qa, qa_next, qa_pending} = qa(projects, progress)
+    relevant = Enum.map(historical ++ active ++ qa, & &1.project)
+    {external, external_next, external_pending} = external(progress, relevant)
+
+    finish(progress, bootstrap, historical ++ active ++ external ++ qa, %{
+      records: records,
+      historical: historical,
+      active: active,
+      active_page: active_page,
+      history_partial: history_partial,
+      active_partial: active_partial,
+      qa_next: qa_next,
+      qa_pending: qa_pending,
+      external_next: external_next,
+      external_pending: external_pending
+    })
+  end
+
+  @spec finish(map(), String.t(), [map()], map()) :: {:ok, map()}
+  defp finish(progress, bootstrap, samples, meta) do
+    changed = Enum.reject(samples, &(Store.get("seen/" <> &1.key) == %{"digest" => &1.digest}))
+    snapshots = snapshots(changed, samples)
+    sources = snapshots |> Enum.take(@batch) |> Enum.map(&Map.delete(&1, "content"))
+    incomplete = incomplete?(samples)
+    cycle_incomplete = Map.get(progress, "cycle_incomplete", false) or incomplete
+    pending = pending?(meta)
+
+    {:ok,
+     %{
+       sources: sources,
+       snapshots: snapshots,
+       catalog: Enum.map(snapshots, &Map.drop(&1, ["text", "content"])),
+       next: next_progress(progress, bootstrap, pending, cycle_incomplete, meta),
+       changed: Enum.count(changed),
+       changed_runs: Enum.count(changed, &run_sample?/1),
+       partial: pending or cycle_incomplete,
+       pending: pending,
+       seen: Enum.map(changed, &{"seen/" <> &1.key, "seen", %{"digest" => &1.digest}})
+     }}
+  end
+
+  @spec snapshots([map()], [map()]) :: [map()]
+  defp snapshots([], _samples), do: []
+  defp snapshots(changed, samples), do: Enum.flat_map(changed ++ (samples -- changed), & &1.sources)
+
+  @spec incomplete?([map()]) :: boolean()
+  defp incomplete?(samples) do
+    sources = Enum.flat_map(samples, & &1.sources)
+
+    Enum.count_until(sources, @batch + 1) > @batch or
+      Enum.any?(sources, &(&1["availability"] != "available"))
+  end
+
+  @spec pending?(map()) :: boolean()
+  defp pending?(meta) do
+    meta.history_partial or meta.active_partial or meta.external_pending or meta.qa_pending
+  end
+
+  @spec run_sample?(map()) :: boolean()
+  defp run_sample?(sample) do
+    String.starts_with?(sample.key, "record/") or String.starts_with?(sample.key, "active/")
+  end
+
+  @spec next_progress(map(), String.t(), boolean(), boolean(), map()) :: map()
+  defp next_progress(progress, bootstrap, pending, cycle_incomplete, meta) do
+    %{
+      "bootstrap" => bootstrap,
+      "project_cursor" => meta.external_next,
+      "qa_cursor" => meta.qa_next,
+      "cursor" => last_cursor(meta.history_partial, meta.records, & &1.run_id),
+      "active_cursor" => last_cursor(meta.active_partial, meta.active_page, & &1),
+      "cycle_incomplete" => pending and cycle_incomplete,
+      "scanned" => Map.get(progress, "scanned", 0) + Enum.count(meta.historical) + Enum.count(meta.active)
+    }
+  end
+
+  @spec last_cursor(boolean(), [term()], (term() -> String.t())) :: String.t()
+  defp last_cursor(false, _items, _fun), do: ""
+  defp last_cursor(true, items, fun), do: fun.(List.last(items))
 
   @spec external(map(), [String.t()]) :: {[map()], String.t(), boolean()}
   defp external(progress, relevant) do
@@ -90,7 +138,13 @@ defmodule Harness.Insights.Evidence do
         %{value | digest: digest}
       end)
 
-    {samples, if(length(page) > 1, do: hd(page).name, else: ""), length(page) > 1}
+    {cursor, pending?} =
+      case page do
+        [first, _second | _] -> {first.name, true}
+        _ -> {"", false}
+      end
+
+    {samples, cursor, pending?}
   end
 
   @spec qa([String.t()], map()) :: {[map()], String.t(), boolean()}

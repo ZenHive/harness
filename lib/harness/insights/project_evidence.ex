@@ -91,7 +91,7 @@ defmodule Harness.Insights.ProjectEvidence do
          [mode, "blob", hash, ^path] <- String.split(String.trim(entry), ~r/\s+/, parts: 4),
          true <- mode in ["100644", "100755"],
          {:ok, size} <- Git.run(["cat-file", "-s", hash], repo),
-         {bytes, "\n"} <- Integer.parse(size),
+         {bytes, ""} <- Integer.parse(String.trim(size)),
          true <- bytes <= @max_bytes,
          {:ok, content} <- Git.run(["cat-file", "blob", hash], repo),
          true <- String.valid?(content) do

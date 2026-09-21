@@ -98,7 +98,7 @@ defmodule Harness.Insights.ProjectEvidenceTest do
     assert :ok = Insights.observe("decision-only")
     assert_received {:context, decision}
     assert Enum.any?(decision["sources"], &(&1["text"] =~ "Do not restore"))
-    assert length(Insights.history("rejected-427")["revisions"]) == 4
+    assert Enum.count_until(Insights.history("rejected-427")["revisions"], 5) == 4
   end
 
   test "pinned snapshots ignore working files and reject unreferenced paths and symlinks", %{repo: repo, project: project} do
@@ -181,11 +181,11 @@ defmodule Harness.Insights.ProjectEvidenceTest do
 
     sources = ProjectEvidence.sources(project)
     repairs = Enum.filter(sources, &(&1["authority"] == "repair_evidence"))
-    assert length(repairs) == 64
+    assert Enum.count_until(repairs, 65) == 64
     assert Enum.all?(repairs, &(&1["availability"] == "unavailable"))
     catalog = Enum.find(sources, &(&1["field"] == "reference_catalog"))
     assert catalog["availability"] == "truncated"
-    assert length(Jason.decode!(catalog["content"])["paths"]) == 67
+    assert Enum.count_until(Jason.decode!(catalog["content"])["paths"], 68) == 67
   end
 
   test "roadmap and code repositories retain independent revision attribution", %{project: project} do
@@ -237,7 +237,7 @@ defmodule Harness.Insights.ProjectEvidenceTest do
 
     for {id, _, _} <- claims do
       assert Enum.any?(reconciled, &(&1["id"] == id)), "Live observer did not reconcile exact finding #{id}"
-      assert length(Insights.history(id)["revisions"]) == 2
+      assert Enum.count_until(Insights.history(id)["revisions"], 3) == 2
     end
 
     for finding <- reconciled, citation <- finding["citations"] do
