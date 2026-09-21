@@ -348,6 +348,7 @@
 | Task 437 | ✅ | 🎁 **operator-surface** · 🐛 Suite-health never runs deps.get — its guard is unreachable because warm paths always seed deps/ [D:3/B:7/U:6 → Eff:2.17] 🎯 |
 | Task 438 | ⬜ | 🎁 **operator-surface** · 🐛 A failed suite-health bootstrap is silently dropped — inspect(reason) overflows skip_reason varchar(255) [D:4/B:8/U:7 → Eff:1.88] 🚀 |
 | Task 450 | ✅ | 🎁 **audit-hygiene** · Clear the 10 ex_dna clones that fail mix precommit.full [D:5/B:7/U:6 → Eff:1.3] 📋 |
+| Task 453 | ⬜ | 🎁 **core-loop** · 🐛 Make Worktree Reclaim report incomplete inspection instead of an empty backlog [D:4/B:6/U:5 → Eff:1.38] 📋 |
 <!-- TASKS:END -->
 
 ---
@@ -409,6 +410,8 @@
 | Task 447 | ✅ | 🎁 **audit-agent** · Extend post-merge audit into durable full-project QA independent of dispatch checks [D:7/B:9/U:8 → Eff:1.21] 📋 |
 | Task 448 | ✅ | 🎁 **audit-agent** · Roll out focused dispatch checks and full audit QA across all registered projects [D:6/B:8/U:7 → Eff:1.25] 📋 |
 | Task 449 | ✅ | 🎁 **audit-agent** · Provide a unified QA dashboard with evidence, start/retry and rollout visibility [D:5/B:8/U:6 → Eff:1.4] 📋 |
+| Task 451 | ⬜ | 🎁 **operator-cockpit** · 🐛 Reconcile Insights with revision-bound inline repairs and current workflow decisions [D:6/B:8/U:7 → Eff:1.25] 📋 |
+| Task 452 | ⬜ | 🎁 **operator-cockpit** · 🐛 Expose incomplete roadmap coverage in the Action Inbox [D:4/B:7/U:6 → Eff:1.62] 🚀 |
 <!-- TASKS:END -->
 
 ---

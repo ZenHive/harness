@@ -20028,7 +20028,7 @@
         "CLAUDE.md",
         "AGENTS.md"
       ],
-      "body": "Evidence, 2026-09-13, architect seat after task 426 landed (origin/main 099f05d): `mix ci` on the operator's macOS laptop failed with 41 test failures, none caused by 424/426. 37 were `{:missing_executable, \"setsid\"}` / `{:missing_executable, \"flock\"}` across every ProjectCache test — `Harness.ProjectCache.Command.run/6` spawns `setsid --wait sh -c …` and the lock path spawns `flock`, both util-linux binaries that macOS does not ship; the hard dependency arrived with 13f2261 (PR #3, 2026-09-08) and is documented nowhere. One more (durable_test 'a push origin does not retain…') was the operator's global core.hooksPath shadowing the fixture's post-receive hook — fixed in dotfiles, not a harness defect.\n\nAfter `brew install util-linux` and symlinking only setsid and flock into /opt/homebrew/bin, 40 of 44 cache tests pass and four fail deterministically (re-run in isolation, same result):\n\n1. test/harness/project_cache/command_test.exs:134 'startup honors short deadlines and owner cancellation before running user code' — 'startup did not reach barrier'. The test prepends a fake `setsid` shell wrapper to PATH; the wrapper's `ready` file never appears, so the real setsid was used or the wrapper was never exec'd. Premise unverified: `open/4` calls System.find_executable at every call, so PATH shadowing should work — find out why it does not on darwin (fork-then-exec of util-linux setsid when already a group leader? BEAM PATH caching?).\n2. test/harness/project_cache/copy_cancellation_test.exs:11 'crash_cleanup waits for a cancelled preparation copy to finish cleanup' — 'Unexpectedly received message {ref, :ok}': the cancelled copy finished immediately, i.e. the fake `cp` barrier in PATH was never hit. Premise unverified: on darwin `Worktree.clone_copy/3` takes the `cp -c` branch via a path that bypasses the PATH-injected cp, or falls back to File.cp_r.\n3. test/harness/project_cache_plt_test.exs:10 and 4. test/harness/project_cache_seed_plt_test.exs:10 — dialyzer 'File not found: /private/var/folders/…/<key>.building-XXXX/source/_build/dev/lib/…/ebin/….beam'. The PLT still references the staging directory after relocation. Premise unverified: relocation rewrites paths by prefix using the staging path as harness knows it (/var/folders/…) while dialyzer recorded the realpath (/private/var/…), so the prefix never matches on a symlinked tmp root; Linux tmp has no such symlink, which is why the deployed node never sees this.\n\nThe deployed node (Linux) is unaffected. What is broken is the operator's architect-seat gate: harness-workflow § Orchestrator Loop requires `mix ci` on the landed base after every wave, and on the laptop that gate cannot be green for this surface — so 37 spurious failures hide any real integration regression. Make the surface portable (or fail loudly with a named prerequisite), pin the realpath relocation with a test that runs on Linux too, and document the macOS prerequisite.\n\n2026-09-20 scope refinement: The September failure counts describe the observed run, not acceptance targets. Re-enumerate current failing cases and pin their behavior; prove executable resolution and canonical paths without requiring the old counts to remain unchanged.\n",
+      "body": "Evidence, 2026-09-13, architect seat after task 426 landed (origin/main 099f05d): `mix ci` on the operator's macOS laptop failed with 41 test failures, none caused by 424/426. 37 were `{:missing_executable, \"setsid\"}` / `{:missing_executable, \"flock\"}` across every ProjectCache test — `Harness.ProjectCache.Command.run/6` spawns `setsid --wait sh -c …` and the lock path spawns `flock`, both util-linux binaries that macOS does not ship; the hard dependency arrived with 13f2261 (PR #3, 2026-09-08) and is documented nowhere. One more (durable_test 'a push origin does not retain…') was the operator's global core.hooksPath shadowing the fixture's post-receive hook — fixed in dotfiles, not a harness defect.\n\nAfter `brew install util-linux` and symlinking only setsid and flock into /opt/homebrew/bin, 40 of 44 cache tests pass and four fail deterministically (re-run in isolation, same result):\n\n1. test/harness/project_cache/command_test.exs:134 'startup honors short deadlines and owner cancellation before running user code' — 'startup did not reach barrier'. The test prepends a fake `setsid` shell wrapper to PATH; the wrapper's `ready` file never appears, so the real setsid was used or the wrapper was never exec'd. Premise unverified: `open/4` calls System.find_executable at every call, so PATH shadowing should work — find out why it does not on darwin (fork-then-exec of util-linux setsid when already a group leader? BEAM PATH caching?).\n2. test/harness/project_cache/copy_cancellation_test.exs:11 'crash_cleanup waits for a cancelled preparation copy to finish cleanup' — 'Unexpectedly received message {ref, :ok}': the cancelled copy finished immediately, i.e. the fake `cp` barrier in PATH was never hit. Premise unverified: on darwin `Worktree.clone_copy/3` takes the `cp -c` branch via a path that bypasses the PATH-injected cp, or falls back to File.cp_r.\n3. test/harness/project_cache_plt_test.exs:10 and 4. test/harness/project_cache_seed_plt_test.exs:10 — dialyzer 'File not found: /private/var/folders/…/<key>.building-XXXX/source/_build/dev/lib/…/ebin/….beam'. The PLT still references the staging directory after relocation. Premise unverified: relocation rewrites paths by prefix using the staging path as harness knows it (/var/folders/…) while dialyzer recorded the realpath (/private/var/…), so the prefix never matches on a symlinked tmp root; Linux tmp has no such symlink, which is why the deployed node never sees this.\n\nThe deployed node (Linux) is unaffected. What is broken is the operator's architect-seat gate: harness-workflow § Orchestrator Loop requires `mix ci` on the landed base after every wave, and on the laptop that gate cannot be green for this surface — so 37 spurious failures hide any real integration regression. Make the surface portable (or fail loudly with a named prerequisite), pin the realpath relocation with a test that runs on Linux too, and document the macOS prerequisite.\n\n2026-09-20 scope refinement: The September failure counts describe the observed run, not acceptance targets. Re-enumerate current failing cases and pin their behavior; prove executable resolution and canonical paths without requiring the old counts to remain unchanged.\n\n2026-09-21 reconciliation at cbd86f9d: the macOS integrated test run recorded in docs/verification/task-427/inline.json passed 2673 tests (seed 58078). The assertion that the whole operator gate cannot pass is historical, not a current reproduction. Preserve this task for the named prerequisite diagnostics, canonical-path and executable-resolution contracts; verify which remain absent before changing code, and do not restore historical failure counts as acceptance requirements. Use the repository-owned Task 430 AGENTS generator.\n",
       "created_at": "2026-09-13",
       "scored_at": "2026-09-13",
       "cross_repo": []
@@ -21131,6 +21131,133 @@
       "verified": true,
       "verified_by": "cursor",
       "verification_ref": "harness-run:run-1789946929848-bdbdefb3",
+      "cross_repo": []
+    },
+    {
+      "id": "451",
+      "phase": 24,
+      "bundle": "operator-cockpit",
+      "status": "pending",
+      "title": "Reconcile Insights with revision-bound inline repairs and current workflow decisions",
+      "scores": {
+        "d": 6,
+        "b": 8,
+        "u": 7
+      },
+      "eff": 1.25,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-6-astra",
+      "acceptance_criteria": [
+        "A repair committed outside a Harness run can become a cited immutable source, with project, revision, provenance and explicit availability; no arbitrary path access, command execution or secret-bearing file sweep is granted to the observer.",
+        "A later pass reconciles the exact existing finding against current intent and actual repair/test evidence, retaining historical claims and limitations; absence of evidence never becomes resolved.",
+        "Current workflow authority is distinguished from quoted historical agent recommendations: focused dispatch/full QA separation and intentional reviewer fix-and-approve remain intact, with no numeric rewrite threshold or procedural semantic classifier.",
+        "Dedicated QA outcomes are observable even without a new implementation run; changed evidence triggers reassessment, bounded pagination/checkpoints remain truthful and no-new-evidence passes remain cheap.",
+        "Tests cover an inline repair without run-record mutation, a changed task decision, stale rejected-run prose, unavailable evidence, partial retrieval and restart persistence. A live observer pass with independently checked citations demonstrates correct reconciliation and preserves unresolved uncertainty."
+      ],
+      "out_of_scope": [
+        "Automatically marking findings resolved from git ancestry or task status",
+        "Reopening completed tasks or mutating historical run verdicts",
+        "Replacing Task 374 lifecycle history",
+        "Granting the observer lifecycle, roadmap-write or production restart authority"
+      ],
+      "touches": [
+        "lib/harness/insights/",
+        "test/harness/insights/",
+        "skills/harness-driver/SKILL.md"
+      ],
+      "body": "Converges on Tasks 443/445. At origin cbd86f9d on 2026-09-21, Insights findings 1c2094d1-929f-4c5d-a61f-3001de87971c, a4cb28ea-af09-4043-a329-014b03ed75bb and 7f961142-3b55-4eb3-bf4c-211c73ee4b6f still describe the rejected 326/448 and stalled 427 runs without the later inline repair evidence in docs/verification/task-326/investigation.json, docs/verification/task-427/inline.json and docs/verification/qa/task-448.json. Evidence.batch currently supplies run records and active transcripts; Consultation can only retrieve finding pages and continuations of supplied sources. Give the advisory AI bounded, immutable, revision-attributed access to current roadmap intent, canonical workflow decisions, dedicated QA attempts and explicitly referenced repair evidence. Historical reports remain evidence, not current instructions: the old green-QA-before-rollout demand and automatic reviewer-rewrite threshold contradict the current workflow. The AI judges resolution from evidence; a done flag, merged commit or operator assertion alone never proves correctness. Preserve the read-only observation boundary and existing findings/history. Score rationale: the deployed observer cannot see the evidence used to close work outside a run, causing obsolete diagnoses and conflicting recommendations.",
+      "created_at": "2026-09-21",
+      "scored_at": "2026-09-21",
+      "cross_repo": []
+    },
+    {
+      "id": "452",
+      "phase": 24,
+      "bundle": "operator-cockpit",
+      "status": "pending",
+      "title": "Expose incomplete roadmap coverage in the Action Inbox",
+      "scores": {
+        "d": 4,
+        "b": 7,
+        "u": 6
+      },
+      "eff": 1.63,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "grok",
+      "model": "grok-4.6",
+      "acceptance_criteria": [
+        "A missing, unreadable or timed-out project roadmap is named with its factual source error; a truly empty readable roadmap remains distinguishable.",
+        "Healthy projects and held/pending approval facts remain usable; incomplete coverage never becomes a complete zero-action claim in the page or badge.",
+        "Restoring a source removes its warning on refresh and restores relevant recovery/landing rows without duplicated actions.",
+        "Context and LiveView tests cover mixed healthy/failing fleets, all-source failure, genuine empty results, held/approval availability and recovery after source restoration. Action identity and stale-action revalidation remain intact."
+      ],
+      "out_of_scope": [
+        "New persistence or Activity history",
+        "Fetching or mutating target checkouts on display reads",
+        "Changing recovery or landing authority"
+      ],
+      "touches": [
+        "lib/harness/dashboard/inbox.ex",
+        "lib/harness/dashboard/inbox_live.ex",
+        "lib/harness/dashboard/inbox_badge_live.ex",
+        "test/harness/dashboard/"
+      ],
+      "body": "Converges on Task 388. Insights finding 6f2587af-f306-4d55-81ae-2e84ca94874d is confirmed at cbd86f9d: Inbox.tasks/1 replaces each failed or timed-out Roadmap.list with an empty list, and load_current returns an apparently complete success. Preserve healthy-project actions and source-independent held/approval actions while making unavailable project sources visible. This is current Inbox coverage, not Task 441 historical Activity or Task 374 event storage. Score rationale: an operator can otherwise miss recoverable paid work while seeing an apparently empty Inbox.",
+      "created_at": "2026-09-21",
+      "scored_at": "2026-09-21",
+      "cross_repo": []
+    },
+    {
+      "id": "453",
+      "phase": 22,
+      "bundle": "core-loop",
+      "status": "pending",
+      "title": "Make Worktree Reclaim report incomplete inspection instead of an empty backlog",
+      "scores": {
+        "d": 4,
+        "b": 6,
+        "u": 5
+      },
+      "eff": 1.38,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [
+        "bug"
+      ],
+      "depends_on": [],
+      "assignee": "cursor",
+      "model": "cursor-grok-4.6-high",
+      "acceptance_criteria": [
+        "Registry, repository, target and Git enumeration failures identify what was not inspected and preserve raw error context; a completed empty scan is distinct from incomplete inspection.",
+        "Dry-run prints bounded inspected/skipped/error facts. Apply refuses an incomplete selected inspection before any deletion or repair; no silent partial apply or permissive fallback is introduced.",
+        "Existing live/held/retained/unlanded protection and reachability requirements remain unchanged.",
+        "Isolated real-Git and CLI tests cover empty success, missing registry, invalid repo, absent target, enumeration failure and mixed valid/invalid projects, proving that incomplete apply makes no mutations."
+      ],
+      "out_of_scope": [
+        "Task 434 database reclamation",
+        "Deleting production worktrees or branches during implementation",
+        "Replacing reachability checks with AI judgment or adding automatic cleanup scheduling"
+      ],
+      "touches": [
+        "lib/harness/worktree/reclaim.ex",
+        "lib/mix/tasks/harness.worktree.reclaim.ex",
+        "test/harness/worktree/",
+        "test/mix/tasks/"
+      ],
+      "body": "Converges on Task 377. Insights findings ea178783-2c63-4105-815e-608e27d0e569 and 53f17314-980d-490a-98ed-95272d37568d describe the same defect, confirmed at cbd86f9d: default_projects returns [] for an absent registry, project_context silently omits unavailable local repos or missing targets, and harness_branches turns a Git error into []. A successful empty report therefore does not prove a completed inspection. Preserve conservative retention and expose factual coverage/errors through the existing report and CLI. Score rationale: cleanup inspection must be interpretable before an operator relies on its result; this changes a destructive maintenance boundary and needs independent review.",
+      "created_at": "2026-09-21",
+      "scored_at": "2026-09-21",
       "cross_repo": []
     }
   ]
