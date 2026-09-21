@@ -18060,7 +18060,7 @@
       "markers": [],
       "depends_on": [],
       "assignee": "cursor",
-      "model": "cursor-grok-4.6-high",
+      "model": "grok-4.7-high",
       "acceptance_criteria": [
         "A gate is declared with an id, a label, the command to run, its dependencies, and an optional allow-failure flag; the check aggregates (check.fast, check.dispatch, precommit, precommit.full/ci) are expressed as gate sets over that declaration instead of serial alias lists",
         "Independent gates within one aggregate run concurrently under a bounded concurrency limit while declared dependencies are respected; ex_dna, reach.check and dialyzer.json are candidates whose safe concurrency must be verified against their shared resources",
@@ -18112,7 +18112,7 @@
         430
       ],
       "assignee": "grok",
-      "model": "grok-4.6",
+      "model": "grok-4.7",
       "acceptance_criteria": [
         "The agent-gate, thin-core and inline-versus-dispatch decisions retain their rationale and alternatives in existing or necessary decision records; incident histories are separately addressable.",
         "CLAUDE.md and priv/includes/harness-workflow.md preserve the force of every standing rule with concise text and resolvable references; no rule is silently demoted to optional reading.",
@@ -20007,7 +20007,7 @@
       ],
       "depends_on": [],
       "assignee": "cursor",
-      "model": "cursor-grok-4.6-high",
+      "model": "grok-4.7-high",
       "acceptance_criteria": [
         "On macOS with util-linux's setsid and flock on PATH, the whole ProjectCache test surface passes under mix ci, including the four tests named in the body (command_test 'startup honors short deadlines…', copy_cancellation 'crash_cleanup waits…', project_cache_plt_test, project_cache_seed_plt_test). A missing setsid or flock surfaces once, at preparation start, as a named {:missing_executable, name} error carrying the darwin install hint — never as dozens of unrelated per-test failures.",
         "PLT relocation compares canonical (realpath) paths: a staging directory under a symlinked tmp root (macOS /var/folders -> /private/var) still relocates, and a test that builds the fixture under a deliberately symlinked tmp dir on any OS asserts the relocated PLT checks clean (dialyzer 'File not found: …/.building-…/source/…' is the failure this pins).",
@@ -20578,7 +20578,7 @@
       ],
       "depends_on": [],
       "assignee": "cursor",
-      "model": "cursor-grok-4.6-high",
+      "model": "grok-4.7-high",
       "acceptance_criteria": [
         "An isolated application instance with zero runs and multiple real MCP SSE connections shuts down within a documented total deadline; elapsed shutdown does not accumulate one full connection timeout per client.",
         "Live integration coverage opens real transport connections and stops the disposable instance, without restarting or modifying the production node.",
@@ -20621,7 +20621,7 @@
         374
       ],
       "assignee": "grok",
-      "model": "grok-4.6",
+      "model": "grok-4.7",
       "acceptance_criteria": [
         "The /harness/activity route and navigation expose deterministic paginated history filtered by project, run, event type, adapter/model, time range and payload text.",
         "Historical compatibility rows are labelled by source; absent actor facts remain absent, and no adapter/model pair is presented as a durable personal identity.",
@@ -21347,7 +21347,7 @@
       ],
       "depends_on": [],
       "assignee": "cursor",
-      "model": "cursor-grok-4.6-high",
+      "model": "grok-4.7-high",
       "acceptance_criteria": [
         "Trace the invalid model configuration reaching Keyword.get/3 to its writer and lifecycle; preserve failing input and predecessor evidence before changing code.",
         "Add a deterministic regression for the responsible configuration or fixture restoration boundary, including an originally absent setting. Do not mask the defect with a nil fallback or weaken assertions.",
@@ -21382,7 +21382,7 @@
       ],
       "depends_on": [],
       "assignee": "grok",
-      "model": "grok-4.6",
+      "model": "grok-4.7",
       "acceptance_criteria": [
         "Identify and remove the fixture module availability race without retries, sleeps, skipped tests or weakened AGENTS.md assertions.",
         "Ensure CodexChannelEcho is compiled before any async case can invoke it; verify focused AgentDriver tests from a fresh test compilation and retain the original integrated failure evidence."
