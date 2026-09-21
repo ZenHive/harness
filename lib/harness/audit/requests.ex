@@ -24,7 +24,6 @@ defmodule Harness.Audit.Requests do
     else
       {:skipped, reason} -> {:error, reason}
       {:error, _} = error -> error
-      _ -> {:error, :target_revision_unavailable}
     end
   rescue
     error in [RuntimeError, ArgumentError, DBConnection.ConnectionError, DBConnection.OwnershipError, Postgrex.Error] ->
@@ -91,7 +90,6 @@ defmodule Harness.Audit.Requests do
 
   @spec accept_job({:ok, term()} | {:error, term()}) :: Oban.Job.t()
   defp accept_job({:ok, %{id: id} = job}) when is_integer(id), do: job
-  defp accept_job({:ok, _job}), do: Repo.rollback(:queue_busy)
   defp accept_job({:error, reason}), do: Repo.rollback(reason)
 
   @spec existing_audit(map()) :: Oban.Job.t() | nil

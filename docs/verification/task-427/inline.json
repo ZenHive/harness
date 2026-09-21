@@ -48,5 +48,127 @@
       "failures": []
     }
   ],
-  "activation": "Requires a fresh supervision tree through idle root autodeploy; hot reload alone is insufficient."
+  "activation": "Requires a fresh supervision tree through idle root autodeploy; hot reload alone is insufficient.",
+  "architect_review": {
+    "date": "2026-09-21",
+    "reviewed_base": "684cd1f62a23c7be544acd66af898779c404e4c1",
+    "reviewer": "Codex inline orchestrator; not an independent harness verdict",
+    "scope": "Integrated shutdown/recovery, test isolation, fleet QA rollout and task 450 shared stores/cron",
+    "findings_fixed": [
+      "Credo structure/alias/format findings and missing admission documentation",
+      "Audit request qa_attempt/termination and Run dispatch_decision type contracts",
+      "Direct runtime MuonTrap dependency for Insights and Maintenance",
+      "Unreachable fallback clauses and hook import visited-path opaque type mismatch",
+      "QA dashboard assertions scoped to their project instead of all persisted Oban jobs"
+    ],
+    "full_suite": {
+      "command": "mix precommit.full",
+      "seed": 58078,
+      "passed": 2673,
+      "failed": 0,
+      "excluded": 175,
+      "coverage_percent": 82.74,
+      "coverage_threshold": 80,
+      "note": "Full alias reached Dialyzer and failed there. Subsequent fixes verified through targeted tests and analyzer reruns; no claim of a second complete alias run."
+    },
+    "focused_checks": [
+      {
+        "scope": "postgres recovery/persistence/stores",
+        "seed": 920052,
+        "summary": {
+          "invalid": 0,
+          "total": 16,
+          "failed": 0,
+          "result": "passed",
+          "excluded": 0,
+          "passed": 16,
+          "skipped": 0,
+          "duration_us": 18380490
+        },
+        "log": "/tmp/harness-architect-postgres.json",
+        "sha256": "8fa67eb52885c610e1eb70c2f603947f50eafa346dd0261a0d8101618acf8dd8"
+      },
+      {
+        "scope": "audit/shutdown/runtime dependency/hooks",
+        "seed": 365827,
+        "summary": {
+          "invalid": 0,
+          "total": 66,
+          "failed": 0,
+          "result": "passed",
+          "excluded": 16,
+          "skipped": 0,
+          "passed": 50,
+          "duration_us": 34079178
+        },
+        "log": "/tmp/harness-architect-focused.json",
+        "sha256": "4a70c6650f68691bac995405635ccde486ea97f003007e19615ee5df350b59a3"
+      },
+      {
+        "scope": "QA dashboard/maintenance queue/task board/hooks",
+        "seed": 259113,
+        "summary": {
+          "invalid": 0,
+          "total": 53,
+          "failed": 0,
+          "result": "passed",
+          "excluded": 0,
+          "passed": 53,
+          "skipped": 0,
+          "duration_us": 4819533
+        },
+        "log": "/tmp/harness-architect-final-focused-fixed.json",
+        "sha256": "387b7705d7b6fb4449d2b15f6813e669377beaee52149b4af5a51bb4ea353732"
+      }
+    ],
+    "analyzers": [
+      {
+        "command": "mix format --check-formatted",
+        "exit_code": 0,
+        "log": "/tmp/harness-architect-check-0.log"
+      },
+      {
+        "command": "mix harness.deps.check",
+        "exit_code": 0,
+        "log": "/tmp/harness-architect-check-1.log"
+      },
+      {
+        "command": "mix credo --strict --ignore TagTODO,TagFIXME",
+        "exit_code": 0,
+        "log": "/tmp/harness-architect-check-2.log"
+      },
+      {
+        "command": "mix doctor --raise",
+        "exit_code": 0,
+        "log": "/tmp/harness-architect-check-3.log"
+      },
+      {
+        "command": "mix sobelow --exit --skip",
+        "exit_code": 0,
+        "log": "/tmp/harness-architect-check-4.log"
+      },
+      {
+        "command": "mix ex_dna --max-clones 0",
+        "exit_code": 0,
+        "log": "/tmp/harness-architect-check-5.log"
+      },
+      {
+        "command": "mix reach.check --arch --smells",
+        "exit_code": 0,
+        "log": "/tmp/harness-architect-check-6.log"
+      }
+    ],
+    "dialyzer": {
+      "total": 0,
+      "skipped": 0,
+      "by_fix_hint": {},
+      "by_type": {}
+    },
+    "fleet_readback": "All 15 registered mappings unchanged; ccxt-distill unregistered",
+    "limitations": [
+      "175 integration/live-agent tests excluded from full suite; selected real PostgreSQL integration tests run separately.",
+      "Reach smell findings remain advisory; architecture gate passed.",
+      "Repair not deployed or hot-reloaded by this review."
+    ]
+  }
 }

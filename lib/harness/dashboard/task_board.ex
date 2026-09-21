@@ -260,8 +260,6 @@ defmodule Harness.Dashboard.TaskBoard do
     end
   end
 
-  defp held_lane(_status), do: :implementing
-
   @spec in_progress_lane(Status.t() | nil) :: lane()
   defp in_progress_lane(selected) do
     if landing_attempt?(selected), do: :landing, else: :implementing

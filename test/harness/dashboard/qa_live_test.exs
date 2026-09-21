@@ -92,7 +92,8 @@ defmodule Harness.Dashboard.QALiveTest do
     assert render_async(view) =~ "queued."
     view |> element("#qa-start") |> render_click()
     assert render_async(view) =~ "already active"
-    assert [job] = Repo.all(Oban.Job)
+    jobs = from job in Oban.Job, where: job.args["project_name"] == ^ctx.project.name
+    assert [job] = Repo.all(jobs)
     Repo.update!(Ecto.Changeset.change(job, state: "executing", attempt: 1))
     {:ok, attempt} = QA.start(%{project: ctx.project, base_sha: ctx.revision, job_id: job.id, attempt: 1})
     QA.pin(attempt, %{revision: ctx.revision})
@@ -102,7 +103,7 @@ defmodule Harness.Dashboard.QALiveTest do
     assert refresh(view) =~ "Retry QA"
     view |> element("#qa-start") |> render_click()
     assert render_async(view) =~ "queued."
-    assert Repo.aggregate(Oban.Job, :count) == 2
+    assert Repo.aggregate(jobs, :count) == 2
     assert [%{status: "queued", latest: %{status: "failed"}}] = Presentation.page(ctx.project.name, "failed", 0).rows
   end
 

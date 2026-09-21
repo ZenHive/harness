@@ -3,6 +3,12 @@ defmodule Harness.MixProjectTest do
 
   @heavy_dispatch_steps ~w(dialyzer reach.check ex_dna --cover credo doctor sobelow test)
 
+  test "bounded subprocess support is included in the runtime application dependencies" do
+    assert :muontrap in Application.spec(:harness, :applications)
+    assert Code.ensure_loaded?(MuonTrap)
+    assert function_exported?(MuonTrap, :cmd, 3)
+  end
+
   test "precommit enforces sobelow exit status while honoring skips" do
     aliases = Keyword.fetch!(Harness.MixProject.project(), :aliases)
 

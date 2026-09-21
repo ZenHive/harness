@@ -99,7 +99,9 @@ defmodule Harness.Audit do
           optional(:auditor_opts) => keyword(),
           optional(:result_store) => ResultStore.store(),
           optional(:job_id) => pos_integer() | nil,
-          optional(:attempt) => pos_integer() | nil
+          optional(:attempt) => pos_integer() | nil,
+          optional(:qa_attempt) => QA.attempt(),
+          optional(:termination) => Outcome.kind()
         }
 
   @typedoc """

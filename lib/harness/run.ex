@@ -140,6 +140,7 @@ defmodule Harness.Run do
 
   @typep data :: %{
            run_id: String.t(),
+           dispatch_decision: map(),
            run_pid: pid(),
            admission: GenServer.server(),
            shutdown_token: :atomics.atomics_ref(),

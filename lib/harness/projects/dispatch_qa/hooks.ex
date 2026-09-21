@@ -56,7 +56,7 @@ defmodule Harness.Projects.DispatchQA.Hooks do
             else: []
           ) ++ if(root, do: [Path.join(root, "CLAUDE.md")], else: []),
           home,
-          MapSet.new()
+          %{}
         )
     }
   end
@@ -127,19 +127,19 @@ defmodule Harness.Projects.DispatchQA.Hooks do
   defp expand_path("~/" <> path, home, _base), do: Path.join(home, path)
   defp expand_path(path, _home, base), do: Path.expand(path, base)
 
-  @spec instruction_files([String.t()], String.t(), MapSet.t()) :: [map()]
+  @spec instruction_files([String.t()], String.t(), %{optional(String.t()) => true}) :: [map()]
   defp instruction_files([], _home, _seen), do: []
 
   defp instruction_files([path | rest], home, seen) do
     path = Path.expand(path)
 
-    if MapSet.member?(seen, path) do
+    if Map.has_key?(seen, path) do
       instruction_files(rest, home, seen)
     else
       file = read_file(path)
       references = Regex.scan(~r/(?:^|\s)@([^\s`]+\.md)/m, Map.get(file, :content, ""), capture: :all_but_first)
       paths = Enum.map(references, fn [reference] -> expand_path(reference, home, Path.dirname(path)) end)
-      [file | instruction_files(paths ++ rest, home, MapSet.put(seen, path))]
+      [file | instruction_files(paths ++ rest, home, Map.put(seen, path, true))]
     end
   end
 

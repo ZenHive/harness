@@ -1,6 +1,7 @@
 defmodule Harness.Projects.DispatchQA.PersistenceTest do
   use Harness.DataCase, async: false
 
+  alias Harness.Landing.Settings
   alias Harness.ProjectFixture
   alias Harness.ProjectRegistry
   alias Harness.ProjectRegistry.Schema.Project, as: ProjectSchema
@@ -27,7 +28,7 @@ defmodule Harness.Projects.DispatchQA.PersistenceTest do
   end
 
   test "landing overrides do not corrupt registration readback", %{project: project} do
-    assert :ok = Harness.Landing.Settings.set(project.name, :auto, "release", "test")
+    assert :ok = Settings.set(project.name, :auto, "release", "test")
     assert {:ok, %{landing_policy: :auto, target_branch: "release"}} = ProjectRegistry.lookup(project.name)
     assert {:ok, ^project} = DispatchQA.persisted_lookup(project.name)
     assert :ok = ProjectRegistry.upsert(%{project | check_command: "focused checks"})

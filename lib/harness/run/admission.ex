@@ -6,27 +6,35 @@ defmodule Harness.Run.Admission do
 
   @spawn_grace 5_000
 
+  @doc "Starts the invocation admission fence for a run supervisor."
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: Keyword.fetch!(opts, :name))
 
+  @doc "Returns the shared shutdown token for state callbacks."
   @spec token(GenServer.server()) :: :atomics.atomics_ref()
   def token(server), do: GenServer.call(server, :token)
 
+  @doc "Reports whether invocation admission has closed."
   @spec closed?(:atomics.atomics_ref()) :: boolean()
   def closed?(token), do: :atomics.get(token, 1) == 1
 
+  @doc "Starts a supervised run only while admission is open."
   @spec start_run(GenServer.server(), Supervisor.child_spec() | tuple()) :: Supervisor.on_start_child()
   def start_run(server, child), do: GenServer.call(server, {:start_run, child}, :infinity)
 
+  @doc "Leases permission for the calling process to spawn an agent."
   @spec acquire(GenServer.server()) :: :ok | {:error, :shutdown}
   def acquire(server), do: GenServer.call(server, :acquire)
 
+  @doc "Releases the calling process's spawn lease after handle delivery."
   @spec release(GenServer.server()) :: :ok
   def release(server), do: GenServer.call(server, :release)
 
+  @doc "Closes admission and waits for admitted spawns to finish or be terminated."
   @spec close(GenServer.server()) :: :ok
   def close(server), do: GenServer.call(server, :close, @spawn_grace + 1_000)
 
+  @doc "Waits for outstanding spawn leases to drain after admission closes."
   @spec await(GenServer.server()) :: :ok
   def await(server), do: GenServer.call(server, :await, @spawn_grace + 1_000)
 

@@ -30,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Integrated QA repair after Tasks 427/448/450.** Corrected audit/run type contracts, declared the directly used MuonTrap runtime dependency, documented shutdown admission, and repaired QA test isolation. Full suite: 2,673 passed, 82.74% coverage; targeted follow-up tests and all analyzers passed, including zero Dialyzer warnings and zero clones. Evidence: `docs/verification/task-427/inline.json`.
+
 - **Historical AuditTest EPIPE investigation (Task 326): not reproduced.** Bounded full-suite probes retained with revision, seeds, coverage and raw logs in `docs/verification/task-326/`. Fixed leaked test runs and global-state fixture isolation. One full seed passed; another exposed three unrelated failures that passed once in isolation. No production EPIPE fix or repeatedly green full suite is claimed.
 - **Graceful shutdown retains recoverable run outcomes (Task 427).** Close invocation admission, terminate owned processes and persist shutdown facts before application storage stops. Recovered the retained implementation inline and verified application shutdown, spawn races and queued recovery. Test-owned runs are stopped before their temporary worktrees are deleted.
 

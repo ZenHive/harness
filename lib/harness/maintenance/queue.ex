@@ -50,9 +50,6 @@ defmodule Harness.Maintenance.Queue do
 
       {:error, reason} ->
         Repo.rollback(reason)
-
-      _ ->
-        Repo.rollback(:enqueue_conflict)
     end
   end
 end

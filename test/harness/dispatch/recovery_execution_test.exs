@@ -353,10 +353,10 @@ defmodule Harness.Dispatch.RecoveryExecutionTest do
     owner = self()
     admission = __MODULE__.ShutdownAdmission
 
+    supervisor_opts = [name: __MODULE__.ShutdownSupervisor, admission: admission, runs: __MODULE__.ShutdownRuns]
+
     sup =
-      start_supervised!(
-        {Harness.Run.Supervisor, name: __MODULE__.ShutdownSupervisor, admission: admission, runs: __MODULE__.ShutdownRuns}
-      )
+      start_supervised!({Harness.Run.Supervisor, supervisor_opts})
 
     Application.put_env(:harness, :run_starter, fn item, project, _adapter, opts ->
       {:ok, id, pid} =

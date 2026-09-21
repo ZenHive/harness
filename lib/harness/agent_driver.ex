@@ -61,19 +61,21 @@ defmodule Harness.AgentDriver do
   @spec admitted_run(GenServer.server(), module(), Invocation.t(), keyword()) :: {:ok, Outcome.t()} | {:error, term()}
   defp admitted_run(admission, adapter, invocation, opts) do
     with :ok <- Admission.acquire(admission) do
-      on_spawn = Keyword.get(opts, :on_spawn)
-
-      opts =
-        Keyword.put(opts, :on_spawn, fn run ->
-          if on_spawn, do: on_spawn.(run)
-          Admission.release(admission)
-        end)
+      opts = Keyword.put(opts, :on_spawn, release_on_spawn(admission, Keyword.get(opts, :on_spawn)))
 
       try do
         Driver.run(adapter, AgentRuleDelivery.prepare(adapter, invocation), opts)
       after
         Admission.release(admission)
       end
+    end
+  end
+
+  @spec release_on_spawn(GenServer.server(), (term() -> term()) | nil) :: (term() -> :ok)
+  defp release_on_spawn(admission, on_spawn) do
+    fn run ->
+      if on_spawn, do: on_spawn.(run)
+      Admission.release(admission)
     end
   end
 end
