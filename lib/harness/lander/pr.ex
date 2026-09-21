@@ -22,9 +22,10 @@ defmodule Harness.Lander.PR do
   not fall back to pushing the target. An rmap binary that rejects
   `--landing-ref` is logged and tolerated.
   """
-  @spec open(Project.t(), map(), String.t(), String.t()) :: {:ok, String.t()} | {:error, GH.error()}
+  @spec open(Project.t(), map(), String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
   def open(%Project{} = project, request, target, repo) when is_binary(target) and is_binary(repo) do
-    with {:ok, url} <- GH.create_pr(create_opts(project, request, target, repo)) do
+    with {:ok, _progress} <- Harness.Lander.Writeback.prepare(request),
+         {:ok, url} <- GH.create_pr(create_opts(project, request, target, repo)) do
       persist_opened(request.run_id, url)
       write_landing_ref(project, request, url)
       {:ok, url}
@@ -34,10 +35,9 @@ defmodule Harness.Lander.PR do
   @doc false
   @spec complete_merge(LogRecord.t(), String.t()) :: :ok | {:error, term()}
   def complete_merge(%LogRecord{} = record, sha) when is_binary(sha) do
-    with {:ok, project} <- ProjectRegistry.lookup(record.project_name) do
-      Harness.Lander.writeback_merged(project, request_from_record(record, project), sha)
-      persist_writeback(record.run_id, :merged)
-      :ok
+    with {:ok, project} <- ProjectRegistry.lookup(record.project_name),
+         :ok <- Harness.Lander.writeback_merged(project, Harness.Lander.request_from_record(record, project), sha) do
+      ResultStore.mark_pr_writeback(record.run_id, :merged)
     end
   end
 
@@ -196,18 +196,5 @@ defmodule Harness.Lander.PR do
       branch: "harness/" <> record.run_id,
       outcome: reason
     })
-  end
-
-  @spec request_from_record(LogRecord.t(), Project.t()) :: map()
-  defp request_from_record(%LogRecord{} = record, %Project{} = project) do
-    %{
-      project: project,
-      run_id: record.run_id,
-      task_id: record.task_id,
-      task_fingerprint: record.task_fingerprint,
-      agent: record.agent,
-      reviewer: record.reviewer_adapter,
-      branch: "harness/" <> record.run_id
-    }
   end
 end

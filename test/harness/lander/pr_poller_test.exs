@@ -25,8 +25,18 @@ defmodule Harness.Lander.PRPollerTest do
   @merge_sha "abc123deadbeef"
 
   setup do
-    repo = GitFixture.init_repo()
-    project = %{ProjectFixture.from_repo(repo, name: "pr-poll") | landing_policy: :pr, target_branch: "main"}
+    %{repo: repo} = GitFixture.init_with_origin()
+    roadmap = Harness.LandingFixture.roadmap()
+    merge_sha = repo |> GitFixture.git!(["rev-parse", "HEAD"]) |> String.trim()
+
+    project = %{
+      ProjectFixture.from_repo(repo, name: "pr-poll")
+      | landing_policy: :pr,
+        target_branch: "main",
+        roadmap_path: roadmap.repo,
+        roadmap_target_branch: "main"
+    }
+
     :ok = ProjectRegistry.register(project)
 
     store = {Memory, scope: {:pr_poller, self(), System.unique_integer([:positive])}}
@@ -57,18 +67,18 @@ defmodule Harness.Lander.PRPollerTest do
       SettingsStoreMemory.reset(scope: :test_default)
     end)
 
-    {:ok, project: project, store: store}
+    {:ok, project: project, store: store, roadmap: roadmap, merge_sha: merge_sha, repo: repo}
   end
 
   describe "open_pr?/1" do
-    test "requires a pr_url, no landed_sha, and writeback opened or nil" do
+    test "requires a pr_url and incomplete PR writeback even after delivery lands" do
       base = log_record("pr-poll")
 
       assert PRPoller.open_pr?(%{base | pr_url: @pr_url, pr_writeback: :opened, landed_sha: nil})
       assert PRPoller.open_pr?(%{base | pr_url: @pr_url, pr_writeback: nil, landed_sha: nil})
       refute PRPoller.open_pr?(%{base | pr_url: nil, pr_writeback: :opened, landed_sha: nil})
       refute PRPoller.open_pr?(%{base | pr_url: @pr_url, pr_writeback: :merged, landed_sha: nil})
-      refute PRPoller.open_pr?(%{base | pr_url: @pr_url, pr_writeback: :opened, landed_sha: @merge_sha})
+      assert PRPoller.open_pr?(%{base | pr_url: @pr_url, pr_writeback: :opened, landed_sha: @merge_sha})
       refute PRPoller.open_pr?(%{base | pr_url: @pr_url, pr_writeback: :closed, landed_sha: nil})
     end
   end
@@ -107,22 +117,22 @@ defmodule Harness.Lander.PRPollerTest do
       refute_receive {:audit_insert, _changeset}, 200
     end
 
-    test "MERGED writeback is idempotent and enqueues audit once" do
+    test "MERGED writeback is idempotent and enqueues audit once", %{merge_sha: merge_sha} do
       :ok = ResultStore.record_run(open_record("pr-poll"))
 
       stub_view(%{
         "state" => "MERGED",
-        "mergeCommit" => %{"oid" => @merge_sha},
+        "mergeCommit" => %{"oid" => merge_sha},
         "mergedAt" => "2026-09-13T01:00:00Z"
       })
 
       assert :ok = PRPoller.perform(%Job{})
 
       assert {:ok, [record]} = ResultStore.list_run_records(run_id: "run-pr")
-      assert record.landed_sha == @merge_sha
+      assert record.landed_sha == merge_sha
       assert record.pr_writeback == :merged
 
-      assert_receive {:notify, %Event{type: :landed, outcome: @merge_sha, task_id: "1"}}
+      assert_receive {:notify, %Event{type: :landed, outcome: ^merge_sha, task_id: "1"}}
       assert_receive {:audit_insert, _changeset}, 1_000
 
       assert :ok = PRPoller.perform(%Job{})
@@ -130,22 +140,22 @@ defmodule Harness.Lander.PRPollerTest do
       refute_receive {:audit_insert, _changeset}, 200
     end
 
-    test "CLOSED with a merge commit writes back as merged (not blocked)" do
+    test "CLOSED with a merge commit writes back as merged (not blocked)", %{merge_sha: merge_sha} do
       :ok = ResultStore.record_run(open_record("pr-poll"))
 
       stub_view(%{
         "state" => "CLOSED",
-        "mergeCommit" => %{"oid" => @merge_sha},
+        "mergeCommit" => %{"oid" => merge_sha},
         "mergedAt" => "2026-09-13T01:00:00Z"
       })
 
       assert :ok = PRPoller.perform(%Job{})
 
       assert {:ok, [record]} = ResultStore.list_run_records(run_id: "run-pr")
-      assert record.landed_sha == @merge_sha
+      assert record.landed_sha == merge_sha
       assert record.pr_writeback == :merged
 
-      assert_receive {:notify, %Event{type: :landed, outcome: @merge_sha, task_id: "1"}}
+      assert_receive {:notify, %Event{type: :landed, outcome: ^merge_sha, task_id: "1"}}
       refute_receive {:notify, %Event{type: :blocked}}, 200
     end
 
@@ -167,6 +177,39 @@ defmodule Harness.Lander.PRPollerTest do
       assert_receive {:notify, %Event{type: :blocked, outcome: reason}}
       assert reason == "PR #{@pr_url} closed unmerged"
     end
+  end
+
+  test "merged writeback failure is retried from persisted delivery without polling GitHub", ctx do
+    record = %{open_record("pr-poll") | task_ids: ["1", "2"]}
+    :ok = ResultStore.record_run(record)
+    hook = Path.join(ctx.roadmap.origin, "hooks/pre-receive")
+    File.write!(hook, "#!/bin/sh\nexit 1\n")
+    File.chmod!(hook, 0o755)
+    stub_view(%{"state" => "MERGED", "mergeCommit" => %{"oid" => ctx.merge_sha}})
+
+    assert :ok = PRPoller.perform(%Job{})
+    assert {:ok, failed} = ResultStore.fetch_run_record("run-pr")
+    assert failed.landed_sha == ctx.merge_sha
+    assert failed.pr_writeback == :opened
+    assert failed.roadmap_writeback["status"] == "pending"
+    assert failed.roadmap_writeback["task_ids"] == ["1", "2"]
+    refute_receive {:notify, %Event{type: :landed}}
+
+    File.rm!(hook)
+    Application.put_env(:harness, :gh_cmd, fn args, _opts -> flunk("unexpected gh retry: #{inspect(args)}") end)
+    assert :ok = PRPoller.perform(%Job{})
+    assert {:ok, complete} = ResultStore.fetch_run_record("run-pr")
+    assert complete.pr_writeback == :merged
+    assert complete.roadmap_writeback["status"] == "complete"
+
+    for id <- ["1", "2"] do
+      task = Harness.LandingFixture.origin_task(ctx.roadmap.origin, id)
+      assert task["status"] == "done"
+      assert task["shipped_in"] == ctx.merge_sha
+      assert task["verification_ref"] == "harness-run:run-pr"
+    end
+
+    assert :ok = PRPoller.perform(%Job{})
   end
 
   @spec stub_view(map()) :: :ok

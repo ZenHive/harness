@@ -38,6 +38,7 @@ defmodule Harness.ResultStore.Schema.RunRecord do
     field :landed_sha, :string
     field :pr_url, :string
     field :pr_writeback, :string
+    field :roadmap_writeback, :map
 
     field :reason, :map
     field :token_usage, :map
@@ -97,6 +98,7 @@ defmodule Harness.ResultStore.Schema.RunRecord do
       :landed_sha,
       :pr_url,
       :pr_writeback,
+      :roadmap_writeback,
       :reason,
       :token_usage,
       :composed_inputs,

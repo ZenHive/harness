@@ -58,7 +58,7 @@ defmodule Harness.Run.LogRecord do
   cheaper than a hard fail plus manual re-dispatch. All default to "recovery never
   ran" (`0` / `nil` / empty usage) for the overwhelming majority of runs.
 
-  ## Landing witness (`landed_sha`, `pr_url`, `pr_writeback`)
+  ## Landing witness (`landed_sha`, `roadmap_writeback`, `pr_url`, `pr_writeback`)
 
   `landed_sha` is the lander's durable witness for this run: nil until the run is
   fast-forward-pushed (or a `:pr` pull request merges), then the pushed/merge
@@ -66,6 +66,10 @@ defmodule Harness.Run.LogRecord do
   and render as unmerged until re-landed. `pr_url` is the GitHub pull request
   opened under `landing_policy: :pr`; `pr_writeback` records that the
   open/merged/closed writeback already ran so the PR poller is idempotent.
+  `roadmap_writeback` independently records pending/complete roadmap completion,
+  member IDs and fingerprints, reviewer identity, and completed member IDs.
+  A delivery SHA alone does not mean roadmap completion succeeded. Legacy rows
+  with no progress are reconstructed from the settled review record on reland.
   `task_fingerprint` is the dispatch-time stable task-content hash the lander
   uses to guard rmap writeback against numeric-id drift.
 
@@ -149,6 +153,7 @@ defmodule Harness.Run.LogRecord do
           recovery_token_usage: TokenUsage.t(),
           landed_sha: String.t() | nil,
           pr_url: String.t() | nil,
+          roadmap_writeback: map() | nil,
           pr_writeback: :opened | :merged | :closed | nil,
           cold_check: %{optional(String.t()) => term()} | nil,
           approved_then_found_red: %{optional(String.t()) => term()}
@@ -216,6 +221,7 @@ defmodule Harness.Run.LogRecord do
     landed_sha: nil,
     pr_url: nil,
     pr_writeback: nil,
+    roadmap_writeback: nil,
     cold_check: nil,
     approved_then_found_red: %{}
   ]

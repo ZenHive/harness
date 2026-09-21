@@ -52,6 +52,7 @@ defmodule Harness.Dispatch.Attempts do
       "review_checks" => record.review_checks,
       "review_concerns" => record.review_concerns,
       "landed_sha" => record.landed_sha,
+      "roadmap_writeback" => record.roadmap_writeback,
       "branch" => "harness/" <> record.run_id,
       "git" => branch_facts(project, record.run_id)
     }

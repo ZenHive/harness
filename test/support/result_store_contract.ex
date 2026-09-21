@@ -85,6 +85,28 @@ defmodule Harness.ResultStoreContract do
     assert {:ok, [rm]} = ResultStore.list_run_records(store, run_id: "r-marked")
     assert rm.landed_sha == "def5678aa"
 
+    progress = %{
+      "status" => "pending",
+      "task_ids" => ["1", "2"],
+      "task_fingerprints" => %{"1" => "fp1", "2" => "fp2"},
+      "reviewer" => "codex",
+      "completed_task_ids" => ["1"]
+    }
+
+    assert :ok = ResultStore.put_roadmap_writeback("r-marked", progress, store)
+    assert {:ok, [partial]} = ResultStore.list_run_records(store, run_id: "r-marked")
+    assert partial.landed_sha == "def5678aa"
+    assert partial.roadmap_writeback == progress
+    assert :ok = ResultStore.record_run(rec_marked, store)
+    assert {:ok, [preserved]} = ResultStore.list_run_records(store, run_id: "r-marked")
+    assert preserved.roadmap_writeback == progress
+    assert preserved.landed_sha == "def5678aa"
+
+    complete = %{progress | "status" => "complete", "completed_task_ids" => ["1", "2"]}
+    assert :ok = ResultStore.put_roadmap_writeback("r-marked", complete, store)
+    assert {:ok, [finished]} = ResultStore.list_run_records(store, run_id: "r-marked", include_transcripts: true)
+    assert finished.roadmap_writeback == complete
+
     # non-match
     assert {:ok, []} = ResultStore.list_run_records(store, batch_id: "nope")
 

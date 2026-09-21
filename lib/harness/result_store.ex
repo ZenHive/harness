@@ -309,9 +309,19 @@ defmodule Harness.ResultStore do
     patch_record(run_id, store, fn record -> %{record | pr_writeback: status} end)
   end
 
+  @doc "Persists roadmap completion progress independently of the delivery SHA."
+  @spec put_roadmap_writeback(String.t(), map(), store()) :: :ok | {:error, term()}
+  def put_roadmap_writeback(run_id, progress, store \\ configured())
+
+  def put_roadmap_writeback(_run_id, _progress, store) when store in [false, nil], do: :ok
+
+  def put_roadmap_writeback(run_id, progress, store) do
+    patch_record(run_id, store, fn record -> %{record | roadmap_writeback: progress} end)
+  end
+
   @spec patch_record(String.t(), store(), (LogRecord.t() -> LogRecord.t())) :: :ok | {:error, term()}
   defp patch_record(run_id, store, fun) do
-    case list_run_records(store, run_id: run_id) do
+    case list_run_records(store, run_id: run_id, include_transcripts: true) do
       {:ok, [%LogRecord{} = record | _]} -> record_run(fun.(record), store)
       {:ok, []} -> {:error, :not_found}
       {:error, _reason} = error -> error

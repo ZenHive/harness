@@ -64,11 +64,15 @@ defmodule Harness.Lander.PRPoller do
 
   @doc false
   @spec open_pr?(LogRecord.t()) :: boolean()
-  def open_pr?(%LogRecord{pr_url: url, landed_sha: sha, pr_writeback: status}) do
-    is_binary(url) and url != "" and is_nil(sha) and status in [nil, :opened]
+  def open_pr?(%LogRecord{pr_url: url, pr_writeback: status}) do
+    is_binary(url) and url != "" and status in [nil, :opened]
   end
 
   @spec poll_one(LogRecord.t()) :: :ok
+  defp poll_one(%LogRecord{landed_sha: sha} = record) when is_binary(sha) do
+    merge_once(record, sha)
+  end
+
   defp poll_one(%LogRecord{} = record) do
     repo = poll_repo(record)
 
@@ -90,10 +94,6 @@ defmodule Harness.Lander.PRPoller do
 
   @spec merge_once(LogRecord.t(), String.t() | nil) :: :ok
   defp merge_once(_record, nil), do: :ok
-
-  defp merge_once(%LogRecord{landed_sha: sha}, sha) when is_binary(sha) and sha != "" do
-    :ok
-  end
 
   defp merge_once(%LogRecord{} = record, sha) do
     case PR.complete_merge(record, sha) do

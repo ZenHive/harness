@@ -77,6 +77,21 @@ defmodule Harness.ResultStore.PostgresCodecTest do
     def insert(_changeset, _opts), do: raise(DBConnection.ConnectionError, "simulated connection loss")
   end
 
+  test "roadmap recovery provenance round-trips through the database codec" do
+    FakeRepo.reset()
+
+    progress = %{
+      "status" => "pending",
+      "task_ids" => ["1", "2"],
+      "task_fingerprints" => %{"1" => "fp1", "2" => "fp2"},
+      "reviewer" => "codex",
+      "completed_task_ids" => ["1"]
+    }
+
+    record = ResultStoreContract.log_record(run_id: "writeback", landed_sha: "abc", roadmap_writeback: progress)
+    assert roundtrip(record).roadmap_writeback == progress
+  end
+
   describe "agent_outcome_kind codec" do
     test "tuple kinds round-trip (the {:timed_out, :idle} crash regression)" do
       for kind <- [{:timed_out, :idle}, {:timed_out, :total}, {:error, :port_closed}] do

@@ -204,12 +204,14 @@ defmodule Harness.LanderTest do
       |> Keyword.put(:landed_cleanup_retries, 5)
     )
 
+    roadmap = Harness.LandingFixture.roadmap()
     base_sha = sha(repo, "HEAD")
 
     project = %Project{
       name: "demo",
       source: {:local, repo},
-      roadmap_path: tmp_dir,
+      roadmap_path: roadmap.repo,
+      roadmap_target_branch: "main",
       languages: [:elixir],
       target_branch: "main"
     }
@@ -233,6 +235,7 @@ defmodule Harness.LanderTest do
 
     store = {Memory, scope: {:lander_test, self(), System.unique_integer([:positive])}}
     Application.put_env(:harness, :result_store, store)
+    :ok = ResultStore.record_run(%{log_record("run-x") | project_name: project.name, reviewer_adapter: Codex})
 
     on_exit(fn ->
       restore_env(:result_store, previous_result_store)
@@ -248,7 +251,8 @@ defmodule Harness.LanderTest do
       project: project,
       request: request,
       run_worktree: run_worktree,
-      worktree_base: worktree_base
+      worktree_base: worktree_base,
+      roadmap: roadmap
     }
   end
 
@@ -309,30 +313,28 @@ defmodule Harness.LanderTest do
       assert record.landed_sha == landed
     end
 
-    test "lander landed_sha writeback failure does not crash the landing (Task 370)", ctx do
-      # Settle insert never landed in the store (missing run row) — the same class
-      # as schema-drift drop of the settle insert. Land must still succeed.
+    test "refuses delivery if recovery provenance cannot be persisted", ctx do
       Application.put_env(:harness, :result_store, MissingRecordStore)
-
-      log =
-        capture_log(fn ->
-          assert {:landed, landed} = Lander.land(ctx.request)
-          assert landed == ctx.branch_tip
-        end)
-
-      assert log =~ "landed_sha writeback failed" or log =~ "mark_landed failed"
-      assert sha(ctx.origin, "refs/heads/main") == ctx.branch_tip
+      assert {:error, :not_found} = Lander.land(ctx.request)
+      assert sha(ctx.origin, "refs/heads/main") == ctx.base_sha
+      assert branch_exists?(ctx.repo, ctx.request.branch)
     end
 
     test "roadmap writeback failure names transition, task, run, and Durable reason", ctx do
+      reject_roadmap_push(ctx.roadmap.origin)
+
       log =
         capture_log(fn ->
-          assert {:landed, landed} = Lander.land(ctx.request)
-          assert landed == ctx.branch_tip
+          assert {:error, {:roadmap_writeback_failed, "1", _reason}} = Lander.land(ctx.request)
         end)
 
       assert log =~ "harness roadmap writeback failed: transition=done task_id=1 run_id=run-x"
       assert log =~ "reason="
+      assert sha(ctx.origin, "main") == ctx.branch_tip
+      assert {:ok, record} = ResultStore.fetch_run_record("run-x")
+      assert record.landed_sha == ctx.branch_tip
+      assert record.roadmap_writeback["status"] == "pending"
+      assert branch_exists?(ctx.repo, ctx.request.branch)
     end
 
     test "broadcasts started + settled(:landed) on the dashboard ops feed (task 243)", ctx do
@@ -342,6 +344,139 @@ defmodule Harness.LanderTest do
 
       assert_receive {:harness_op, %Op{kind: :land, stage: :landing, run_id: "run-x", target: "main"}}
       assert_receive {:harness_op, %Op{kind: :land, stage: :landed, run_id: "run-x", sha: ^landed}}
+    end
+  end
+
+  describe "roadmap completion recovery" do
+    test "reland without a run branch repairs writeback and repeated retry makes no commits", ctx do
+      reject_roadmap_push(ctx.roadmap.origin)
+      assert {:error, {:roadmap_writeback_failed, "1", _}} = Lander.land(ctx.request)
+      assert {:ok, record} = ResultStore.fetch_run_record("run-x")
+      assert record.landed_sha == ctx.branch_tip
+
+      assert :ok = Worktree.remove(ctx.run_worktree)
+      GitFixture.git!(ctx.repo, ["branch", "-D", ctx.request.branch])
+      File.rm!(Path.join(ctx.roadmap.origin, "hooks/pre-receive"))
+
+      :ok = ProjectRegistry.register(ctx.project)
+      on_exit(fn -> ProjectRegistry.unregister(ctx.project.name) end)
+      parent = self()
+      previous = Application.get_env(:harness, :oban_insert)
+
+      Application.put_env(:harness, :oban_insert, fn changeset ->
+        send(parent, {:inserted, Ecto.Changeset.apply_changes(changeset)})
+        {:ok, %Oban.Job{}}
+      end)
+
+      on_exit(fn -> restore_env(:oban_insert, previous) end)
+      assert {:ok, %{run_id: "run-x"}} = Lander.enqueue("run-x")
+      assert_receive {:inserted, %Oban.Job{args: args}}
+      assert :ok = LanderWorker.perform(%Oban.Job{args: args})
+
+      assert {:ok, repaired} = ResultStore.fetch_run_record("run-x")
+      assert repaired.roadmap_writeback["status"] == "complete"
+      assert repaired.roadmap_writeback["completed_task_ids"] == ["1"]
+      task = origin_task(ctx.roadmap.origin, "1")
+      assert task["status"] == "done"
+      assert task["shipped_in"] == ctx.branch_tip
+      assert task["verified_by"] == "codex"
+      assert task["verification_ref"] == "harness-run:run-x"
+
+      roadmap_tip = sha(ctx.roadmap.origin, "main")
+      assert {:landed, landed} = Lander.land(ctx.request)
+      assert landed == ctx.branch_tip
+      assert sha(ctx.origin, "main") == ctx.branch_tip
+      assert sha(ctx.roadmap.origin, "main") == roadmap_tip
+    end
+
+    test "coalesced partial writeback retains member fingerprints and only retries unfinished members", ctx do
+      fingerprints =
+        Map.new(["1", "2", "3"], fn id ->
+          {id, Harness.Roadmap.task_fingerprint(origin_task(ctx.roadmap.origin, id))}
+        end)
+
+      request = Map.merge(ctx.request, %{task_ids: ["1", "2", "3"], task_fingerprints: fingerprints})
+      hook = Path.join(ctx.roadmap.origin, "hooks/pre-receive")
+
+      File.write!(hook, """
+      #!/bin/sh
+      read old new ref
+      case "$(git log -1 --format=%s "$new")" in
+        *"task 2 ->"*) exit 1 ;;
+        *) exit 0 ;;
+      esac
+      """)
+
+      File.chmod!(hook, 0o755)
+      assert {:error, {:roadmap_writeback_failed, "2", _}} = Lander.land(request)
+      assert {:ok, partial} = ResultStore.fetch_run_record("run-x")
+      assert partial.roadmap_writeback["completed_task_ids"] == ["1"]
+      assert partial.roadmap_writeback["task_fingerprints"] == fingerprints
+      assert origin_task(ctx.roadmap.origin, "1")["status"] == "done"
+      assert origin_task(ctx.roadmap.origin, "2")["status"] == "in_progress"
+
+      assert :ok = Worktree.remove(ctx.run_worktree)
+      GitFixture.git!(ctx.repo, ["branch", "-D", request.branch])
+      File.rm!(hook)
+      before_retry = sha(ctx.roadmap.origin, "main")
+      assert {:landed, _} = Lander.land(ctx.request)
+
+      assert String.trim(GitFixture.git!(ctx.roadmap.origin, ["rev-list", "--count", before_retry <> "..main"])) == "2"
+
+      for id <- ["1", "2", "3"] do
+        task = origin_task(ctx.roadmap.origin, id)
+        assert task["status"] == "done"
+        assert task["shipped_in"] == ctx.branch_tip
+        assert task["verified_by"] == "codex"
+        assert task["verification_ref"] == "harness-run:run-x"
+      end
+
+      assert {:ok, complete} = ResultStore.fetch_run_record("run-x")
+      assert complete.roadmap_writeback["completed_task_ids"] == ["1", "2", "3"]
+    end
+
+    test "legacy landed records recover every member without a branch or progress map", ctx do
+      GitFixture.git!(ctx.repo, ["push", "origin", ctx.branch_tip <> ":main"])
+      assert :ok = Worktree.remove(ctx.run_worktree)
+      GitFixture.git!(ctx.repo, ["branch", "-D", ctx.request.branch])
+
+      record = %{
+        log_record("run-x")
+        | landed_sha: ctx.branch_tip,
+          task_ids: ["1", "2"],
+          reviewer_adapter: Codex,
+          agent: :claude
+      }
+
+      assert :ok = ResultStore.record_run(record)
+      assert {:landed, _} = Lander.land(ctx.request)
+
+      for id <- ["1", "2"] do
+        task = origin_task(ctx.roadmap.origin, id)
+        assert task["status"] == "done"
+        assert task["verified_by"] == "codex"
+        assert task["verification_ref"] == "harness-run:run-x"
+      end
+    end
+
+    test "a local-only roadmap write cannot complete landing", ctx do
+      project = %{ctx.project | roadmap_path: ctx.worktree_base, roadmap_target_branch: nil}
+
+      assert {:error, {:roadmap_writeback_failed, "1", :durable_roadmap_target_required}} =
+               Lander.land(%{ctx.request | project: project})
+
+      assert {:ok, record} = ResultStore.fetch_run_record("run-x")
+      assert record.landed_sha == ctx.branch_tip
+      assert record.roadmap_writeback["status"] == "pending"
+    end
+
+    test "persisted delivery outside target history cannot advance tasks", ctx do
+      assert :ok = ResultStore.mark_landed("run-x", ctx.branch_tip)
+      before_retry = sha(ctx.roadmap.origin, "main")
+      assert {:error, {:delivery_not_on_target, _, _}} = Lander.land(ctx.request)
+      assert sha(ctx.origin, "main") == ctx.base_sha
+      assert sha(ctx.roadmap.origin, "main") == before_retry
+      assert origin_task(ctx.roadmap.origin, "1")["status"] == "in_progress"
     end
   end
 
@@ -671,10 +806,13 @@ defmodule Harness.LanderTest do
 
       requests =
         for index <- 1..@additive_changelog_wave_runs do
-          stage_changelog_run(ctx, "changelog-run-#{index}", "- task #{index}\n")
+          %{stage_changelog_run(ctx, "changelog-run-#{index}", "- task #{index}\n") | task_id: to_string(index)}
         end
 
       for request <- requests do
+        :ok =
+          ResultStore.record_run(%{log_record(request.run_id) | project_name: ctx.project.name, task_id: request.task_id})
+
         assert {:landed, _landed} = Lander.land(request)
       end
 
@@ -904,6 +1042,8 @@ defmodule Harness.LanderTest do
                "run_id" => "run-abc",
                "task_id" => "42",
                "task_fingerprint" => "fp-42",
+               "task_ids" => [],
+               "task_fingerprints" => %{},
                "agent" => "claude",
                "reviewer" => nil,
                "branch" => "harness/run-abc",
@@ -1122,6 +1262,14 @@ defmodule Harness.LanderTest do
   end
 
   @spec log_record(String.t()) :: LogRecord.t()
+  defp origin_task(origin, id), do: Harness.LandingFixture.origin_task(origin, id)
+
+  defp reject_roadmap_push(origin) do
+    hook = Path.join(origin, "hooks/pre-receive")
+    File.write!(hook, "#!/bin/sh\nexit 1\n")
+    File.chmod!(hook, 0o755)
+  end
+
   defp log_record(run_id) do
     %LogRecord{
       batch_id: "batch-#{run_id}",

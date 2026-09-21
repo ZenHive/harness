@@ -370,6 +370,7 @@ defmodule Harness.Roadmap do
       * `:task_fingerprint` — dispatch-time stable task hash. When supplied,
         writeback first verifies that the id still names the same task.
       * `:rmap_bin` — override the `rmap` binary name/path (intended for tests).
+      * `:require_durable` — refuse a local-only write when true (used by landing).
 
     Returns `{:ok, output}` or `{:error, {status, output, args}}`.
 
@@ -569,9 +570,13 @@ defmodule Harness.Roadmap do
         )
 
       :none ->
-        with_roadmap_lock(ctx, fn ->
-          run_verified_mutation(args, ctx, task_id, fingerprint)
-        end)
+        if opts[:require_durable] do
+          {:error, :durable_roadmap_target_required}
+        else
+          with_roadmap_lock(ctx, fn ->
+            run_verified_mutation(args, ctx, task_id, fingerprint)
+          end)
+        end
     end
   end
 

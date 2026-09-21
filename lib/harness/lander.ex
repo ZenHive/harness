@@ -63,6 +63,7 @@ defmodule Harness.Lander do
   alias Harness.Lander.PR
   alias Harness.Lander.Resolver
   alias Harness.Lander.Worker, as: LanderWorker
+  alias Harness.Lander.Writeback
   alias Harness.Notification
   alias Harness.Notification.Event
   alias Harness.Oban, as: HarnessOban
@@ -121,13 +122,70 @@ defmodule Harness.Lander do
       with {:ok, repo} <- Project.local_repo_path(project),
            {:ok, target} <- target_branch(project),
            :ok <- fetch_origin(repo),
-           {:ok, base_sha} <- remote_target_sha(repo, target),
-           {:ok, worktree} <- checkout(repo, branch) do
-        land_in_worktree(worktree, repo, target, base_sha, project, request)
+           {:ok, base_sha} <- remote_target_sha(repo, target) do
+        resume_or_land(repo, target, base_sha, project, request)
       end
 
     OpsFeed.broadcast(Op.land_settled(request, outcome))
     outcome
+  end
+
+  @spec resume_or_land(String.t(), String.t(), String.t(), Project.t(), request()) :: outcome()
+  defp resume_or_land(repo, target, base_sha, project, request) do
+    case ResultStore.fetch_run_record(request.run_id) do
+      {:ok, %LogRecord{landed_sha: sha} = record} when is_binary(sha) ->
+        with :ok <- ensure_approved(record),
+             :ok <- verify_delivery(repo, target, sha),
+             recovered = request_from_record(record, project),
+             :ok <- writeback(project, recovered, sha) do
+          sync_local_target(repo, target, project, recovered)
+          enqueue_pr_audit(project, recovered, sha)
+          prune_landed_run(repo, recovered, target, sha)
+          {:landed, sha}
+        end
+
+      {:ok, _record} ->
+        checkout_and_land(repo, target, base_sha, project, request)
+
+      {:error, :not_found} ->
+        checkout_and_land(repo, target, base_sha, project, request)
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  @spec checkout_and_land(String.t(), String.t(), String.t(), Project.t(), request()) :: outcome()
+  defp checkout_and_land(repo, target, base_sha, project, request) do
+    with {:ok, worktree} <- checkout(repo, request.branch) do
+      land_in_worktree(worktree, repo, target, base_sha, project, request)
+    end
+  end
+
+  @spec verify_delivery(String.t(), String.t(), String.t()) :: :ok | {:error, term()}
+  defp verify_delivery(repo, target, sha) do
+    case Git.run(["merge-base", "--is-ancestor", sha, "origin/" <> target], repo) do
+      {:ok, _output} -> :ok
+      {:error, reason} -> {:error, {:delivery_not_on_target, sha, reason}}
+    end
+  end
+
+  @doc "Reconstructs member identities and reviewer provenance without the run branch."
+  @spec request_from_record(LogRecord.t(), Project.t()) :: request()
+  def request_from_record(record, project) do
+    progress = record.roadmap_writeback || %{}
+
+    %{
+      project: project,
+      run_id: record.run_id,
+      task_id: record.task_id,
+      task_ids: progress["task_ids"] || record.task_ids,
+      task_fingerprint: progress["task_fingerprint"] || record.task_fingerprint,
+      task_fingerprints: progress["task_fingerprints"] || %{},
+      agent: progress["agent"] || record.agent,
+      reviewer: progress["reviewer"] || reviewer_name(record.reviewer_adapter),
+      branch: "harness/" <> record.run_id
+    }
   end
 
   @doc """
@@ -139,7 +197,9 @@ defmodule Harness.Lander do
   `task_id`, `project_name`, `agent`, reviewer family) and inserts a fresh
   `Harness.Lander.Worker` job at `land_attempt: 1` on the project's serialized
   `landing_<name>` queue — the same job shape the automatic train enqueues, so
-  it re-fetches, rebases onto the current target, and pushes. The job is marked
+  it re-fetches, rebases onto the current target, and pushes when delivery is
+  absent. A persisted delivery SHA instead resumes roadmap completion after
+  verifying target ancestry, without needing the run branch. The job is marked
   as an operator-invoked reland so a post-resolver conflict is retained and
   witnessed instead of inheriting the autonomous merge-train redispatch fallback.
 
@@ -189,13 +249,17 @@ defmodule Harness.Lander do
   @doc false
   @spec landing_args(LogRecord.t(), Project.t()) :: %{optional(String.t()) => term()}
   def landing_args(%LogRecord{} = record, %Project{} = project) do
+    request = request_from_record(record, project)
+
     %{
       "project_name" => project.name,
       "run_id" => record.run_id,
       "task_id" => record.task_id,
-      "task_fingerprint" => record.task_fingerprint,
-      "agent" => to_string(record.agent),
-      "reviewer" => reviewer_name(record.reviewer_adapter),
+      "task_fingerprint" => request.task_fingerprint,
+      "task_ids" => request.task_ids,
+      "task_fingerprints" => request.task_fingerprints,
+      "agent" => to_string(request.agent),
+      "reviewer" => request.reviewer,
       "branch" => "harness/" <> record.run_id,
       "land_attempt" => 1,
       "manual_reland" => true
@@ -680,16 +744,24 @@ defmodule Harness.Lander do
   end
 
   defp deliver(_policy, repo, tip, target, base_sha, project, request) do
+    with {:ok, _progress} <- Writeback.prepare(request) do
+      deliver_auto(repo, tip, target, base_sha, project, request)
+    end
+  end
+
+  @spec deliver_auto(String.t(), String.t(), String.t(), String.t(), Project.t(), request()) :: outcome()
+  defp deliver_auto(repo, tip, target, base_sha, project, request) do
     case push(repo, tip, target) do
       {:ok, pushed} ->
         # Delivery push is the point of no return. Task 379 /
         # run-1786522856472-c6cebe49 lost mark_landed and the "landed task" log
         # because sync/audit/prune ran first and the job died before writeback.
-        writeback(project, request, pushed)
-        sync_local_target(repo, target, project, request)
-        enqueue_audit(project, request, base_sha)
-        prune_landed_run(repo, request, target, pushed)
-        {:landed, pushed}
+        with :ok <- writeback(project, request, pushed) do
+          sync_local_target(repo, target, project, request)
+          enqueue_audit(project, request, base_sha)
+          prune_landed_run(repo, request, target, pushed)
+          {:landed, pushed}
+        end
 
       {:push_rejected, _output} = rejected ->
         rejected
@@ -756,35 +828,33 @@ defmodule Harness.Lander do
     })
   end
 
-  # The push succeeded, so the code IS landed; a writeback failure (e.g. rmap's
-  # --shipped-in flag not yet present) is logged but never un-lands the merge.
   @doc false
-  @spec writeback_merged(Project.t(), request(), String.t()) :: :ok
+  @spec writeback_merged(Project.t(), request(), String.t()) :: :ok | {:error, term()}
   def writeback_merged(%Project{} = project, request, sha) when is_binary(sha) do
-    writeback(project, request, sha)
+    with :ok <- mark_landed_verified(request.run_id, sha),
+         {:ok, repo} <- Project.local_repo_path(project),
+         {:ok, target} <- target_branch(project),
+         :ok <- fetch_origin(repo),
+         :ok <- verify_delivery(repo, target, sha) do
+      writeback(project, request, sha)
+    end
   end
 
-  @spec writeback(Project.t(), request(), String.t()) :: :ok
+  @spec writeback(Project.t(), request(), String.t()) :: :ok | {:error, term()}
   defp writeback(%Project{} = project, request, sha) do
-    persist_landed_sha(request.run_id, sha)
-
-    request
-    |> landed_task_ids()
-    |> Enum.each(&writeback_task(project, request, sha, &1))
-
-    :ok
+    with :ok <- mark_landed_verified(request.run_id, sha) do
+      Writeback.complete(request, &writeback_task(project, request, sha, &1))
+    end
   end
 
-  @spec landed_task_ids(request()) :: [String.t()]
-  defp landed_task_ids(%{task_ids: ids}) when is_list(ids) and ids != [], do: ids
-  defp landed_task_ids(request), do: [request.task_id]
-
-  @spec writeback_task(Project.t(), request(), String.t(), String.t()) :: :ok
+  @spec writeback_task(Project.t(), request(), String.t(), String.t()) :: :ok | {:error, term()}
   defp writeback_task(project, request, sha, task_id) do
-    fingerprint = Map.get(request[:task_fingerprints] || %{}, task_id, request[:task_fingerprint])
+    fingerprint =
+      Map.get(request[:task_fingerprints] || %{}, task_id, if(task_id == request.task_id, do: request[:task_fingerprint]))
 
     case Roadmap.mark_landed(task_id,
            project: project,
+           require_durable: true,
            sha: sha,
            task_fingerprint: fingerprint,
            delivered_by: delivered_by(request[:agent]),
@@ -798,23 +868,10 @@ defmodule Harness.Lander do
       {:error, reason} ->
         Logger.warning(
           "harness roadmap writeback failed: transition=done task_id=#{task_id} run_id=#{request.run_id} " <>
-            "reason=#{inspect(reason)} (landed #{sha}; best-effort; continuing)"
-        )
-    end
-  end
-
-  @spec persist_landed_sha(String.t(), String.t()) :: :ok
-  defp persist_landed_sha(run_id, sha) do
-    case mark_landed_verified(run_id, sha) do
-      :ok ->
-        :ok
-
-      {:error, reason} ->
-        Logger.warning(
-          "harness lander: run-record landed_sha writeback failed for run #{run_id} (landed #{sha}): #{inspect(reason)}"
+            "reason=#{inspect(reason)} (delivery #{sha} landed; roadmap completion pending)"
         )
 
-        :ok
+        {:error, reason}
     end
   end
 
