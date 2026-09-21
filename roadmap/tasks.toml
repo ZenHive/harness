@@ -11769,20 +11769,21 @@ shipped_in = "0cc1f16b993a3d5ba9e810df0aca8343ce3a3dcd"
 
 [[task]]
 id = "386"
-touches = ["lib/harness/lander.ex", "lib/harness/lander/", "lib/harness/dispatch.ex", "lib/harness/result_store/", "test/harness/lander_test.exs", "test/harness/lander/", "test/harness/dispatch_test.exs"]
 phase = 22
 bundle = "core-loop"
-status = "pending"
+status = "in_progress"
 title = "Make roadmap writeback recoverable after delivery has landed"
 scores = { d = 5, b = 7, u = 6 }
 acceptance_criteria = ["After a successful delivery push, landed_sha remains recorded even if roadmap writeback fails; delivery and roadmap-completion facts are independently observable.", "A writeback failure remains durably recoverable and cannot complete the whole landing workflow silently. Retries repair writeback without re-running implementation/review or duplicating delivery.", "Reland repairs roadmap completion from persisted delivery/provenance when the run branch is absent; verify that the recorded commit belongs to the target history before advancing tasks.", "Regression tests cover delivery-pushed/writeback-failed, branch removed, repeated retry, coalesced partial writeback and PR-merged writeback failure, using isolated real Git origins.", "Roadmap completion preserves every member task identity and reviewer verification provenance; cleanup does not destroy the evidence required for recovery."]
 out_of_scope = ["Changing the witness sink or notification format"]
+touches = ["lib/harness/lander.ex", "lib/harness/lander/", "lib/harness/dispatch.ex", "lib/harness/result_store/", "test/harness/lander_test.exs", "test/harness/lander/", "test/harness/dispatch_test.exs"]
 assignee = "codex"
 model = "gpt-6-astra"
 body = '''
 Observed twice on trading_dashboard on 2026-08-14: delivery commits landed and landed_sha was persisted, but the roadmap completion commit did not reach origin; reland then failed because the run branch had been removed. Current Lander.writeback/3 still persists landed_sha before invoking task writeback. Preserve that truthful delivery fact. Make roadmap completion a separately observable, idempotent operation whose failure cannot be mistaken for full landing completion. Recovery must use the persisted landed commit and reviewer provenance even without the original branch. Cover automatic landing and the PR-merged path, which shares writeback, as well as coalesced task membership.
 '''
 created_at = "2026-08-14"
+started_at = "2026-09-21"
 scored_at = "2026-08-14"
 
 [[task]]
