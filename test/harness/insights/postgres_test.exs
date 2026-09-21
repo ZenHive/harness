@@ -48,6 +48,36 @@ defmodule Harness.Insights.PostgresTest do
     :ok
   end
 
+  test "dedicated QA changes are observed without a new implementation run" do
+    Application.put_env(:harness, :insights_test_response, {:ok, %{"findings" => []}})
+
+    qa =
+      Repo.insert!(%Harness.Audit.QAAttempt{
+        project_name: "insights-pg",
+        revision: "qa-revision",
+        base_sha: "qa-base",
+        status: "running",
+        command: "full QA"
+      })
+
+    assert :ok = Insights.observe("qa-running")
+    assert_received {:observed, running, _}
+    source = Enum.find(running["sources"], &(&1["authority"] == "qa_attempt"))
+    assert source["revision"] == "qa-revision"
+    assert source["provisional"]
+    assert source["text"] =~ "running"
+    assert :ok = Insights.observe("qa-unchanged")
+    refute_received {:observed, _, _}
+    Repo.update!(Ecto.Changeset.change(qa, status: "failed", report: %{"failure" => "independent QA regression"}))
+    assert :ok = Insights.observe("qa-failed")
+    assert_received {:observed, failed, _}
+    source = Enum.find(failed["sources"], &(&1["authority"] == "qa_attempt"))
+    refute source["provisional"]
+    assert source["text"] =~ "independent QA regression"
+    assert Insights.status()["last_pass"]["changed_runs"] == 0
+    assert Insights.status()["last_pass"]["changed_evidence"] == 1
+  end
+
   test "database retains findings, revisions, citations and checkpoint without local state" do
     record = record("pg-a")
     :ok = ResultStore.record_run(record)
@@ -122,7 +152,9 @@ defmodule Harness.Insights.PostgresTest do
   end
 
   test "a rejected final database write fails the pass and leaves the checkpoint intact" do
+    Application.put_env(:harness, :insights_test_response, {:ok, %{"findings" => []}})
     assert :ok = Insights.observe("before-write-failure")
+    Application.delete_env(:harness, :insights_test_response)
     checkpoint = Store.get("progress")
     :ok = ResultStore.record_run(record("write-failure"))
 

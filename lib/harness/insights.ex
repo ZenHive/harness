@@ -207,7 +207,8 @@ defmodule Harness.Insights do
         Map.merge(pass, %{
           "state" => state,
           "committed" => true,
-          "changed_runs" => batch.changed,
+          "changed_runs" => batch.changed_runs,
+          "changed_evidence" => batch.changed,
           "sources" => sources,
           "partial" => batch.partial,
           "pending" => batch.pending,

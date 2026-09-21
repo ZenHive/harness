@@ -30,7 +30,23 @@ defmodule Harness.InsightsTest do
     Store.get("settings")
     :ets.delete_all_objects(Store)
     ProjectRegistry.reset()
-    :ok = ProjectRegistry.register(ProjectFixture.from_repo("/tmp/insights-test", name: "insights-test"))
+    repo = Harness.GitFixture.init_repo()
+
+    for path <- ["roadmap/tasks.toml", "CLAUDE.md", "AGENTS.md", "priv/includes/harness-workflow.md"] do
+      File.mkdir_p!(Path.dirname(Path.join(repo, path)))
+      File.write!(Path.join(repo, path), "Current project decisions")
+    end
+
+    Harness.GitFixture.git!(repo, [
+      "add",
+      "roadmap/tasks.toml",
+      "CLAUDE.md",
+      "AGENTS.md",
+      "priv/includes/harness-workflow.md"
+    ])
+
+    Harness.GitFixture.git!(repo, ["commit", "-qm", "observer context fixture"])
+    :ok = ProjectRegistry.register(ProjectFixture.from_repo(repo, name: "insights-test"))
     Application.put_env(:harness, :insights_witness, Harness.Test.InsightsWitness)
     Application.put_env(:harness, :insights_test_owner, self())
     Application.delete_env(:harness, :insights_test_response)
@@ -100,6 +116,7 @@ defmodule Harness.InsightsTest do
 
   test "failed agents and malformed output preserve successful progress" do
     enable()
+    Application.put_env(:harness, :insights_test_response, {:ok, %{"findings" => []}})
     assert :ok = Insights.observe("empty")
     before = Insights.status()["progress"]
     :ok = ResultStore.record_run(record(project_name: "insights-test", run_id: "insights-b"))

@@ -19,13 +19,26 @@ defmodule Harness.Insights.RestartTest do
     Application.put_env(:harness, :repo_enabled, true)
     on_exit(fn -> Application.put_env(:harness, :repo_enabled, old) end)
 
-    progress = %{"cursor" => "restart-run", "last_success" => "2026-09-20T00:00:00Z"}
+    progress = %{
+      "cursor" => "restart-run",
+      "project_cursor" => "project-a",
+      "qa_cursor" => Ecto.UUID.generate(),
+      "last_success" => "2026-09-20T00:00:00Z"
+    }
 
     finding = %{
       "id" => "restart",
       "projects" => ["restart"],
       "runs" => ["restart-run"],
-      "citations" => [%{"excerpt" => "retained evidence"}]
+      "citations" => [
+        %{
+          "excerpt" => "retained evidence",
+          "revision" => "inline-revision",
+          "project" => "restart",
+          "provenance" => "referenced repair",
+          "availability" => "available"
+        }
+      ]
     }
 
     :ok =

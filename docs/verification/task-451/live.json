@@ -1,0 +1,459 @@
+{
+  "pass": {
+    "at": "2026-09-21T08:53:55.745135Z",
+    "changed_evidence": 1,
+    "changed_runs": 0,
+    "committed": true,
+    "finding_context_count": 3,
+    "id": "live-inline-reconciliation",
+    "observer": {
+      "agent": "codex",
+      "model": "gpt-6-astra"
+    },
+    "partial": true,
+    "pending": false,
+    "state": "partial"
+  },
+  "findings": [
+    {
+      "assessment": "The historical green-full-QA prerequisite is contradicted by current intent. Focused rollout has substantial supporting checks, but complete fleet adoption remains uncertain because the final rmap readback conflicts with the desired command.",
+      "at": "2026-09-21T08:56:38.311788Z",
+      "citations": [
+        {
+          "authority": "current_intent",
+          "availability": "truncated",
+          "content_hash": "1AC2E2B72A81B0A676694301DF68EAE3EC9302F3AF060C2E39FBE17CFEC2FF2B",
+          "excerpt": "Install focused dispatch and full QA commands together after QA support is deployed; prior QA outcomes do not gate the switch.",
+          "field": "roadmap/tasks.toml",
+          "next_offset": 1596835,
+          "offset": 1588835,
+          "path": "roadmap/tasks.toml",
+          "project": "harness",
+          "provenance": "registered roadmap",
+          "provisional": false,
+          "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "root_source_id": "project/harness/e57c80bd7273f28d6aed11b01bf8eeeb3946874d/1AC2E2B72A81B0A676694301DF68EAE3EC9302F3AF060C2E39FBE17CFEC2FF2B/roadmap/tasks.toml",
+          "run_id": null,
+          "source_id": "project/harness/e57c80bd7273f28d6aed11b01bf8eeeb3946874d/1AC2E2B72A81B0A676694301DF68EAE3EC9302F3AF060C2E39FBE17CFEC2FF2B/roadmap/tasks.toml@1588835",
+          "total_bytes": 1608554,
+          "unavailable_reason": null
+        },
+        {
+          "authority": "repair_evidence",
+          "availability": "truncated",
+          "content_hash": "3510D4B5F91FAD47AE2ABB8AB26F703615F4B8B172347613F2737505BCEDB2BB",
+          "excerpt": "Reviewer-fixed alias graph: 3 passed, 0 failed, 0 excluded, 0 skipped.",
+          "field": "docs/verification/qa/task-448.json",
+          "next_offset": 40000,
+          "offset": 32000,
+          "path": "docs/verification/qa/task-448.json",
+          "project": "harness",
+          "provenance": "referenced by roadmap/tasks.toml at e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "provisional": false,
+          "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "root_source_id": "project/harness/e57c80bd7273f28d6aed11b01bf8eeeb3946874d/3510D4B5F91FAD47AE2ABB8AB26F703615F4B8B172347613F2737505BCEDB2BB/docs/verification/qa/task-448.json",
+          "run_id": null,
+          "source_id": "project/harness/e57c80bd7273f28d6aed11b01bf8eeeb3946874d/3510D4B5F91FAD47AE2ABB8AB26F703615F4B8B172347613F2737505BCEDB2BB/docs/verification/qa/task-448.json@32000",
+          "total_bytes": 44247,
+          "unavailable_reason": null
+        },
+        {
+          "authority": "repair_evidence",
+          "availability": "available",
+          "content_hash": "3510D4B5F91FAD47AE2ABB8AB26F703615F4B8B172347613F2737505BCEDB2BB",
+          "excerpt": "\"readback\": {\n          \"check_command\": \"cargo fmt --check && cargo clippy --all-targets -- -D warnings; focused cargo test for touched crates\",\n          \"concurrency_cap\": 2,\n          \"landing_policy\": \"auto\",\n          \"qa_command\": \"cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test\",\n          \"reviewer\": null,\n          \"target_branch\": \"main\"\n        },\n        \"desired\": {\n          \"check_command\": \"cargo fmt --check && cargo check --all-targets; focused cargo test for touched crates\",\n          \"qa_command\": \"cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test\"\n        }",
+          "field": "docs/verification/qa/task-448.json",
+          "next_offset": null,
+          "offset": 40000,
+          "path": "docs/verification/qa/task-448.json",
+          "project": "harness",
+          "provenance": "referenced by roadmap/tasks.toml at e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "provisional": false,
+          "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "root_source_id": "project/harness/e57c80bd7273f28d6aed11b01bf8eeeb3946874d/3510D4B5F91FAD47AE2ABB8AB26F703615F4B8B172347613F2737505BCEDB2BB/docs/verification/qa/task-448.json",
+          "run_id": null,
+          "source_id": "project/harness/e57c80bd7273f28d6aed11b01bf8eeeb3946874d/3510D4B5F91FAD47AE2ABB8AB26F703615F4B8B172347613F2737505BCEDB2BB/docs/verification/qa/task-448.json@40000",
+          "total_bytes": 44247,
+          "unavailable_reason": null
+        },
+        {
+          "authority": "repair_evidence",
+          "availability": "available",
+          "content_hash": "3510D4B5F91FAD47AE2ABB8AB26F703615F4B8B172347613F2737505BCEDB2BB",
+          "excerpt": "All 15 registered projects match the focused check_command and explicit qa_command catalog after persisted/live readback. ccxt-distill remains unregistered. No complete-fleet-QA-green claim.",
+          "field": "docs/verification/qa/task-448.json",
+          "next_offset": null,
+          "offset": 40000,
+          "path": "docs/verification/qa/task-448.json",
+          "project": "harness",
+          "provenance": "referenced by roadmap/tasks.toml at e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "provisional": false,
+          "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "root_source_id": "project/harness/e57c80bd7273f28d6aed11b01bf8eeeb3946874d/3510D4B5F91FAD47AE2ABB8AB26F703615F4B8B172347613F2737505BCEDB2BB/docs/verification/qa/task-448.json",
+          "run_id": null,
+          "source_id": "project/harness/e57c80bd7273f28d6aed11b01bf8eeeb3946874d/3510D4B5F91FAD47AE2ABB8AB26F703615F4B8B172347613F2737505BCEDB2BB/docs/verification/qa/task-448.json@40000",
+          "total_bytes": 44247,
+          "unavailable_reason": null
+        },
+        {
+          "authority": "repair_evidence",
+          "availability": "truncated",
+          "content_hash": "3510D4B5F91FAD47AE2ABB8AB26F703615F4B8B172347613F2737505BCEDB2BB",
+          "excerpt": "Existing test.json --quiet incompatibility reproduced in isolation: coverage task test line 173 receives empty captured output because quiet mode selects Mix.Shell.Quiet. Non-quiet focused execution passes all 28 tests with retries disabled. Full-QA repair remains outside this task, as specified.",
+          "field": "docs/verification/qa/task-448.json",
+          "next_offset": 40000,
+          "offset": 32000,
+          "path": "docs/verification/qa/task-448.json",
+          "project": "harness",
+          "provenance": "referenced by roadmap/tasks.toml at e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "provisional": false,
+          "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "root_source_id": "project/harness/e57c80bd7273f28d6aed11b01bf8eeeb3946874d/3510D4B5F91FAD47AE2ABB8AB26F703615F4B8B172347613F2737505BCEDB2BB/docs/verification/qa/task-448.json",
+          "run_id": null,
+          "source_id": "project/harness/e57c80bd7273f28d6aed11b01bf8eeeb3946874d/3510D4B5F91FAD47AE2ABB8AB26F703615F4B8B172347613F2737505BCEDB2BB/docs/verification/qa/task-448.json@32000",
+          "total_bytes": 44247,
+          "unavailable_reason": null
+        }
+      ],
+      "contradictions": "Current task acceptance explicitly rejects the historical QA rollout gate. Separately, the report's all-15-match assertion and dispatch_switched status conflict with rmap's recorded readback, which still includes Clippy in dispatch. The final unchanged status does not reconcile that mismatch.",
+      "explanation": "Reviewer fixes and focused regression results support the consumer changes. Full post-merge QA remains a separate responsibility. The remaining adoption question is an exact settings-evidence discrepancy, not a requirement for universally green QA.",
+      "facts": "Current task 448 requires paired focused-dispatch/full-QA configuration without a green-QA prerequisite. Consumer reports include alias tests, generation checks and reviewer inline repairs. The final rmap entry desires cargo check for dispatch but records cargo clippy in readback; its full-QA command retains Clippy and full tests. ccxt-distill remains unregistered. MPP's quiet-mode failure is explicitly retained despite a passing non-quiet focused run.",
+      "hypothesis": "The rmap readback may be stale, or the final switch may not have persisted. The supplied snapshot cannot distinguish these explanations.",
+      "id": "a4cb28ea-af09-4043-a329-014b03ed75bb",
+      "improvement": "Correct the obsolete QA-gate claim and reconcile rmap's persisted/effective command with the desired mapping using attributable readback evidence. Keep failed or missing QA outcomes visible independently of rollout, and retain consumer review limitations.",
+      "observer": {
+        "agent": "codex",
+        "model": "gpt-6-astra"
+      },
+      "pass_id": "live-inline-reconciliation",
+      "projects": [
+        "harness"
+      ],
+      "provisional": false,
+      "recurrence": "Same task-448 finding, revised rather than duplicated. Historical rejection does not establish current failure; the supplied final readback establishes a remaining verification discrepancy.",
+      "runs": [],
+      "title": "Task 448 removes the QA rollout gate, but rmap readback remains inconsistent"
+    },
+    {
+      "assessment": "The historical absence-of-verification claim is superseded by substantive repair and test reports. Bounded graceful-shutdown recovery is supported within the tested scope; universal correctness is not established.",
+      "at": "2026-09-21T08:56:38.311778Z",
+      "citations": [
+        {
+          "authority": "current_intent",
+          "availability": "truncated",
+          "content_hash": "1AC2E2B72A81B0A676694301DF68EAE3EC9302F3AF060C2E39FBE17CFEC2FF2B",
+          "excerpt": "Recovered retained delivery 826225b inline; verified bounded graceful shutdown, invocation fencing, persistence failure and queued recovery with 9 shutdown and 12 Postgres tests.",
+          "field": "roadmap/tasks.toml",
+          "next_offset": 1498826,
+          "offset": 1490826,
+          "path": "roadmap/tasks.toml",
+          "project": "harness",
+          "provenance": "registered roadmap",
+          "provisional": false,
+          "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "root_source_id": "project/harness/e57c80bd7273f28d6aed11b01bf8eeeb3946874d/1AC2E2B72A81B0A676694301DF68EAE3EC9302F3AF060C2E39FBE17CFEC2FF2B/roadmap/tasks.toml",
+          "run_id": null,
+          "source_id": "project/harness/e57c80bd7273f28d6aed11b01bf8eeeb3946874d/1AC2E2B72A81B0A676694301DF68EAE3EC9302F3AF060C2E39FBE17CFEC2FF2B/roadmap/tasks.toml@1490826",
+          "total_bytes": 1608554,
+          "unavailable_reason": null
+        },
+        {
+          "authority": "repair_evidence",
+          "availability": "available",
+          "content_hash": "30B2410E1E216256FBE73BEF736B2D0EC5B160AB551C1491A2BE36DBB4C5483D",
+          "excerpt": "\"name\": \"postgres_recovery\",\n      \"seed\": 694410,\n      \"summary\": {\n        \"invalid\": 0,\n        \"total\": 12,\n        \"failed\": 0,\n        \"result\": \"passed\",",
+          "field": "docs/verification/task-427/inline.json",
+          "next_offset": null,
+          "offset": 0,
+          "path": "docs/verification/task-427/inline.json",
+          "project": "harness",
+          "provenance": "referenced by roadmap/tasks.toml at e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "provisional": false,
+          "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "run_id": null,
+          "source_id": "project/harness/e57c80bd7273f28d6aed11b01bf8eeeb3946874d/30B2410E1E216256FBE73BEF736B2D0EC5B160AB551C1491A2BE36DBB4C5483D/docs/verification/task-427/inline.json",
+          "total_bytes": 5327,
+          "unavailable_reason": null
+        },
+        {
+          "authority": "repair_evidence",
+          "availability": "available",
+          "content_hash": "30B2410E1E216256FBE73BEF736B2D0EC5B160AB551C1491A2BE36DBB4C5483D",
+          "excerpt": "\"reviewer\": \"Codex inline orchestrator; not an independent harness verdict\",",
+          "field": "docs/verification/task-427/inline.json",
+          "next_offset": null,
+          "offset": 0,
+          "path": "docs/verification/task-427/inline.json",
+          "project": "harness",
+          "provenance": "referenced by roadmap/tasks.toml at e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "provisional": false,
+          "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "run_id": null,
+          "source_id": "project/harness/e57c80bd7273f28d6aed11b01bf8eeeb3946874d/30B2410E1E216256FBE73BEF736B2D0EC5B160AB551C1491A2BE36DBB4C5483D/docs/verification/task-427/inline.json",
+          "total_bytes": 5327,
+          "unavailable_reason": null
+        },
+        {
+          "authority": "repair_evidence",
+          "availability": "available",
+          "content_hash": "30B2410E1E216256FBE73BEF736B2D0EC5B160AB551C1491A2BE36DBB4C5483D",
+          "excerpt": "Full alias reached Dialyzer and failed there. Subsequent fixes verified through targeted tests and analyzer reruns; no claim of a second complete alias run.",
+          "field": "docs/verification/task-427/inline.json",
+          "next_offset": null,
+          "offset": 0,
+          "path": "docs/verification/task-427/inline.json",
+          "project": "harness",
+          "provenance": "referenced by roadmap/tasks.toml at e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "provisional": false,
+          "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "run_id": null,
+          "source_id": "project/harness/e57c80bd7273f28d6aed11b01bf8eeeb3946874d/30B2410E1E216256FBE73BEF736B2D0EC5B160AB551C1491A2BE36DBB4C5483D/docs/verification/task-427/inline.json",
+          "total_bytes": 5327,
+          "unavailable_reason": null
+        },
+        {
+          "authority": "repair_evidence",
+          "availability": "available",
+          "content_hash": "3510D4B5F91FAD47AE2ABB8AB26F703615F4B8B172347613F2737505BCEDB2BB",
+          "excerpt": "\"deployed_revision\": \"65b3aecf1494c72e02fc3c02a860eee50b5b7b6a\",\n    \"service_started_utc\": \"2026-09-21T00:48:55Z\",\n    \"method\": \"Operator-authorized manual systemctl restart after zero run and agent-process checks; no autodeploy enablement\",\n    \"admission_process_present\": true,\n    \"run_dynamic_supervisor_present\": true,\n    \"loaded_module_md5_mismatches\": [],",
+          "field": "docs/verification/qa/task-448.json",
+          "next_offset": null,
+          "offset": 40000,
+          "path": "docs/verification/qa/task-448.json",
+          "project": "harness",
+          "provenance": "referenced by roadmap/tasks.toml at e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "provisional": false,
+          "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "root_source_id": "project/harness/e57c80bd7273f28d6aed11b01bf8eeeb3946874d/3510D4B5F91FAD47AE2ABB8AB26F703615F4B8B172347613F2737505BCEDB2BB/docs/verification/qa/task-448.json",
+          "run_id": null,
+          "source_id": "project/harness/e57c80bd7273f28d6aed11b01bf8eeeb3946874d/3510D4B5F91FAD47AE2ABB8AB26F703615F4B8B172347613F2737505BCEDB2BB/docs/verification/qa/task-448.json@40000",
+          "total_bytes": 44247,
+          "unavailable_reason": null
+        }
+      ],
+      "contradictions": "The earlier finding said no later repair verification existed; the referenced report now supplies it. The review's deployment limitation is followed by a separate restart and module-readback report. That establishes reported activation evidence, not a production shutdown exercise or an independent harness approval.",
+      "explanation": "Reconcile the stalled run with its recovered delivery and subsequent verification, while retaining the original incident and the limits of the later checks.",
+      "facts": "Task 427 records retained-delivery recovery. The report lists 9 passing shutdown tests, 12 PostgreSQL recovery tests and 21 callback/fixture regression tests. Integrated review reports 2673 passing tests with 175 exclusions and 82.74% coverage, followed by targeted repairs and analyzer reruns after Dialyzer failed. Later runtime evidence reports a fresh service start, admission and run-supervisor processes, and no loaded-module hash mismatches.",
+      "hypothesis": "The repair addresses the graceful settlement and invocation-ordering failure described by the historical incident. The supplied reports do not demonstrate persistence after SIGKILL, which current intent explicitly excludes.",
+      "id": "7f961142-3b55-4eb3-bf4c-211c73ee4b6f",
+      "improvement": "Retain the incident history but replace the obsolete verification-gap claim with revision-bound repair, test and activation evidence. Preserve integration exclusions, inline-review provenance and the absence of a second complete QA alias run.",
+      "observer": {
+        "agent": "codex",
+        "model": "gpt-6-astra"
+      },
+      "pass_id": "live-inline-reconciliation",
+      "projects": [
+        "harness"
+      ],
+      "provisional": false,
+      "recurrence": "Same task-427 finding, updated in place. No renewed shutdown failure is demonstrated by the supplied evidence.",
+      "runs": [],
+      "title": "Task 427 now has repair verification, with bounded assurance"
+    },
+    {
+      "assessment": "The bounded investigation supports closure as not reproduced at the reported revisions, consistent with current acceptance criteria. It does not establish an EPIPE fix or repeated full-suite stability.",
+      "at": "2026-09-21T08:56:38.311796Z",
+      "citations": [
+        {
+          "authority": "current_intent",
+          "availability": "truncated",
+          "content_hash": "1AC2E2B72A81B0A676694301DF68EAE3EC9302F3AF060C2E39FBE17CFEC2FF2B",
+          "excerpt": "If the failure does not reproduce, record the exact revision, toolchain, commands, seeds/run count, probe bound and captured logs. Close the investigation as not reproduced at that revision without claiming a fix or changing production behavior; renewed failure evidence reopens diagnosis through a new task.",
+          "field": "roadmap/tasks.toml",
+          "next_offset": 1141931,
+          "offset": 1133931,
+          "path": "roadmap/tasks.toml",
+          "project": "harness",
+          "provenance": "registered roadmap",
+          "provisional": false,
+          "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "root_source_id": "project/harness/e57c80bd7273f28d6aed11b01bf8eeeb3946874d/1AC2E2B72A81B0A676694301DF68EAE3EC9302F3AF060C2E39FBE17CFEC2FF2B/roadmap/tasks.toml",
+          "run_id": null,
+          "source_id": "project/harness/e57c80bd7273f28d6aed11b01bf8eeeb3946874d/1AC2E2B72A81B0A676694301DF68EAE3EC9302F3AF060C2E39FBE17CFEC2FF2B/roadmap/tasks.toml@1133931",
+          "total_bytes": 1608554,
+          "unavailable_reason": null
+        },
+        {
+          "authority": "repair_evidence",
+          "availability": "available",
+          "content_hash": "5EE2434015CE3709DD3812EF29D10F582B1C6B56BE2AC85D53325CCA16DC2C1E",
+          "excerpt": "\"conclusion\": \"Historical AuditTest failure not reproduced. Raw EPIPE diagnostics in an earlier focused run alone do not establish that historical failure or a production fix.\",\n  \"probe_bound\": \"Each full-suite invocation bounded to 600 seconds; repeated pair stopped on first nonzero result. No retries.\",",
+          "field": "docs/verification/task-326/investigation.json",
+          "next_offset": null,
+          "offset": 0,
+          "path": "docs/verification/task-326/investigation.json",
+          "project": "harness",
+          "provenance": "referenced by roadmap/tasks.toml at e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "provisional": false,
+          "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "run_id": null,
+          "source_id": "project/harness/e57c80bd7273f28d6aed11b01bf8eeeb3946874d/5EE2434015CE3709DD3812EF29D10F582B1C6B56BE2AC85D53325CCA16DC2C1E/docs/verification/task-326/investigation.json",
+          "total_bytes": 6451,
+          "unavailable_reason": null
+        },
+        {
+          "authority": "repair_evidence",
+          "availability": "available",
+          "content_hash": "5EE2434015CE3709DD3812EF29D10F582B1C6B56BE2AC85D53325CCA16DC2C1E",
+          "excerpt": "\"Repeated full-suite green is not established: seed 326006 passed and seed 326007 exposed three other failures, all passing one isolated rerun.\",\n    \"No production spawn-path change was made for task 326. Task 427 production changes independently address graceful shutdown.\",\n    \"macOS setsid occasionally reported startup exit 11 instead of expected 127; isolated rerun passed, cause unproven.\"",
+          "field": "docs/verification/task-326/investigation.json",
+          "next_offset": null,
+          "offset": 0,
+          "path": "docs/verification/task-326/investigation.json",
+          "project": "harness",
+          "provenance": "referenced by roadmap/tasks.toml at e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "provisional": false,
+          "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "run_id": null,
+          "source_id": "project/harness/e57c80bd7273f28d6aed11b01bf8eeeb3946874d/5EE2434015CE3709DD3812EF29D10F582B1C6B56BE2AC85D53325CCA16DC2C1E/docs/verification/task-326/investigation.json",
+          "total_bytes": 6451,
+          "unavailable_reason": null
+        },
+        {
+          "authority": "repair_evidence",
+          "availability": "available",
+          "content_hash": "5EE2434015CE3709DD3812EF29D10F582B1C6B56BE2AC85D53325CCA16DC2C1E",
+          "excerpt": "\"total\": 187,\n      \"failed\": 0,\n      \"result\": \"passed\",\n      \"excluded\": 9,\n      \"passed\": 178,",
+          "field": "docs/verification/task-326/investigation.json",
+          "next_offset": null,
+          "offset": 0,
+          "path": "docs/verification/task-326/investigation.json",
+          "project": "harness",
+          "provenance": "referenced by roadmap/tasks.toml at e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "provisional": false,
+          "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+          "run_id": null,
+          "source_id": "project/harness/e57c80bd7273f28d6aed11b01bf8eeeb3946874d/5EE2434015CE3709DD3812EF29D10F582B1C6B56BE2AC85D53325CCA16DC2C1E/docs/verification/task-326/investigation.json",
+          "total_bytes": 6451,
+          "unavailable_reason": null
+        }
+      ],
+      "contradictions": "The historical diagnosis remains causally unproven, but the implication that the rejected run leaves the current investigation unaddressed is obsolete. Current intent allows evidence-backed non-reproduction closure. Passing isolated reruns and focused fixture checks do not cancel the recorded full-suite failures.",
+      "explanation": "Preserve the historical AuditTest EPIPE incident while distinguishing investigation completion, fixture repairs and proof of a production fix.",
+      "facts": "The report identifies macOS arm64, Elixir 1.20.4 and OTP 29.1, exact revisions, commands, seeds and artifact hashes. Three bounded suite invocations report two failures, zero failures and three failures respectively; none reproduces the historical AuditTest failure. Subsequent affected-module verification reports 178 passes and 9 exclusions after fixture cleanup and global-state repairs.",
+      "hypothesis": "The observed suite failures may involve fixture lifecycle and global-state interference, but the historical EPIPE root cause and occasional setsid exit-11 cause remain unproven.",
+      "id": "1c2094d1-929f-4c5d-a61f-3001de87971c",
+      "improvement": "Record the outcome as revision-bound non-reproduction with the original incident preserved. Keep the unrelated failures and probe limits visible; require renewed attributable failure evidence before claiming recurrence or selecting a production EPIPE repair.",
+      "observer": {
+        "agent": "codex",
+        "model": "gpt-6-astra"
+      },
+      "pass_id": "live-inline-reconciliation",
+      "projects": [
+        "harness"
+      ],
+      "provisional": false,
+      "recurrence": "Same task-326 finding, updated in place. No recurrence of the historical AuditTest failure is demonstrated; other suite failures remain documented.",
+      "runs": [],
+      "title": "Task 326 has bounded non-reproduction evidence, not a production EPIPE fix"
+    }
+  ],
+  "fixture": "Historical claims from Task 451, committed repository evidence, real Codex observer",
+  "citation_checks": {
+    "method": "Separate git show revision:path reads, literal byte substring and full-blob SHA-256 comparison",
+    "checks": [
+      {
+        "finding_id": "a4cb28ea-af09-4043-a329-014b03ed75bb",
+        "path": "roadmap/tasks.toml",
+        "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+        "literal_excerpt_matches": true,
+        "full_blob_hash_matches": true
+      },
+      {
+        "finding_id": "a4cb28ea-af09-4043-a329-014b03ed75bb",
+        "path": "docs/verification/qa/task-448.json",
+        "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+        "literal_excerpt_matches": true,
+        "full_blob_hash_matches": true
+      },
+      {
+        "finding_id": "a4cb28ea-af09-4043-a329-014b03ed75bb",
+        "path": "docs/verification/qa/task-448.json",
+        "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+        "literal_excerpt_matches": true,
+        "full_blob_hash_matches": true
+      },
+      {
+        "finding_id": "a4cb28ea-af09-4043-a329-014b03ed75bb",
+        "path": "docs/verification/qa/task-448.json",
+        "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+        "literal_excerpt_matches": true,
+        "full_blob_hash_matches": true
+      },
+      {
+        "finding_id": "a4cb28ea-af09-4043-a329-014b03ed75bb",
+        "path": "docs/verification/qa/task-448.json",
+        "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+        "literal_excerpt_matches": true,
+        "full_blob_hash_matches": true
+      },
+      {
+        "finding_id": "7f961142-3b55-4eb3-bf4c-211c73ee4b6f",
+        "path": "roadmap/tasks.toml",
+        "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+        "literal_excerpt_matches": true,
+        "full_blob_hash_matches": true
+      },
+      {
+        "finding_id": "7f961142-3b55-4eb3-bf4c-211c73ee4b6f",
+        "path": "docs/verification/task-427/inline.json",
+        "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+        "literal_excerpt_matches": true,
+        "full_blob_hash_matches": true
+      },
+      {
+        "finding_id": "7f961142-3b55-4eb3-bf4c-211c73ee4b6f",
+        "path": "docs/verification/task-427/inline.json",
+        "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+        "literal_excerpt_matches": true,
+        "full_blob_hash_matches": true
+      },
+      {
+        "finding_id": "7f961142-3b55-4eb3-bf4c-211c73ee4b6f",
+        "path": "docs/verification/task-427/inline.json",
+        "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+        "literal_excerpt_matches": true,
+        "full_blob_hash_matches": true
+      },
+      {
+        "finding_id": "7f961142-3b55-4eb3-bf4c-211c73ee4b6f",
+        "path": "docs/verification/qa/task-448.json",
+        "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+        "literal_excerpt_matches": true,
+        "full_blob_hash_matches": true
+      },
+      {
+        "finding_id": "1c2094d1-929f-4c5d-a61f-3001de87971c",
+        "path": "roadmap/tasks.toml",
+        "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+        "literal_excerpt_matches": true,
+        "full_blob_hash_matches": true
+      },
+      {
+        "finding_id": "1c2094d1-929f-4c5d-a61f-3001de87971c",
+        "path": "docs/verification/task-326/investigation.json",
+        "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+        "literal_excerpt_matches": true,
+        "full_blob_hash_matches": true
+      },
+      {
+        "finding_id": "1c2094d1-929f-4c5d-a61f-3001de87971c",
+        "path": "docs/verification/task-326/investigation.json",
+        "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+        "literal_excerpt_matches": true,
+        "full_blob_hash_matches": true
+      },
+      {
+        "finding_id": "1c2094d1-929f-4c5d-a61f-3001de87971c",
+        "path": "docs/verification/task-326/investigation.json",
+        "revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+        "literal_excerpt_matches": true,
+        "full_blob_hash_matches": true
+      }
+    ]
+  },
+  "limitations": [
+    "Historical finding claims are reproduction fixtures from Task 451, not exported deployed findings.",
+    "Semantic acceptance remains with the independent harness reviewer."
+  ]
+}

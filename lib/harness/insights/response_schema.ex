@@ -14,7 +14,7 @@ defmodule Harness.Insights.ResponseSchema do
 
     read =
       object(%{
-        "kind" => %{"type" => "string", "enum" => ["findings", "source"]},
+        "kind" => %{"type" => "string", "enum" => ["findings", "source", "catalog", "task"]},
         "source_id" => nullable_text,
         "offset" => %{"type" => "integer"}
       })

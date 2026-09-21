@@ -70,7 +70,7 @@ defmodule Harness.Insights.Publication do
 
   @spec references([map()], String.t(), map() | nil, String.t()) :: [String.t()]
   defp references(citations, field, prior, key) do
-    Enum.uniq(Enum.map(citations, & &1[field]) ++ Map.get(prior || %{}, key, []))
+    Enum.uniq(Enum.reject(Enum.map(citations, & &1[field]), &is_nil/1) ++ Map.get(prior || %{}, key, []))
   end
 
   @spec citations(term(), map()) :: {:ok, [map()]} | {:error, term()}

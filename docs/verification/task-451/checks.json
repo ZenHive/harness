@@ -1,0 +1,94 @@
+{
+  "base_revision": "e57c80bd7273f28d6aed11b01bf8eeeb3946874d",
+  "tested_worktree_files": {
+    "lib/harness/insights.ex": "5e4a5d443efe5f146f38174a9b058ab3e92142243ddfcd742ccfefbf8a4e287c",
+    "lib/harness/insights/consultation.ex": "94f133f8dc05ee5aab0140a152c1d7f29ac655cd1db5e79c313c2ba78311a51d",
+    "lib/harness/insights/evidence.ex": "c4574bc4d4787c7839d3fd27f14e5a32bf9b85c68580afde9253c9bda3bba732",
+    "lib/harness/insights/prompt.ex": "e394081a3eccfd5084f94c99ccf54424e06248becedd8fb47299b855e8cc9de6",
+    "lib/harness/insights/publication.ex": "cb4f2bb460e354fa1d18b67d25d805264ca30d048c074cf7ec283a2be189d8f9",
+    "lib/harness/insights/response_schema.ex": "d845e869d24c585aa9504ca80bffdd16af9699479fe3856c29578b54976c4cce",
+    "test/harness/insights/insights_test.exs": "79f357002dafcf06e299b79334e8d96b31a86f6703767c98222a287b8ce29d3f",
+    "test/harness/insights/postgres_test.exs": "8a2ff10db8c56b327170e83b31fb381938aa5a593064a61011c3e88c0f668f68",
+    "test/harness/insights/restart_test.exs": "3cd3f9003d2f7c6e4f13e44c36a1fe68e5b989e3b98ab1c87eabc5af1c2a6b04",
+    "lib/harness/insights/project_evidence.ex": "878eae11db1950881e4e13d2bb1029e761f367e32ff654395cc97f7f81269c2f",
+    "test/harness/insights/project_evidence_test.exs": "b9a5f8f52281062d680a2b8bcfcff134c683c683aaaf2af9e218cc96a8b22316"
+  },
+  "checks": [
+    {
+      "command": "mix test test/harness/insights --exclude integration --max-failures 2",
+      "result": "38 passed, 19 excluded",
+      "seed": 612761
+    },
+    {
+      "command": "mix test test/harness/insights/project_evidence_test.exs --exclude integration",
+      "result": "6 passed, 1 excluded",
+      "seed": 227035,
+      "note": "Includes two subsequently added boundary tests; four cases overlap the 38-case run."
+    },
+    {
+      "command": "MIX_ENV=test mix compile --warnings-as-errors",
+      "result": "exit 0"
+    },
+    {
+      "command": "mix format --check-formatted <11 changed Elixir source/test paths>",
+      "paths": [
+        "lib/harness/insights.ex",
+        "lib/harness/insights/consultation.ex",
+        "lib/harness/insights/evidence.ex",
+        "lib/harness/insights/prompt.ex",
+        "lib/harness/insights/publication.ex",
+        "lib/harness/insights/response_schema.ex",
+        "test/harness/insights/insights_test.exs",
+        "test/harness/insights/postgres_test.exs",
+        "test/harness/insights/restart_test.exs",
+        "lib/harness/insights/project_evidence.ex",
+        "test/harness/insights/project_evidence_test.exs"
+      ],
+      "result": "exit 0"
+    },
+    {
+      "command": "git diff --check",
+      "result": "exit 0"
+    },
+    {
+      "command": "HARNESS_DB_NAME=harness_insights_task451 MIX_ENV=test mix test test/harness/insights/postgres_test.exs test/harness/insights/restart_test.exs --include integration --max-failures 3",
+      "result": "11 passed, 3 failed",
+      "failures": [
+        "QA fixture lacked required base_sha; corrected",
+        "The empty baseline now observes project evidence; fixture response corrected",
+        "Existing live test exceeded SQL Sandbox ownership timeout"
+      ]
+    },
+    {
+      "command": "env -u HARNESS_DATABASE_URL -u DATABASE_URL HARNESS_DB_NAME=harness_insights_task451 MIX_ENV=test mix run --no-start -e 'Application.put_env(:harness, Harness.Repo, Keyword.put(Application.fetch_env!(:harness, Harness.Repo), :ownership_timeout, 300_000)); Mix.Task.run(\"test\", [\"test/harness/insights/postgres_test.exs:51:154:196\", \"test/harness/insights/restart_test.exs\", \"--include\", \"integration\"])'",
+      "result": "3 passed, 1 failed, 10 excluded",
+      "passing": [
+        "QA-only update",
+        "failed publication preserves checkpoint",
+        "Repo restart preserves cursors and attributed citations"
+      ],
+      "failure": "Live empty-finding retrieval repeatedly requested page 0 and reached observation_timeout; corrected prompt and added retrieval history/budget context."
+    },
+    {
+      "command": "Same test-owned database and ownership timeout; mix test test/harness/insights/postgres_test.exs:196 --include integration",
+      "result": "1 passed, 12 excluded; 48.3 seconds",
+      "note": "Real observer first publication and later exact finding revision after retrieval-context correction."
+    },
+    {
+      "command": "mix test test/harness/insights/project_evidence_test.exs --include integration --max-failures 1",
+      "result": "5 passed; 163.2 seconds",
+      "seed": 596383,
+      "note": "Real Codex observer using current retrieval history/budget. Two boundary tests were added separately and passed in the six-case offline run."
+    },
+    {
+      "command": "Independent Python subprocess git show revision:path and SHA-256 check for each live citation",
+      "result": "14 literal excerpts and full-blob hashes matched"
+    }
+  ],
+  "limitations": [
+    "No deployed finding or production server was read, modified or restarted.",
+    "Live reconciliation uses explicitly labeled historical finding fixtures and real committed reports.",
+    "Full project QA was not run; verification was scoped to Insights.",
+    "Independent harness reviewer remains the acceptance gate."
+  ]
+}

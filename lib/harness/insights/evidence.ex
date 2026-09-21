@@ -2,7 +2,9 @@ defmodule Harness.Insights.Evidence do
   @moduledoc "Bounded, read-only run evidence; never exposes lifecycle or roadmap operations."
   import Ecto.Query
 
+  alias Harness.Audit.QAAttempt
   alias Harness.Dispatch
+  alias Harness.Insights.ProjectEvidence
   alias Harness.Insights.Store
   alias Harness.ProjectRegistry
   alias Harness.Repo
@@ -28,32 +30,118 @@ defmodule Harness.Insights.Evidence do
       active_page = Enum.take(active_page, @batch)
       historical = Enum.map(records, &historical/1)
       active = active_page |> Enum.map(&active/1) |> Enum.filter(&included?(&1, projects))
-      samples = historical ++ active
+      {qa, qa_next, qa_pending} = qa(projects, progress)
+      relevant = Enum.map(historical ++ active ++ qa, & &1.project)
+      {external, external_next, external_pending} = external(progress, relevant)
+      samples = historical ++ active ++ external ++ qa
       changed = Enum.reject(samples, &(Store.get("seen/" <> &1.key) == %{"digest" => &1.digest}))
-      snapshots = Enum.flat_map(changed, & &1.sources)
-      sources = Enum.map(snapshots, &Map.delete(&1, "content"))
-      incomplete = Enum.any?(Enum.flat_map(samples, & &1.sources), &(&1["availability"] != "available"))
+      snapshots = if changed == [], do: [], else: Enum.flat_map(changed ++ (samples -- changed), & &1.sources)
+      sources = snapshots |> Enum.take(12) |> Enum.map(&Map.delete(&1, "content"))
+      all_sources = Enum.flat_map(samples, & &1.sources)
+      incomplete = length(all_sources) > 12 or Enum.any?(all_sources, &(&1["availability"] != "available"))
       cycle_incomplete = Map.get(progress, "cycle_incomplete", false) or incomplete
-      pending = history_partial or active_partial
+      pending = history_partial or active_partial or external_pending or qa_pending
 
       next = %{
         "bootstrap" => bootstrap,
+        "project_cursor" => external_next,
+        "qa_cursor" => qa_next,
         "cursor" => if(history_partial, do: List.last(records).run_id, else: ""),
         "active_cursor" => if(active_partial, do: List.last(active_page), else: ""),
         "cycle_incomplete" => pending and cycle_incomplete,
-        "scanned" => Map.get(progress, "scanned", 0) + length(samples)
+        "scanned" => Map.get(progress, "scanned", 0) + length(historical ++ active)
       }
 
       {:ok,
        %{
          sources: sources,
          snapshots: snapshots,
+         catalog: Enum.map(snapshots, &Map.drop(&1, ["text", "content"])),
          next: next,
          changed: length(changed),
+         changed_runs:
+           Enum.count(changed, &(String.starts_with?(&1.key, "record/") or String.starts_with?(&1.key, "active/"))),
          partial: pending or cycle_incomplete,
          pending: pending,
          seen: Enum.map(changed, &{"seen/" <> &1.key, "seen", %{"digest" => &1.digest}})
        }}
+    end
+  end
+
+  @spec external(map(), [String.t()]) :: {[map()], String.t(), boolean()}
+  defp external(progress, relevant) do
+    projects = Enum.sort_by(ProjectRegistry.list(), & &1.name)
+    page = projects |> Enum.filter(&(&1.name > Map.get(progress, "project_cursor", ""))) |> Enum.take(2)
+
+    samples =
+      (Enum.take(page, 1) ++ Enum.filter(projects, &(&1.name in relevant)))
+      |> Enum.uniq_by(& &1.name)
+      |> Enum.map(fn project ->
+        sources = ProjectEvidence.sources(project)
+        value = sample("project/" <> project.name, project.name, sources)
+        # An unrelated commit changes attribution, not the evidence requiring reassessment.
+        digest =
+          sources
+          |> Enum.map(&Map.take(&1, ["field", "content_hash", "availability", "unavailable_reason"]))
+          |> :erlang.term_to_binary()
+          |> then(&:crypto.hash(:sha256, &1))
+          |> Base.encode16()
+
+        %{value | digest: digest}
+      end)
+
+    {samples, if(length(page) > 1, do: hd(page).name, else: ""), length(page) > 1}
+  end
+
+  @spec qa([String.t()], map()) :: {[map()], String.t(), boolean()}
+  defp qa(projects, progress) do
+    if Store.persistent?() do
+      cursor = Map.get(progress, "qa_cursor", "")
+      query = from a in QAAttempt, where: a.project_name in ^projects, order_by: a.id, limit: ^(@batch + 1)
+      query = if cursor == "", do: query, else: from(a in query, where: a.id > ^cursor)
+      rows = Repo.all(query)
+      page = Enum.take(rows, @batch)
+
+      samples =
+        Enum.map(page, fn row ->
+          content =
+            row |> Map.from_struct() |> Map.delete(:__meta__) |> inspect(limit: :infinity, printable_limit: :infinity)
+
+          source =
+            ProjectEvidence.snapshot(row.project_name, row.revision, "qa/" <> row.id, content, %{
+              "authority" => "qa_attempt",
+              "provenance" => "audit_qa_attempts/" <> row.id,
+              "provisional" => row.status == "running"
+            })
+
+          sample("qa/" <> row.id, row.project_name, [source])
+        end)
+
+      {samples, if(length(rows) > @batch, do: List.last(page).id, else: ""), length(rows) > @batch}
+    else
+      {[], "", false}
+    end
+  end
+
+  @doc "Lists bounded metadata for the immutable snapshots available in this pass."
+  @spec catalog(map(), non_neg_integer()) :: map()
+  def catalog(batch, offset) do
+    page = Enum.slice(batch.catalog, offset, 20)
+    %{"source_catalog" => page, "catalog_next_offset" => if(length(batch.catalog) > offset + 20, do: offset + 20)}
+  end
+
+  @doc "Locates a numbered task in the supplied immutable roadmap, without reading a path."
+  @spec task(map(), String.t(), non_neg_integer()) :: {:ok, map()} | {:error, atom()}
+  def task(batch, id, number) do
+    case Enum.find(batch.snapshots, &(&1["source_id"] == id and &1["authority"] == "current_intent")) do
+      %{"content" => content} ->
+        case :binary.match(content, ~s([[task]]\nid = "#{number}"\n)) do
+          {offset, _} -> read(batch, id, offset)
+          :nomatch -> {:error, :unknown_task}
+        end
+
+      _ ->
+        {:error, :unknown_source_or_offset}
     end
   end
 
@@ -197,6 +285,9 @@ defmodule Harness.Insights.Evidence do
   @spec read(map(), String.t(), non_neg_integer()) :: {:ok, map()} | {:error, atom()}
   def read(batch, id, offset) when is_integer(offset) and offset >= 0 do
     case Enum.find(batch.snapshots, &(&1["source_id"] == id)) do
+      %{"content" => ""} = source when offset == 0 ->
+        {:ok, Map.delete(source, "content")}
+
       %{"content" => content} = source when offset < byte_size(content) ->
         remainder = binary_part(content, offset, byte_size(content) - offset)
 

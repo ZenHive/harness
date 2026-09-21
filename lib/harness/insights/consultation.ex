@@ -18,6 +18,10 @@ defmodule Harness.Insights.Consultation do
 
     context = %{
       "sources" => batch.sources,
+      "retrieval_history" => [],
+      "reads_remaining" => @reads,
+      "source_catalog" => Evidence.catalog(batch, 0)["source_catalog"],
+      "catalog_next_offset" => Evidence.catalog(batch, 0)["catalog_next_offset"],
       "previous_findings" => previous,
       "finding_next_offset" => next_offset(previous, 0),
       "partial_evidence" => batch.partial,
@@ -41,7 +45,15 @@ defmodule Harness.Insights.Consultation do
         with {:ok, update, added_sources, added_findings} <- read(request, batch) do
           sources = Enum.uniq_by(sources ++ added_sources, & &1["source_id"])
           previous = Enum.uniq_by(previous ++ added_findings, & &1["id"])
-          context = context |> Map.merge(update) |> Map.put("sources", sources) |> Map.put("previous_findings", previous)
+
+          context =
+            context
+            |> Map.merge(update)
+            |> Map.put("sources", sources)
+            |> Map.put("previous_findings", previous)
+            |> Map.update!("retrieval_history", &(&1 ++ [request]))
+            |> Map.put("reads_remaining", remaining - 1)
+
           consult(context, batch, config, sources, previous, remaining - 1)
         end
 
@@ -107,6 +119,16 @@ defmodule Harness.Insights.Consultation do
 
   defp read(%{"kind" => "source", "source_id" => id, "offset" => offset}, batch) do
     with {:ok, source} <- Evidence.read(batch, id, offset) do
+      {:ok, %{"read_result" => source}, [source], []}
+    end
+  end
+
+  defp read(%{"kind" => "catalog", "offset" => offset}, batch) when is_integer(offset) and offset >= 0 do
+    {:ok, Evidence.catalog(batch, offset), [], []}
+  end
+
+  defp read(%{"kind" => "task", "source_id" => id, "offset" => number}, batch) when is_integer(number) and number >= 0 do
+    with {:ok, source} <- Evidence.task(batch, id, number) do
       {:ok, %{"read_result" => source}, [source], []}
     end
   end
