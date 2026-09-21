@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Fleet focused-dispatch rollout complete (Task 448).** Twelve reviewed consumer deliveries landed; all fifteen registered projects match persisted focused-check/full-QA mappings. Clippy moved to rmap QA; Tapakly AGENTS regenerated from current canonical Ash instructions. ZenHive plugins remain removed, unrelated settings retained, and ccxt-distill unregistered. Evidence: `docs/verification/qa/task-448.json`.
 - **QA rollout hook inventory is read-only (Task 448 rescue).** `mix harness.projects.use_dispatch_check` is retired. `mix harness.projects.rollout_dispatch_qa` never installs, wraps, or bypasses hooks; failed apply restores captured settings and surfaces restoration failures. Focused dispatch and full QA commands are installed together; prior QA outcomes do not gate the switch.
 
 - **Dashboard: task board and Run Insights match the operator chrome.** The fleet Kanban on `/harness/roadmap` now uses the existing dispatch/hold/resume/land button vocabulary, lane-tinted headings, snap-scrolling full-bleed columns, and a compact empty-lane line instead of the page-level dashed empty state. Dead "Cost —" rows are gone; cards with a run link through to run detail. Run Insights keeps headings as headings (status is no longer a heading role), wraps each revision as a scanable panel, and shortens the navbar label to Insights.

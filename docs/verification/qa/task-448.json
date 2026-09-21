@@ -494,10 +494,6 @@
     }
   ],
   "inspection_limits": "Raw scoped settings retained; shell expressions and plugin scope require operator review.",
-  "remaining_at_capture": [
-    "rmap dispatch still contains Clippy; corrected in 4ec140c9, live readback pending",
-    "Tapakly generated instructions corrected after capture in b9666ae2"
-  ],
   "hook_sources": [
     {
       "command": "[ ! -f '/home/harness/.claude/skills/impeccable/scripts/hook.mjs' ] || node '/home/harness/.claude/skills/impeccable/scripts/hook.mjs'",
@@ -942,5 +938,119 @@
     ],
     "reviewer_concern": "Resolved stale server Ash include which previously prevented generation without losing Ash guidance."
   },
-  "activation": "All Elixir registrations already have focused check_command and explicit qa_command. Rmap live Clippy removal awaits safe runtime activation/readback; no complete-fleet-QA-green claim."
+  "activation": "All 15 registered projects match the focused check_command and explicit qa_command catalog after persisted/live readback. ccxt-distill remains unregistered. No complete-fleet-QA-green claim.",
+  "rmap_final_activation": {
+    "projects": [
+      {
+        "name": "rmap",
+        "reason": null,
+        "status": "dispatch_switched",
+        "write_set": [
+          "Cargo.toml",
+          "CLAUDE.md",
+          "AGENTS.md"
+        ],
+        "prior": {
+          "check_command": "cargo fmt --check && cargo clippy --all-targets -- -D warnings; focused cargo test for touched crates",
+          "concurrency_cap": 2,
+          "landing_policy": "auto",
+          "qa_command": "cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test",
+          "reviewer": null,
+          "target_branch": "main"
+        },
+        "readback": {
+          "check_command": "cargo fmt --check && cargo clippy --all-targets -- -D warnings; focused cargo test for touched crates",
+          "concurrency_cap": 2,
+          "landing_policy": "auto",
+          "qa_command": "cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test",
+          "reviewer": null,
+          "target_branch": "main"
+        },
+        "desired": {
+          "check_command": "cargo fmt --check && cargo check --all-targets; focused cargo test for touched crates",
+          "qa_command": "cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test"
+        }
+      }
+    ],
+    "captured_at": "2026-09-21T00:49:41Z"
+  },
+  "unrelated_rmap_registration_fields_unchanged": true,
+  "runtime_verification": {
+    "deployed_revision": "65b3aecf1494c72e02fc3c02a860eee50b5b7b6a",
+    "service_started_utc": "2026-09-21T00:48:55Z",
+    "method": "Operator-authorized manual systemctl restart after zero run and agent-process checks; no autodeploy enablement",
+    "admission_process_present": true,
+    "run_dynamic_supervisor_present": true,
+    "loaded_module_md5_mismatches": [],
+    "audit_queue_paused": false,
+    "audit_queue_running_jobs": [
+      7866
+    ]
+  },
+  "final_plan": [
+    {
+      "name": "aave_sim",
+      "status": "unchanged"
+    },
+    {
+      "name": "blockwatch",
+      "status": "unchanged"
+    },
+    {
+      "name": "bourse",
+      "status": "unchanged"
+    },
+    {
+      "name": "bourse_trading",
+      "status": "unchanged"
+    },
+    {
+      "name": "ccxt-distill",
+      "status": "unavailable"
+    },
+    {
+      "name": "delta_calc",
+      "status": "unchanged"
+    },
+    {
+      "name": "harness",
+      "status": "unchanged"
+    },
+    {
+      "name": "harness_agent_adapter",
+      "status": "unchanged"
+    },
+    {
+      "name": "mpp",
+      "status": "unchanged"
+    },
+    {
+      "name": "onchain_stack",
+      "status": "unchanged"
+    },
+    {
+      "name": "rmap",
+      "status": "unchanged"
+    },
+    {
+      "name": "starconiq",
+      "status": "unchanged"
+    },
+    {
+      "name": "tapakly",
+      "status": "unchanged"
+    },
+    {
+      "name": "trading_dashboard",
+      "status": "unchanged"
+    },
+    {
+      "name": "zen_quant",
+      "status": "unchanged"
+    },
+    {
+      "name": "zen_websocket",
+      "status": "unchanged"
+    }
+  ]
 }
