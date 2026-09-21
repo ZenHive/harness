@@ -13,6 +13,8 @@ defmodule Harness.Worktree.ReclaimTest do
       {:ok, report} = Reclaim.run(dry_run: true, base_dir: base, projects: [project])
 
       assert report.dry_run
+      assert report.complete?
+      assert Enum.any?(report.inspected, &(&1.project == project.name and &1.target == "main"))
       by_id = Map.new(report.items, &{&1.run_id, &1})
       assert by_id[landed.id].action == :reclaim
       assert by_id[landed.id].reason == :reachable
@@ -63,6 +65,7 @@ defmodule Harness.Worktree.ReclaimTest do
       {:ok, report} = Reclaim.run(dry_run: false, base_dir: base, projects: [project])
 
       refute report.dry_run
+      assert report.complete?
       refute File.dir?(landed.path)
       refute branch_exists?(repo, landed.branch)
       assert File.dir?(unlanded.path)
@@ -123,6 +126,102 @@ defmodule Harness.Worktree.ReclaimTest do
 
       refute File.dir?(removable.path)
       refute branch_exists?(repo, removable.branch)
+    end
+  end
+
+  describe "inspection coverage" do
+    test "a valid project with no leftovers is a completed empty scan" do
+      repo = GitFixture.init_repo()
+      base = GitFixture.tmp_base()
+      project = ProjectFixture.from_repo(repo, name: "empty-ok", target_branch: "main")
+
+      {:ok, report} = Reclaim.run(dry_run: true, base_dir: base, projects: [project])
+
+      assert report.complete?
+      assert report.items == []
+      assert report.errors == []
+      assert report.skipped == []
+      assert [%{project: "empty-ok", repo: ^repo, target: "main"}] = report.inspected
+    end
+
+    test "an explicit empty selection is a completed empty scan" do
+      {:ok, report} = Reclaim.run(dry_run: true, base_dir: GitFixture.tmp_base(), projects: [])
+
+      assert report.complete?
+      assert report.items == []
+      assert report.inspected == []
+      assert report.errors == []
+    end
+
+    test "a missing local repo identifies the uninspected project" do
+      missing = Path.join(GitFixture.tmp_base(), "absent-repo")
+      project = ProjectFixture.from_repo(missing, name: "absent", target_branch: "main")
+
+      {:ok, report} = Reclaim.run(dry_run: true, base_dir: GitFixture.tmp_base(), projects: [project])
+
+      refute report.complete?
+      assert report.inspected == []
+      assert [%{scope: :repository, project: "absent", repo: repo, reason: :enoent}] = report.errors
+      assert repo == Path.expand(missing)
+    end
+
+    test "an absent target identifies the uninspected project" do
+      repo = GitFixture.init_repo()
+      project = ProjectFixture.from_repo(repo, name: "no-target")
+
+      {:ok, report} = Reclaim.run(dry_run: true, base_dir: GitFixture.tmp_base(), projects: [project])
+
+      refute report.complete?
+      assert [%{scope: :target, project: "no-target", repo: ^repo, reason: :no_target_branch}] = report.errors
+    end
+
+    test "git enumeration failure preserves the raw git error" do
+      plain = GitFixture.tmp_base(name: "plain")
+      File.mkdir_p!(plain)
+      project = ProjectFixture.from_repo(plain, name: "plain", target_branch: "main")
+
+      {:ok, report} = Reclaim.run(dry_run: true, base_dir: GitFixture.tmp_base(), projects: [project])
+
+      refute report.complete?
+
+      assert [%{scope: :git, project: "plain", repo: ^plain, reason: {:git_failed, args, status, output}}] =
+               report.errors
+
+      assert args == ["for-each-ref", "--format=%(refname:short)", "refs/heads/harness/"]
+      assert is_integer(status) and status != 0
+      assert is_binary(output) and output != ""
+    end
+
+    test "github sources are skipped and do not fail inspection" do
+      project = %{
+        ProjectFixture.from_repo(GitFixture.init_repo(), name: "gh", target_branch: "main")
+        | source: {:github, "https://github.com/example/demo.git"}
+      }
+
+      {:ok, report} = Reclaim.run(dry_run: true, base_dir: GitFixture.tmp_base(), projects: [project])
+
+      assert report.complete?
+      assert report.inspected == []
+      assert [%{project: "gh", reason: :github_source}] = report.skipped
+    end
+
+    test "incomplete apply mutates nothing when a sibling project is invalid" do
+      {repo, base, valid, landed, unlanded} = fixture_pair()
+      missing = Path.join(GitFixture.tmp_base(), "gone")
+      invalid = ProjectFixture.from_repo(missing, name: "gone", target_branch: "main")
+
+      assert {:error, {:incomplete_inspection, report}} =
+               Reclaim.run(dry_run: false, base_dir: base, projects: [valid, invalid])
+
+      refute report.complete?
+      assert report.applied == []
+      assert File.dir?(landed.path)
+      assert File.dir?(unlanded.path)
+      assert branch_exists?(repo, landed.branch)
+      assert branch_exists?(repo, unlanded.branch)
+      assert Enum.any?(report.inspected, &(&1.project == valid.name))
+      assert Enum.any?(report.errors, &(&1.scope == :repository and &1.project == "gone"))
+      assert Enum.any?(report.items, &(&1.run_id == landed.id and &1.action == :reclaim))
     end
   end
 

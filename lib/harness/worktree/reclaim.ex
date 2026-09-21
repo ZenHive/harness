@@ -12,6 +12,12 @@ defmodule Harness.Worktree.Reclaim do
   offered as git-native `repair` unless the data is already on the target (then
   it is safe to remove). Directories with no git registration are the same
   reachability choice, never a repair.
+
+  Inspection coverage is part of the report: `inspected`, `skipped`, and
+  `errors` name what was (not) scanned. An empty leftover list with
+  `complete?: true` is a finished scan; registry, repository, target, or Git
+  enumeration failures set `complete?: false`. Apply refuses that incomplete
+  selected inspection before any deletion or repair.
   """
 
   alias Harness.Git
@@ -39,12 +45,29 @@ defmodule Harness.Worktree.Reclaim do
           optional(:base_dir) => String.t()
         }
 
+  @typedoc "A selected project that Git enumeration completed for."
+  @type inspected :: %{project: String.t(), repo: String.t(), target: String.t()}
+
+  @typedoc "A selected project omitted by design (no operable local checkout)."
+  @type skipped :: %{project: String.t(), reason: term()}
+
+  @typedoc "Why a selected project or the registry was not inspected."
+  @type inspection_error :: %{
+          :scope => :registry | :repository | :target | :git,
+          :reason => term(),
+          optional(:project) => String.t(),
+          optional(:repo) => String.t()
+        }
+
   @typedoc "Dry-run or applied maintenance report."
   @type report :: %{
           dry_run: boolean(),
+          complete?: boolean(),
+          inspected: [inspected()],
+          skipped: [skipped()],
           items: [item()],
           applied: [item()],
-          errors: [term()]
+          errors: [inspection_error() | {item(), term()}]
         }
 
   @doc """
@@ -55,63 +78,171 @@ defmodule Harness.Worktree.Reclaim do
     * `:dry_run` — default `true`. When `false`, performs reclaim/repair.
     * `:base_dir` — worktree root to scan. Default `Worktree.base_dir/0`.
     * `:projects` — `%Harness.Project{}` list. Default `ProjectRegistry.list/0`.
+
+  Apply returns `{:error, {:incomplete_inspection, report}}` when the selected
+  inspection did not finish; `applied` stays empty and no deletion or repair
+  runs. Dry-run still returns `{:ok, report}` so the operator can read
+  coverage and raw error context.
   """
-  @spec run(keyword()) :: {:ok, report()}
+  @spec run(keyword()) :: {:ok, report()} | {:error, {:incomplete_inspection, report()}}
   def run(opts \\ []) do
     dry_run? = Keyword.get(opts, :dry_run, true)
     base_dir = Keyword.get(opts, :base_dir, Worktree.base_dir())
-    projects = Keyword.get(opts, :projects, default_projects())
-    items = plan_items(base_dir, projects)
+    {contexts, inspected, skipped, inspection_errors} = inspect_selection(base_dir, selected_projects(opts))
+    items = plan_items(base_dir, contexts)
+    complete? = inspection_errors == []
 
-    if dry_run? do
-      {:ok, %{dry_run: true, items: items, applied: [], errors: []}}
-    else
-      {applied, errors} = apply_items(items)
-      {:ok, %{dry_run: false, items: items, applied: applied, errors: errors}}
+    report = %{
+      dry_run: dry_run?,
+      complete?: complete?,
+      inspected: inspected,
+      skipped: skipped,
+      items: items,
+      applied: [],
+      errors: inspection_errors
+    }
+
+    cond do
+      dry_run? ->
+        {:ok, report}
+
+      not complete? ->
+        {:error, {:incomplete_inspection, report}}
+
+      true ->
+        {applied, apply_errors} = apply_items(items)
+        {:ok, %{report | applied: applied, errors: inspection_errors ++ apply_errors}}
     end
   end
 
-  @spec default_projects() :: [Project.t()]
+  @spec selected_projects(keyword()) :: {:ok, [Project.t()]} | {:error, :registry_unavailable}
+  defp selected_projects(opts) do
+    case Keyword.fetch(opts, :projects) do
+      {:ok, projects} -> {:ok, projects}
+      :error -> default_projects()
+    end
+  end
+
+  @spec default_projects() :: {:ok, [Project.t()]} | {:error, :registry_unavailable}
   defp default_projects do
     case Process.whereis(ProjectRegistry) do
-      nil -> []
-      _pid -> ProjectRegistry.list()
+      nil -> {:error, :registry_unavailable}
+      _pid -> {:ok, ProjectRegistry.list()}
     end
   end
 
-  @spec plan_items(String.t(), [Project.t()]) :: [item()]
-  defp plan_items(base_dir, projects) do
-    contexts = Enum.flat_map(projects, &project_context(&1, base_dir))
+  @spec inspect_selection(String.t(), {:ok, [Project.t()]} | {:error, :registry_unavailable}) ::
+          {[map()], [inspected()], [skipped()], [inspection_error()]}
+  defp inspect_selection(_base_dir, {:error, :registry_unavailable}) do
+    {[], [], [], [inspection_error(:registry, nil, nil, :registry_unavailable)]}
+  end
+
+  defp inspect_selection(base_dir, {:ok, projects}) do
+    projects
+    |> Enum.map(&inspect_project(&1, base_dir))
+    |> partition_inspection()
+  end
+
+  @spec inspect_project(Project.t(), String.t()) :: {:ok, map()} | {:skip, skipped()} | {:error, inspection_error()}
+  defp inspect_project(%Project{} = project, base_dir) do
+    case Project.local_repo_path(project) do
+      {:skipped, :github_source} -> {:skip, %{project: project.name, reason: :github_source}}
+      {:ok, repo} -> inspect_local(project, repo, base_dir)
+    end
+  end
+
+  @spec inspect_local(Project.t(), String.t(), String.t()) :: {:ok, map()} | {:error, inspection_error()}
+  defp inspect_local(project, repo, base_dir) do
+    with :ok <- require_repo_dir(project, repo),
+         {:ok, target} <- require_target(project, repo),
+         {:ok, branches} <- require_branches(project, repo) do
+      {:ok, %{project: project.name, repo: repo, target: target, base_dir: base_dir, branches: branches}}
+    end
+  end
+
+  @spec require_repo_dir(Project.t(), String.t()) :: :ok | {:error, inspection_error()}
+  defp require_repo_dir(project, repo) do
+    case File.stat(repo) do
+      {:ok, %{type: :directory}} ->
+        :ok
+
+      {:ok, %{type: type}} ->
+        {:error, inspection_error(:repository, project.name, repo, {:not_a_directory, type})}
+
+      {:error, reason} ->
+        {:error, inspection_error(:repository, project.name, repo, reason)}
+    end
+  end
+
+  @spec require_target(Project.t(), String.t()) :: {:ok, String.t()} | {:error, inspection_error()}
+  defp require_target(project, repo) do
+    case Project.target_branch(project) do
+      {:ok, target} -> {:ok, target}
+      {:skipped, :no_target_branch} -> {:error, inspection_error(:target, project.name, repo, :no_target_branch)}
+    end
+  end
+
+  @spec require_branches(Project.t(), String.t()) :: {:ok, [String.t()]} | {:error, inspection_error()}
+  defp require_branches(project, repo) do
+    case Git.run(["for-each-ref", "--format=%(refname:short)", "refs/heads/harness/"], repo) do
+      {:ok, output} -> {:ok, String.split(output, "\n", trim: true)}
+      {:error, reason} -> {:error, inspection_error(:git, project.name, repo, reason)}
+    end
+  end
+
+  @spec inspection_error(atom(), String.t() | nil, String.t() | nil, term()) :: inspection_error()
+  defp inspection_error(scope, project, repo, reason) do
+    %{scope: scope, reason: reason}
+    |> put_present(:project, project)
+    |> put_present(:repo, repo)
+  end
+
+  @spec put_present(map(), atom(), term()) :: map()
+  defp put_present(map, _key, nil), do: map
+  defp put_present(map, key, value), do: Map.put(map, key, value)
+
+  @spec partition_inspection([{:ok, map()} | {:skip, skipped()} | {:error, inspection_error()}]) ::
+          {[map()], [inspected()], [skipped()], [inspection_error()]}
+  defp partition_inspection(results) do
+    {ctxs, inspected, skipped, errors} =
+      Enum.reduce(results, {[], [], [], []}, &accumulate_inspection/2)
+
+    {Enum.reverse(ctxs), Enum.reverse(inspected), Enum.reverse(skipped), Enum.reverse(errors)}
+  end
+
+  @spec accumulate_inspection(
+          {:ok, map()} | {:skip, skipped()} | {:error, inspection_error()},
+          {[map()], [inspected()], [skipped()], [inspection_error()]}
+        ) :: {[map()], [inspected()], [skipped()], [inspection_error()]}
+  defp accumulate_inspection({:ok, ctx}, {ctxs, inspected, skipped, errors}) do
+    {[ctx | ctxs], [inspected_fact(ctx) | inspected], skipped, errors}
+  end
+
+  defp accumulate_inspection({:skip, fact}, {ctxs, inspected, skipped, errors}) do
+    {ctxs, inspected, [fact | skipped], errors}
+  end
+
+  defp accumulate_inspection({:error, error}, {ctxs, inspected, skipped, errors}) do
+    {ctxs, inspected, skipped, [error | errors]}
+  end
+
+  @spec inspected_fact(map()) :: inspected()
+  defp inspected_fact(ctx), do: %{project: ctx.project, repo: ctx.repo, target: ctx.target}
+
+  @spec plan_items(String.t(), [map()]) :: [item()]
+  defp plan_items(base_dir, contexts) do
     branch_items = Enum.flat_map(contexts, &branch_items/1)
     dir_items = orphan_dir_items(base_dir, contexts)
     merge_items(branch_items, dir_items)
   end
 
-  @spec project_context(Project.t(), String.t()) :: [map()]
-  defp project_context(%Project{} = project, base_dir) do
-    with {:ok, repo} <- Project.local_repo_path(project),
-         target when is_binary(target) and target != "" <- project.target_branch do
-      [%{project: project.name, repo: repo, target: target, base_dir: base_dir}]
-    else
-      _unavailable -> []
-    end
-  end
-
   @spec branch_items(map()) :: [item()]
-  defp branch_items(%{project: name, repo: repo, target: target, base_dir: base_dir}) do
-    Enum.map(harness_branches(repo), fn branch ->
+  defp branch_items(%{project: name, repo: repo, target: target, base_dir: base_dir, branches: branches}) do
+    Enum.map(branches, fn branch ->
       run_id = String.replace_prefix(branch, "harness/", "")
       path = Worktree.run_dir(name, run_id, base_dir: base_dir)
       classify_run(repo, target, name, run_id, branch, path, base_dir)
     end)
-  end
-
-  @spec harness_branches(String.t()) :: [String.t()]
-  defp harness_branches(repo) do
-    case Git.run(["for-each-ref", "--format=%(refname:short)", "refs/heads/harness/"], repo) do
-      {:ok, output} -> String.split(output, "\n", trim: true)
-      {:error, _reason} -> []
-    end
   end
 
   @spec orphan_dir_items(String.t(), [map()]) :: [item()]
