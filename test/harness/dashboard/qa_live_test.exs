@@ -35,6 +35,30 @@ defmodule Harness.Dashboard.QALiveTest do
     %{project: project, repo: repo, revision: sha(repo)}
   end
 
+  test "audit controls persist an explicit selection and surface unavailable attempts", ctx do
+    alias Harness.Audit.Selection
+
+    old = Harness.SettingsStore.fetch_map(:audit_selection)
+    on_exit(fn -> Harness.SettingsStore.put(:audit_selection, old) end)
+    assert :ok = Selection.configure("", "")
+    attempt = record(ctx, "incomplete")
+    assert {:ok, _} = QA.pin(attempt, %{report: %{"reason" => "{:skipped, :no_audit_agent}"}})
+    {:ok, view, _} = live(build_conn(), "/harness/qa")
+    html = render_async(view)
+    assert html =~ "no_audit_agent"
+    assert html =~ "Audit agent"
+    view |> form("#audit-selection-form", %{auditor: %{agent: "codex", model: "gpt-6-astra"}}) |> render_submit()
+    html = render_async(view)
+    assert html =~ "Audit selection saved"
+    assert html =~ "Ready: codex / gpt-6-astra"
+    assert Selection.settings() == %{"agent" => "codex", "model" => "gpt-6-astra"}
+    view |> form("#audit-selection-form", %{auditor: %{agent: "codex", model: ""}}) |> render_submit()
+    assert render_async(view) =~ "model_required"
+    assert Selection.settings()["model"] == "gpt-6-astra"
+    {:ok, again, _} = live(build_conn(), "/harness/qa")
+    assert render_async(again) =~ "Ready: codex / gpt-6-astra"
+  end
+
   test "overview loads, filters and links to bounded project history", ctx do
     attempt = record(ctx, "passed")
     {:ok, view, _} = live(build_conn(), "/harness/qa")

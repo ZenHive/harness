@@ -117,7 +117,8 @@ defmodule Harness.Audit.QA do
               :inserted_at,
               :updated_at,
               :landing_shas
-            ])
+            ]),
+          select_merge: %{report: fragment("jsonb_build_object('reason', left(?->>'reason', 1000))", a.report)}
         )
       )
 
@@ -261,7 +262,9 @@ defmodule Harness.Audit.QA do
 
     row
     |> Map.from_struct()
+    |> Map.put(:reason, row.report && row.report["reason"])
     |> Map.take([
+      :reason,
       :id,
       :project_name,
       :target_branch,

@@ -4,6 +4,7 @@ defmodule Harness.Dashboard.QALive do
 
   alias Harness.Audit.QA, as: Attempts
   alias Harness.Audit.Requests
+  alias Harness.Audit.Selection
   alias Harness.Dashboard.QA
   alias Harness.ProjectRegistry
   alias Phoenix.LiveView.AsyncResult
@@ -17,6 +18,7 @@ defmodule Harness.Dashboard.QALive do
 
     {:ok,
      assign(socket,
+       auditor: Selection.status(),
        page: AsyncResult.loading(),
        name: nil,
        project_filter: "",
@@ -57,6 +59,16 @@ defmodule Harness.Dashboard.QALive do
 
   @impl Phoenix.LiveView
   @spec handle_event(String.t(), map(), Socket.t()) :: {:noreply, Socket.t()}
+  def handle_event("save_auditor", %{"auditor" => %{"agent" => agent, "model" => model}}, socket) do
+    notice =
+      case Selection.configure(agent, model) do
+        :ok -> "Audit selection saved. Applies to new audit sessions."
+        {:error, reason} -> "Audit selection not saved: #{inspect(reason)}"
+      end
+
+    {:noreply, socket |> assign(notice: notice, auditor: Selection.status()) |> refresh()}
+  end
+
   def handle_event("filter", params, socket) do
     query = URI.encode_query(Map.take(params, ["project", "status"]))
     {:noreply, push_patch(socket, to: "/harness/qa?" <> query)}
@@ -101,7 +113,7 @@ defmodule Harness.Dashboard.QALive do
   @spec refresh(Socket.t()) :: Socket.t()
   defp refresh(socket) do
     assigns = socket.assigns
-    assign_async(socket, :page, fn -> load_page(assigns) end)
+    socket |> assign(auditor: Selection.status()) |> assign_async(:page, fn -> load_page(assigns) end)
   end
 
   @spec load_page(map()) :: {:ok, map()} | {:error, term()}
@@ -166,6 +178,60 @@ defmodule Harness.Dashboard.QALive do
         </div>
         <.link navigate="/harness/settings" class="btn-save">Edit QA commands in Settings</.link>
       </header>
+      <section id="audit-selection" class="insights-card">
+        <h2>Audit agent</h2>
+        <p>
+          Runs in a separate post-merge session. An explicit selection may reuse the implementer or reviewer adapter. Reviewer eligibility is required.
+        </p>
+        <form id="audit-selection-form" phx-submit="save_auditor" class="insights-fields">
+          <div class="insights-field">
+            <label for="audit-agent">Agent</label>
+            <select id="audit-agent" name="auditor[agent]">
+              <option value="" selected={@auditor.settings["agent"] == ""}>
+                Automatic — excludes implementer and reviewer
+              </option>
+              <option
+                :for={option <- @auditor.options}
+                value={option.agent}
+                selected={@auditor.settings["agent"] == option.agent}
+              >
+                {option.agent}
+              </option>
+            </select>
+          </div>
+          <div class="insights-field">
+            <label for="audit-model">Audit model (required for explicit selection)</label>
+            <input id="audit-model" name="auditor[model]" value={@auditor.settings["model"]} />
+          </div>
+          <button type="submit" class="btn-save">Save audit selection</button>
+        </form>
+        <p :if={match?({:ok, _}, @auditor.result)} role="status">
+          Ready: {@auditor.settings["agent"]} / {@auditor.settings["model"]}
+        </p>
+        <p :if={match?({:error, _}, @auditor.result)} role="alert">
+          Audit unavailable: {inspect(@auditor.result)}. No fallback will run.
+        </p>
+        <p :if={@auditor.result == :automatic} role="status">
+          Automatic selection is resolved for each audit after excluding its implementer and reviewer.
+        </p>
+        <p
+          :if={
+            @auditor.result == :automatic and
+              Enum.count(@auditor.options, &match?({:ok, _}, &1.result)) < 3
+          }
+          role="alert"
+        >
+          Fewer than three audit-capable agents. Audits can be skipped with no_audit_agent after implementer/reviewer exclusion. Choose an explicit auditor or update reviewer eligibility.
+        </p>
+        <ul>
+          <li :for={option <- @auditor.options}>
+            {option.agent} / {option.model || "no model"}: {if match?({:ok, _}, option.result),
+              do: "available",
+              else: inspect(option.result)}
+          </li>
+        </ul>
+        <.link navigate="/harness/settings">Manage agent models and reviewer eligibility</.link>
+      </section>
       <p :if={@notice} role="status" class="insights-notice">{@notice}</p>
       <.link :if={@name} patch="/harness/qa" class="insights-back">All QA projects</.link>
       <p :if={@page.loading} role="status">Loading QA facts…</p>
@@ -299,6 +365,9 @@ defmodule Harness.Dashboard.QALive do
     <p :if={@row.latest}>
       Latest result: {@row.latest.status} · {@row.latest.updated_at}<br />Revision: {@row.latest.revision ||
         "not pinned"}
+    </p>
+    <p :if={@row.latest && @row.latest[:reason]} role="alert">
+      Last QA could not complete: {@row.latest.reason}
     </p>
     <p :if={!@row.latest and match?({:ok, _}, @row.facts)}>No recorded QA attempts.</p>
     <button :if={match?({:error, _}, @row.facts)} type="button" phx-click="refresh" class="btn-save">

@@ -16,6 +16,7 @@ defmodule Harness.AuditTest do
 
   alias Harness.Agent.Settings, as: AgentSettings
   alias Harness.AgentAdapter.Claude
+  alias Harness.AgentAdapter.Codex
   alias Harness.AgentAdapter.Pi
   alias Harness.AgentRegistry
   alias Harness.Audit
@@ -723,6 +724,34 @@ defmodule Harness.AuditTest do
   end
 
   describe "select_auditor/1 — cross-family + reviewer-eligibility gate" do
+    test "explicit audit selection reuses a trusted adapter and its pinned model without changing trust" do
+      alias Harness.Audit.Selection
+
+      before = AgentSettings.reviewer_eligible?(:codex)
+      assert :ok = Selection.configure("codex", "gpt-6-astra")
+      assert {:ok, Codex} = Audit.select_auditor(%{implementer: "codex", reviewer: "cursor"})
+      assert Audit.auditor_model(Codex) == "gpt-6-astra"
+      assert Selection.settings() == %{"agent" => "codex", "model" => "gpt-6-astra"}
+      assert AgentSettings.reviewer_eligible?(:codex) == before
+      assert :ok = Selection.configure("", "ignored")
+      assert Selection.resolve(Selection.settings()) == :automatic
+    end
+
+    test "invalid audit choices retain the saved selection and trust revocation prevents execution" do
+      alias Harness.Audit.Selection
+
+      assert :ok = Selection.configure("codex", "gpt-6-astra")
+      saved = Selection.settings()
+      assert {:error, :unknown_agent} = Selection.configure("missing", "model")
+      assert {:error, :model_required} = Selection.configure("codex", " ")
+      assert {:error, :model_unavailable} = Selection.configure("codex", "nonexistent-model")
+      assert Selection.settings() == saved
+      assert :ok = AgentSettings.set_reviewer_eligible(:codex, false, "test")
+      assert {:error, :reviewer_ineligible} = Selection.configure("codex", "gpt-6-astra")
+      assert {:skipped, {:audit_selection_unavailable, :reviewer_ineligible}} = Audit.select_auditor(%{})
+      assert Selection.settings() == saved
+    end
+
     test "an explicit :auditor override wins, bypassing the registry scan" do
       assert {:ok, FakeAdapter} = Audit.select_auditor(%{auditor: FakeAdapter})
     end
@@ -827,7 +856,7 @@ defmodule Harness.AuditTest do
       Application.put_env(:harness, :agent_model, codex: "gpt-6-astra")
       on_exit(fn -> Application.delete_env(:harness, :agent_model) end)
 
-      assert Audit.auditor_model(Harness.AgentAdapter.Codex) == "gpt-6-astra"
+      assert Audit.auditor_model(Codex) == "gpt-6-astra"
     end
 
     test "yields nil for a module the registry can't reverse-map (test double)" do

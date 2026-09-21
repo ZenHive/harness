@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Explicit audit agent and model selection on `/harness/qa`.** Persisted selection supports a separate audit session on an existing trusted adapter; automatic routing retains its exclusions. Availability, missing trust/model prerequisites and incomplete QA reasons are visible without opening raw evidence. Invalid choices preserve the previous setting.
+
 - **QA operator dashboard at `/harness/qa` (Task 449).** Registered projects show configured/not-configured, queued/running, and latest passed/failed/incomplete facts with revision, command, and bounded evidence. Start/retry enqueue through the existing audit worker; rollout rows distinguish installed QA from focused-dispatch adoption without mutating settings. Command-match copy is hidden on unconfigured rows.
 
 - **Cron dispatch mode is settable from the dashboard.** The per-project autonomy card on `/harness/settings` now carries a dispatch-mode picker (`Automatic starts` | `Manual approval`) alongside the existing on/off toggle, writing through `Harness.Cron.Settings.set_dispatch_mode/3` with `dashboard` as the audit actor. An unknown project or an out-of-vocabulary mode is refused and nothing is persisted. The project pill resolves all three dimensions at once: `paused` when master or project autonomy is off, then `manual approval` or `automatic starts`. Parked decisions are still listed and released through `dispatch-pending` / `dispatch-approve`, which the card now names.

@@ -904,3 +904,7 @@ A missing branch returns `source_unavailable_or_landed`; shutdown does not inven
 a commit or justify a hand-built `start_run`. If persistence spilled, repair the
 store and replay the spill before using record-based recovery. SIGKILL and power
 loss cannot run these callbacks and carry no graceful-cleanup guarantee.
+
+### Explicit audit selection
+
+The QA page `/harness/qa` owns the global audit agent/model picker and shows current eligibility and unavailable reasons. `Harness.Audit.Selection.configure(agent_name, model)` atomically persists this pair in SettingsStore; an empty agent selects automatic routing. Explicit selection starts a separate audit session and may reuse the implementation or review adapter. It still requires reviewer eligibility, an installed available adapter and an available explicit model; no fallback changes the saved choice. Automatic routing continues to exclude the run's implementer and reviewer and may produce `no_audit_agent`. QA summaries show the last incomplete reason directly. Changing selection affects new audit sessions and neither changes reviewer trust nor restarts existing jobs.

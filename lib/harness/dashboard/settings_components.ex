@@ -223,12 +223,12 @@ defmodule Harness.Dashboard.SettingsComponents do
               />
             </div>
             <div class="agent-control">
-              <span class="agent-control-caption">reviewer</span>
+              <span class="agent-control-caption">reviewer / audit</span>
               <.toggle
                 on={agent.reviewer_eligible}
                 event="toggle_reviewer_eligible"
                 value={agent.name}
-                label={"Reviewer eligibility for #{agent.label}"}
+                label={"Reviewer and auditor eligibility for #{agent.label}"}
               />
             </div>
           </div>

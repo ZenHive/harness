@@ -57,6 +57,7 @@ defmodule Harness.Audit do
   alias Harness.AgentRules
   alias Harness.Artifact
   alias Harness.Audit.QA
+  alias Harness.Audit.Selection
   alias Harness.Config
   alias Harness.Dashboard.OpsFeed
   alias Harness.Dashboard.OpsFeed.Op
@@ -97,6 +98,8 @@ defmodule Harness.Audit do
           optional(:reviewer) => String.t() | nil,
           optional(:auditor) => module() | nil,
           optional(:auditor_opts) => keyword(),
+          optional(:audit_selection) => map(),
+          optional(:audit_model) => String.t() | nil,
           optional(:result_store) => ResultStore.store(),
           optional(:job_id) => pos_integer() | nil,
           optional(:attempt) => pos_integer() | nil,
@@ -299,13 +302,16 @@ defmodule Harness.Audit do
 
   @spec run_auditor(Worktree.t(), String.t(), String.t(), Project.t(), request(), map()) :: {outcome(), audit_meta()}
   defp run_auditor(worktree, repo, target, project, request, range) do
+    request = Map.put(request, :audit_selection, Selection.settings())
+
     case select_auditor(request) do
       {:ok, auditor} ->
         agent = auditor_name(auditor)
+        request = Map.put(request, :audit_model, Selection.model_for(request.audit_selection, agent))
         OpsFeed.broadcast(Op.audit_started(project.name, agent, range.log))
         finalize_audit(worktree, repo, target, project, request, range, auditor, agent)
 
-      {:skipped, :no_audit_agent} = skip ->
+      {:skipped, _reason} = skip ->
         {skip, %{range: range.log}}
     end
   end
@@ -320,7 +326,7 @@ defmodule Harness.Audit do
          {:ok, %Outcome{output: output, kind: kind}} <-
            AgentDriver.run(
              auditor,
-             invocation(worktree, repo, target, project, request, range, auditor_model(auditor)),
+             invocation(worktree, repo, target, project, request, range, request.audit_model),
              driver_options(project)
            ) do
       finalize_after_run(worktree, repo, target, project, Map.put(request, :termination, kind), range, agent, output)
@@ -383,10 +389,19 @@ defmodule Harness.Audit do
   # reviewer's families — the third family. None available → skip (best-effort).
   # `@doc false` (not `defp`) so the cross-family + reviewer-eligibility invariant
   # is unit-testable, mirroring `Harness.Lander.Resolver.select_resolver/2`.
-  @spec select_auditor(request()) :: {:ok, module()} | {:skipped, :no_audit_agent}
+  @spec select_auditor(request()) :: {:ok, module()} | {:skipped, term()}
   def select_auditor(%{auditor: auditor}) when is_atom(auditor) and not is_nil(auditor), do: {:ok, auditor}
 
   def select_auditor(request) do
+    case Selection.resolve(Selection.settings()) do
+      :automatic -> select_automatic_auditor(request)
+      {:ok, module} -> {:ok, module}
+      {:error, reason} -> {:skipped, {:audit_selection_unavailable, reason}}
+    end
+  end
+
+  @spec select_automatic_auditor(request()) :: {:ok, module()} | {:skipped, :no_audit_agent}
+  defp select_automatic_auditor(request) do
     # Normalize both sides to strings: the real Oban-worker path passes JSON
     # string args, but atom-keyed callers (the `@doc false` unit surface, future
     # in-process callers) would otherwise no-match the `in` test and let the
@@ -461,7 +476,7 @@ defmodule Harness.Audit do
   @spec auditor_model(module()) :: String.t() | nil
   def auditor_model(module) do
     case AgentRegistry.agent_for_module(module) do
-      {:ok, agent} -> Config.agent_model(agent)
+      {:ok, agent} -> Selection.model(agent)
       {:error, _reason} -> nil
     end
   end
@@ -615,7 +630,7 @@ defmodule Harness.Audit do
   end
 
   @spec pin_qa(map(), Worktree.t(), map(), module(), String.t()) :: {:ok, map()} | {:error, term()}
-  defp pin_qa(%{qa_attempt: attempt} = request, worktree, range, auditor, agent) do
+  defp pin_qa(%{qa_attempt: attempt} = request, worktree, range, _auditor, agent) do
     with {:ok, commits} <- Git.run(["rev-list", "--reverse", range.base <> "..HEAD"], worktree.path),
          {:ok, pinned} <-
            QA.pin(attempt, %{
@@ -623,7 +638,7 @@ defmodule Harness.Audit do
              base_sha: range.base,
              landing_shas: String.split(commits, "\n", trim: true),
              agent: agent,
-             model: auditor_model(auditor)
+             model: request.audit_model
            }) do
       {:ok, %{request | qa_attempt: pinned}}
     end
