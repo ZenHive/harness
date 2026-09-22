@@ -13,6 +13,13 @@ defmodule Harness.Insights do
   @topic "harness:insights"
   @defaults %{"enabled" => false, "cadence_minutes" => 60, "agent" => "codex", "model" => nil}
 
+  # One pass is a retrieval loop of up to 32 sequential observer invocations, each
+  # of which may itself run to the CLI's own 180s ceiling. The former 180s budget
+  # was therefore the cost of a *single* slow turn: every pass that needed one read
+  # died at exactly the deadline (11 hourly passes discarded 2026-09-21; successful
+  # passes averaged 40s and peaked at 170s, i.e. right at the wall).
+  @pass_timeout_ms 600_000
+
   api(:status, "Bounded observation settings, last pass and durable progress; independent of dispatch autonomy.",
     returns: %{type: :map, description: "Observer status and persistence mode."}
   )
@@ -43,6 +50,14 @@ defmodule Harness.Insights do
   @doc false
   @spec settings() :: map()
   def settings, do: Map.merge(Map.merge(@defaults, Selection.default()), Store.get("settings") || %{})
+
+  @doc false
+  @spec pass_timeout_ms() :: pos_integer()
+  def pass_timeout_ms, do: Application.get_env(:harness, :insights_timeout_ms, @pass_timeout_ms)
+
+  @doc false
+  @spec job_timeout_ms() :: pos_integer()
+  def job_timeout_ms, do: pass_timeout_ms() + 60_000
 
   @doc false
   @spec configure(map()) :: :ok | {:error, term()}

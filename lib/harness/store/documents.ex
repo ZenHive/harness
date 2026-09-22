@@ -22,6 +22,10 @@ defmodule Harness.Store.Documents do
 
       @config unquote(opts) |> Map.new() |> Map.put(:table, __MODULE__)
 
+      @doc false
+      @spec config() :: Documents.config()
+      def config, do: @config
+
       @doc "Whether documents survive a BEAM restart."
       @spec persistent?() :: boolean()
       defdelegate persistent?(), to: Documents

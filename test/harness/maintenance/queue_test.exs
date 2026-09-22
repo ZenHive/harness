@@ -20,8 +20,13 @@ defmodule Harness.Maintenance.QueueTest do
     :ok = ProjectRegistry.register(ProjectFixture.from_repo("/tmp/maintenance-queue", name: name))
 
     on_exit(fn ->
-      Application.put_env(:harness, :repo_enabled, old)
+      # Unregister BEFORE restoring repo_enabled: ProjectRegistry.Persistence.delete/1
+      # is a no-op once the repo is disabled, so the reverse order leaves the row in
+      # the live `projects` table. Fourteen `maintenance-queue-<uuid>` projects leaked
+      # that way (2026-09-20/21) and the Maintenance tick then swept them hourly into
+      # `source_unavailable` failures.
       ProjectRegistry.unregister(name)
+      Application.put_env(:harness, :repo_enabled, old)
     end)
 
     :ok = Maintenance.configure(name, true, 10_080, "codex", "gpt-6-astra", 60)

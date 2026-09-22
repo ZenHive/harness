@@ -16,5 +16,5 @@ defmodule Harness.Insights.Worker do
 
   @impl Oban.Worker
   @spec timeout(Oban.Job.t()) :: pos_integer()
-  def timeout(_job), do: 240_000
+  def timeout(_job), do: Harness.Insights.job_timeout_ms()
 end

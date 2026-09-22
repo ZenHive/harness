@@ -187,7 +187,7 @@ defmodule Harness.InsightsTest do
   test "MCP exports bounded observations without adding mutation tools to the witness" do
     names = Enum.map(Harness.Manifest.mcp_tools(), & &1.name)
     for name <- ~w(insights-status insights-observe_now insights-findings insights-history), do: assert(name in names)
-    assert Worker.timeout(%Oban.Job{}) == 240_000
+    assert Worker.timeout(%Oban.Job{}) == Insights.job_timeout_ms()
     assert :ok = Worker.perform(%Oban.Job{args: %{"pass_id" => "disabled-worker"}})
     assert :ok = Tick.perform(%Oban.Job{})
   end
@@ -364,6 +364,17 @@ defmodule Harness.InsightsTest do
 
     for id <- ["legacy-recent", "remote-recent"],
         do: assert(Store.get("pass/" <> id)["state"] == "observing")
+  end
+
+  test "the pass budget stays strictly inside the job timeout and the store checkout" do
+    # A pass is a retrieval loop of up to 32 sequential observer invocations, each of
+    # which may run to the observer CLI's own 180s ceiling, and the whole loop runs
+    # inside Store.serialized/1. Collapsing these three limits onto one value made
+    # every pass that needed a read die at the deadline instead of publishing.
+    assert Insights.pass_timeout_ms() > 180_000
+    assert Insights.job_timeout_ms() > Insights.pass_timeout_ms()
+    assert Worker.timeout(%Oban.Job{args: %{}}) == Insights.job_timeout_ms()
+    assert Store.config().timeout > Insights.job_timeout_ms()
   end
 
   test "the pass deadline terminates a blocked witness and records a timeout" do

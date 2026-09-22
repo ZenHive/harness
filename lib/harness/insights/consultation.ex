@@ -29,7 +29,7 @@ defmodule Harness.Insights.Consultation do
       "observer" => Map.take(config, ["agent", "model"])
     }
 
-    timeout = Application.get_env(:harness, :insights_timeout_ms, 180_000)
+    timeout = Harness.Insights.pass_timeout_ms()
     config = Map.put(config, "deadline", System.monotonic_time(:millisecond) + timeout)
     consult(context, batch, Map.put(config, "publication_repairs", 1), batch.sources, previous, @reads)
   end
