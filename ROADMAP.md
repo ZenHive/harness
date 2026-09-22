@@ -236,7 +236,7 @@
 ## Phase 19: Self-Healing Run Loop
 
 <!-- TASKS:BEGIN phase=19 -->
-> 45 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-19-self-healing-run-loop).
+> 46 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-19-self-healing-run-loop).
 <!-- TASKS:END -->
 
 ---

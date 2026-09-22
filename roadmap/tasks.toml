@@ -14250,3 +14250,37 @@ Keep the distinction that Task 453 established: "this project is not configured 
 """
 created_at = "2026-09-21"
 scored_at = "2026-09-21"
+
+[[task]]
+id = "461"
+phase = 19
+bundle = "self-heal"
+status = "pending"
+title = "Rotate to the next eligible reviewer when the re-prompt is exhausted, not only on timeout"
+scores = { d = 2, b = 4, u = 4 }
+acceptance_criteria = ["When the bounded missing/malformed-verdict re-prompt (Task 203/228) is exhausted, the run rotates to the next eligible cross-family reviewer before settling {:review_stuck, _} — the same next-eligible selection Task 228 wired for spawn/idle timeout, now reachable from the verdict-artifact path too.", "Rotation stays cross-family with respect to the implementer and is bounded by the existing reviewer_rotation_count; an exhausted rotation budget still settles {:review_stuck, _} honestly.", "NO error-string classification is introduced. The trigger is the already-counted fact 'no verdict artifact after the bounded re-prompt' — harness never inspects reviewer output, exit status text, or an error term to decide recoverability (the 153-163 bug class, restated in Task 227's acceptance criteria).", "reviewer_rotation_count and the rotated-to agent are witnessed as raw facts on the run record and LogRecord, as timeout rotation already is.", "Tests: a reviewer that writes no verdict twice rotates to a different eligible reviewer which then approves; an exhausted rotation budget settles review_stuck; timeout rotation behaviour is unchanged."]
+out_of_scope = ["Detecting, classifying or reporting agent authentication failures specifically — the fix must be trigger-agnostic.", "Re-invoking the implementer; this is strictly the reviewer stage.", "Any change to the Tier-2 recovery seam (Task 229) or its call-sites."]
+files_to_modify = ["lib/harness/run.ex"]
+touches = ["lib/harness/run/review.ex", "docs/agent-gate-workflow.md"]
+domains = ["otp"]
+assignee = "codex"
+model = "gpt-6-astra"
+body = """
+Observed live on 2026-09-22 dispatching tapakly wave 1. The `claude` reviewer's OAuth session on the harness host had expired, so every reviewer invocation died in ~117 ms without writing a verdict:
+
+    {"type":"result","is_error":true,"terminal_reason":"api_error",
+     "result":"Failed to authenticate: OAuth session expired and could not be refreshed",
+     "duration_ms":117,"num_turns":1}
+
+Two runs settled {:review_stuck, "Reviewer wrote no .harness/review.json verdict artifact."}:
+run-1790040987968-60abfd0e (task 467, cursor implementer, agent_diff_size 728, agent exit 0, duration_ms 2517323) and
+run-1790040993530-76c57571 (task 460). Both records show reviewer_reprompt_count 1 and reviewer_rotation_count 0.
+
+So the bounded re-prompt (Task 203, generalized by 228) fired and hit the same dead credential, while `codex` sat eligible in the very same slate — `agents-reviewers cursor` returns [claude, codex] — and was never asked. Task 228 wired rotation only to the spawn/idle timeout path, and this failure is not a timeout: the reviewer spawns fine and exits immediately, so no watchdog ever arms.
+
+The cost is asymmetric. A reviewer invocation that dies in 117 ms is nearly free; the implementer work it discards is not — here roughly 42 minutes of cursor work per run, recoverable afterwards only because `dispatch-rereview` exists and an operator noticed. An unattended cron wave with a dead reviewer credential loses every run in it and re-queues each task from pending.
+
+The fix is deliberately trigger-agnostic, which is also what keeps it mantra-clean: do not teach harness to recognise an auth error (that is exactly the error-string classifier Task 227 forbids). Rotate on the fact already being counted — the re-prompt budget was spent and still no verdict artifact exists. Whether the reviewer was unauthenticated, out of credit, crashed on startup, or simply uncooperative is a question harness should never ask; trying the next eligible reviewer answers all of them at once.
+"""
+created_at = "2026-09-22"
+scored_at = "2026-09-22"
