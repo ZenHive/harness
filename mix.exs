@@ -124,9 +124,9 @@ defmodule Harness.MixProject do
     [
       # Core
       # Shared AgentAdapter subsystem (Task 397). Tree-scoped terminate
-      # (OSProcess.kill_tree/1) is on this SHA (Task 418).
+      # (OSProcess.kill_tree/1, Task 418) and Codex.Observer (Task 445) are on this SHA.
       {:harness_agent_adapter,
-       git: "https://github.com/ZenHive/harness_agent_adapter.git", ref: "76cc3d655cfe7feac2a6ecb8377dbcbaee5f6318"},
+       git: "https://github.com/ZenHive/harness_agent_adapter.git", ref: "f153c05421b032c6563f181cca67843bac3fdf21"},
       {:descripex, "~> 1.0"},
       # Compile-time option-schema validation for the Harness.Dispatch.RunTool macro DSL.
       {:nimble_options, "~> 1.0"},
