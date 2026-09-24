@@ -9,7 +9,7 @@
 @~/.claude/includes/critical-rules.md
 @~/.claude/includes/harness-workflow.md
 
-> **Trimmed 2026-05-30; re-aligned 2026-06-22.** The original `@`-imported 14 includes + the 43 KB harness-driver SKILL (~44k tokens always-on), which drove compulsive re-reading on Opus 4.8. The eager floor is now the two above — `critical-rules` (guardrails, ambient by necessity) + `harness-workflow` (the implement→review→land loop + delegation roster, load-bearing every session in this dogfooding repo — the setup-guide's "second eager include for harness-registered repos"). `code-style` (KPIs) and `rmap` (roadmap decision layer) are now **load-on-demand skills** (`elixir:code-style` / `tasks:rmap`) — Opus 4.8 self-invokes them when the action calls for it. `response-conventions` is inherited from `~/.claude/CLAUDE.md`, not re-imported here. Everything else is **load-on-demand** — pull it only when the trigger matches.
+> **Trimmed 2026-05-30; re-aligned 2026-06-22.** The original `@`-imported 14 includes + the 43 KB harness-driver SKILL (~44k tokens always-on), which drove compulsive re-reading on Opus 4.8. The eager floor is now the two above — `critical-rules` (guardrails, ambient by necessity) + `harness-workflow` (the implement→review→land loop + delegation roster, load-bearing every session in this dogfooding repo — the setup-guide's "second eager include for harness-registered repos"). `code-style` (KPIs) and `rmap` (roadmap decision layer) are now **load-on-demand skills** (`elixir:code-style` / `workflow:rmap`) — Opus 4.8 self-invokes them when the action calls for it. `response-conventions` is inherited from `~/.claude/CLAUDE.md`, not re-imported here. Everything else is **load-on-demand** — pull it only when the trigger matches.
 
 ## Load-on-demand (don't auto-load — read the file or invoke the skill when the trigger hits)
 
@@ -19,14 +19,12 @@
 | `mix dialyzer.json` flags / fix_hints | Skill `elixir:dialyzer-json` |
 | `mix` / `ex_dna` / `ex_ast` command surface | Skill `elixir:development-commands` |
 | Complexity KPIs / per-tier code budgets (functions·lines·depth) | Skill `elixir:code-style` |
-| rmap CLI: status/score/new/render/delegate | Skill `tasks:rmap` |
-| D/B/U scoring, ceremony floor, task-writing | Skill `tasks:roadmap-planning` + `@~/.claude/includes/task-writing.md` |
+| rmap CLI: status/score/new/render/delegate | Skill `workflow:rmap` |
+| D/B/U scoring, ceremony floor, task-writing | Skill `workflow:roadmap-planning` + `@~/.claude/includes/task-writing.md` |
 | Session-per-phase / batched-execution / evaluator-separation rules | `@~/.claude/includes/workflow-philosophy.md` |
 | Worktree-per-branch workflow | `@~/.claude/includes/worktree-workflow.md` |
-| Harness delegate→verify→repair→land workflow (portfolio adoption) | `@~/.claude/includes/harness-workflow.md` |
 | Driving harness as a consumer (dispatch patterns, result shapes) | `@skills/harness-driver/SKILL.md` |
 | Deployment target hardware, server sizing, worktree storage (reflink vs VDO), rent-vs-build | `docs/hardware.md` — **adjudicated; cite, don't re-derive** |
-| Phoenix project setup / gen.auth | Skill `phoenix:phoenix-setup` |
 | Net-new / redesign frontend surface (distinctiveness IS the goal) | Skill `frontend-design:frontend-design` — **not** for incremental work in the existing dashboard design system (match `tokens.ex` + `components.ex` patterns instead; skill is at most a reference) |
 | The "message across instances" (philosophical anchor) | `@~/.claude/includes/across-instances.md` |
 
@@ -45,7 +43,7 @@ The full include is verbose and mostly restates mainstream Elixir. These are the
 
 ## rmap is ours
 
-The `rmap` CLI (the roadmap substrate `roadmap/tasks.toml` uses) is a sibling Rust project we own at `../rmap/` (`/Users/efries/_DATA/code/rmap/`). If the roadmap workflow needs a CLI change — new field, query, render, or `delegate --to` target — edit it there; don't work around a gap in harness. The `tasks:rmap` skill is the usage contract; `../rmap/` is the source.
+The `rmap` CLI (the roadmap substrate `roadmap/tasks.toml` uses) is a sibling Rust project we own at `../rmap/` (`/Users/efries/_DATA/code/rmap/`). If the roadmap workflow needs a CLI change — new field, query, render, or `delegate --to` target — edit it there; don't work around a gap in harness. The `workflow:rmap` skill is the usage contract; `../rmap/` is the source.
 
 **AI driver surface (canonical for orchestrators):** `@skills/harness-driver/SKILL.md` — **load on demand** when driving harness as a consumer. Stable contract for delegation patterns, non-delegatable handling, result interpretation, sharp edges. Any change to public driver surfaces must update it.
 
@@ -53,20 +51,21 @@ The `rmap` CLI (the roadmap substrate `roadmap/tasks.toml` uses) is a sibling Ru
 
 ## Commands
 
-Toolchain: **Elixir 1.20.3 / OTP 29** (asdf) — pinned by the repo-local `.tool-versions` (`elixir 1.20.3-otp-29` / `erlang 29.0.5`). `mix.exs` floors at `~> 1.18`; a repo-local `.tool-versions.1.18` (1.18.4/OTP27) pins the lower-bound compat target — `cp .tool-versions.1.18 .tool-versions` to build against it. Postgres required for the Oban dispatch layer.
+Toolchain: **Elixir 1.20.4 / OTP 29** (asdf) — pinned by the repo-local `.tool-versions` (`elixir 1.20.4-otp-29` / `erlang 29.1`). `mix.exs` floors at `~> 1.18`; a repo-local `.tool-versions.1.18` (1.18.4/OTP27) pins the lower-bound compat target — `cp .tool-versions.1.18 .tool-versions` to build against it. Postgres required for the Oban dispatch layer.
 
 > **Sync `main` before committing when auto-land is on.** With `landing_policy: :auto`, the lander is a *second committer* to `origin/<target>`: it ff-pushes from a detached worktree, then `Harness.Git.TargetSync` may fast-forward the operator's local target (off-target → ff the branch ref; on-target + clean tree → `merge --ff-only`). It **skips** — with a witnessed reason, never `--force` — when the tree is dirty, the update is not a fast-forward, or the target **is this running node's own source tree** (self-host: path identity, not the project name `"harness"`). A self-host skip leaves the node's checkout untouched so a land cannot mutate the tree the BEAM is running from. **Before any commit/push, `git fetch origin main && git rebase origin/main`** (or `git pull --rebase origin main`) — rebase, because you'll often have local commits the lander doesn't, and under dogfooding the self-host skip means the live checkout *always* drifts. Skip it and you get a stale base / non-ff push reject. A clean rebase → `git push origin main` is the completing step; just do it. If the rebase still has unresolved conflicts or the push is non-ff, stop and surface it — don't force-push a shared branch.
 
 | Task | Command |
 |---|---|
 | Run the node | `iex -S mix` — boots the app, Oban (Postgres), and the dashboard on `http://localhost:4018` (routes `/harness`, `/harness/oban`, `/harness/mcp`, `/tidewave/mcp`). **Long-lived; the user starts it manually — don't boot it yourself.** |
-| First-time DB | `mix ecto.setup` (creates, migrates, and runs `priv/repo/seeds.exs` when present). DB name/user overridable via `HARNESS_DB_NAME` / `HARNESS_DB_USER` (defaults `harness_dev`, `$USER`). |
+| First-time DB | `mix ecto.setup` (creates, migrates, and runs `priv/repo/seeds.exs` when present — copy it from `priv/repo/seeds.exs.example`; re-run with `mix harness.seed`). DB name/user overridable via `HARNESS_DB_NAME` / `HARNESS_DB_USER` (defaults `harness_dev`, `$USER`). |
 | Tests | `mix test.json` — AI-friendly JSON output; **use over bare `mix test`** (load `elixir:ex-unit-json` for flags/jq). `:integration` tests (real agent CLIs, live DB) are **excluded by default** — add `--include integration`. |
 | Single test | `mix test.json test/harness/run_test.exs:42` · re-run only failures: `mix test.json --failed` · coverage: `--cover`. |
 | Fast gate | `mix check.fast` — `format --check-formatted` + `compile --warnings-as-errors` + `credo --strict`. Local inner loop, not the dispatch hint. |
 | Dispatch checks | `mix check.dispatch` runs format and compile; select focused behavior and risk-relevant tests separately. |
 | QA command inventory | `mix precommit` — format, compile, Credo, Doctor, `test.json` coverage ≥80% excluding integration, Sobelow. Used by audit QA via `precommit.full`. |
-| Post-merge audit + QA | `mix precommit.full` (alias `mix ci`) — `bash scripts/sync-agents-md.sh --check` + `precommit` + `ex_dna --max-clones 0` + `reach.check --arch --smells` + `dialyzer.json`. Full-project QA on the landed base; not an implementer/reviewer gate. |
+| Post-merge audit + QA | `mix precommit.full` (alias `mix ci`) — `bash scripts/sync-agents-md.sh --check` + `harness.deps.check` (warns on undocumented three-part `~>` constraints) + `precommit` + `ex_dna --max-clones 0` + `reach.check --arch --smells` + `dialyzer.json`. Full-project QA on the landed base; not an implementer/reviewer gate. |
+| Fleet / cleanup | `mix harness.status` (human-readable run-fleet view) · `mix harness.worktree.reclaim` (plans by default; applies reclaim of landed `harness/*` branches + orphaned worktrees). |
 | Ecosystem entry point | `mix ci` — vibe_kit-convention name; delegates to `precommit.full` (one gate, not two). |
 | Update project hints | `mix harness.projects.use_dispatch_check` — retired; refuses unchecked settings changes. Use the rollout command. |
 | Roll out dispatch vs QA | `mix harness.projects.rollout_dispatch_qa` — dry-run inventory + prior-settings capture. `--apply` installs `qa_command` without reducing `check_command`; dispatch switches only after an evidenced QA pass. Hook inventory is read-only; no hook installation or bypass. |
@@ -75,35 +74,11 @@ Toolchain: **Elixir 1.20.3 / OTP 29** (asdf) — pinned by the repo-local `.tool
 
 Check timing is defined in `verification-policy.md`; do not assume a hook ran without observed evidence.
 
-## 🚨 ADJUDICATED: the `hackney` advisories on this repo are DECIDED — do not re-investigate
-
-`mix deps.get` / `mix hex.audit` report four published advisories against locked
-**hackney 1.25.0** (`EEF-CVE-2026-47075` CR/LF in query, `-47071` HIGH SOCKS5 TLS upgrade
-ignores caller timeout, `-47069` CRLF in cookie domain/path, `-47076` SSRF allowlist bypass
-via percent-encoded host). Every cold worktree runs `deps.get`, so every dispatched agent
-sees this. Verdict, read 2026-08-25 — **not reachable, and not fixable by a bump:**
-
-- hackney is **transitive only**: `mix.exs` takes `{:tzdata, "~> 1.1"}`, and tzdata requires
-  `hackney ~> 1.17` solely to download IANA releases. No harness module calls hackney.
-- `config/config.exs` sets `config :tzdata, :autoupdate, :disabled`, so that one call site
-  never runs. All four advisories sit in the HTTP request path.
-- **1.25.0 is the newest 1.x release** — the fixes land in hackney 4.x, which tzdata's
-  `~> 1.17` constraint excludes. There is no smallest-compatible bump; "make the audit clean"
-  is unachievable without replacing or forking tzdata.
-
-Suppression lever: harness declares no `mix_audit`, so there is no `.mix_audit_ignore` here —
-the reporter is Hex core, silenced only by global `mix hex.config ignore_advisories` /
-`HEX_IGNORE_ADVISORIES`. Suppress **per id**, never wholesale.
-
-**Re-adjudicate if:** tzdata's autoupdate is enabled anywhere; a tzdata release widens its
-hackney constraint to 4.x; hackney becomes a direct dependency; or a new hackney advisory
-appears that is not one of the four ids above.
-
 ## Toolchain & check commands
 
 Self-contained so it reaches `AGENTS.md` (and the cross-family reviewer) even after the eager floor slimmed `code-style`/`rmap` to skills.
 
-- **Command inventory:** `mix check.dispatch` runs format and compile. `mix precommit` contains Credo, Doctor, Sobelow and coverage tests. `mix precommit.full` / `mix ci` additionally runs clone detection, Reach and Dialyzer. Select scoped commands according to the imported verification policy; these alias definitions do not determine when to run them.
+- **Command inventory:** `mix check.dispatch` runs format and compile. `mix precommit` contains Credo, Doctor, Sobelow and coverage tests. `mix precommit.full` / `mix ci` additionally runs the AGENTS.md freshness check, `harness.deps.check`, clone detection, Reach and Dialyzer. Select scoped commands according to the imported verification policy; these alias definitions do not determine when to run them.
 - **Capture dispatch-gate output on the first run.** Use a unique tmp log per run, e.g. `LOG=$(mktemp -t harness-check-dispatch.XXXXXX.log)` then `mix check.dispatch > "$LOG" 2>&1`; inspect with `tail -200 "$LOG"` / `rg "error|failed|warning" "$LOG"`. Report the log path in the reviewer's `checks` entry. Do not re-run only to recover truncated output.
 - **Fleet rollout:** `mix harness.projects.rollout_dispatch_qa` (dry-run by default) inventories live settings, writes a prior-settings capture, and prints write-sets. `--apply` is operator-invoked after this tooling is deployed; it never reduces `check_command` until a matching QA attempt has passed. Failed activation restores captured prior check/qa commands. Consumer repo alias/instruction edits stay orchestrator-owned.
 - **QA evidence:** the post-merge audit + QA records full-project results; the orchestrator consumes those results and handles findings.
@@ -211,8 +186,8 @@ From the core loop onward, harness is developed *with* harness whenever the work
 - **🚨 Right-size every task to ONE dispatch cycle — split on coupling, never on size.** A task is one implement→review→land unit, not the smallest namable edit; each dispatch pays a full loop's overhead, so a sub-threshold task is a manufactured session (the 223 moduledoc-edit lesson — that gets done inline, never filed). Before filing or splitting, apply the coupling test from `rmap.md` § "Right-size tasks": if task B only deletes/wires/fixes what task A orphans (or A's acceptance criteria already entail B's deliverable), B is the second half of A — fold it in (worked example: the CapabilityScore-delete task collapsed into its parent, whose criteria already said "no magic weights remain"). But do **not** grab-bag — merge only *coupled* smalls (shared files / one orphans the other), never two unrelated smalls just because both are small.
 - **Evaluation stays separate — agent vs agent.** Dispatched agent = implementer; a cross-family reviewer AI = grader. Done = reviewer approved, never the implementer's self-report.
 - **A reject isn't stop-the-line.** The reviewer fixes what it can inline before deciding; a rejected run puts the task back in the queue for re-dispatch. Manual salvage per `docs/dogfooding-workflow.md` is the fallback when the reviewer rejects.
-- **🚨 Under auto-land, check `origin` before calling a task "not landed" — your local checkout may be stale.** The lander ff-pushes to `origin/<target>` from a detached worktree. `Git.TargetSync` then advances the operator's local target when that is safe, and skips (witnessed) when it is not — dirty, non-ff, or **self-host** (the project's local source *is* this node's source tree). Under dogfooding the self-host skip is the common case, so after an autonomous land of harness itself your local `tasks.toml` still reads `in_progress` for a task already `done --shipped-in` on origin. **Reading stale local status as "the run didn't land" is the trap** — it provokes a reset-to-`pending` + re-dispatch that *duplicate-lands shipped work*. `git fetch origin <target> && git rebase` (the "Sync main" rule above) — or read `git log origin/<target>` / `result_store-list_run_records` — **before** mutating the roadmap. (Observed 2026-06-12: runs 246/249/251 had landed cleanly; a stale-local misread caused a re-dispatch that double-landed task 246.)
-- **🚨 Recover, don't redo — committed work is paid for.** Once you've confirmed against `origin` a run genuinely didn't land: a run that committed to `harness/<run-id>` already cost implementer tokens, and the `ResultStore` record + branch survive teardown. Recover via `dispatch-reland` (approved-unlanded — land-cap/conflict, zero tokens), `dispatch-rereview` (review-stage failure, zero implementer), or `dispatch-resume_failed` (implement-stage, implementer continues). Reset-to-`pending` + fresh dispatch is correct **only** for a run with no committed branch *and* no settled record. Full decision table: `@~/.claude/includes/harness-workflow.md` § "Recover, Don't Redo".
+- **🚨 Under auto-land, check `origin` before calling a task "not landed".** Under dogfooding the self-host `TargetSync` skip is the common case, so local `tasks.toml` lags origin. Full rule: `harness-workflow.md` § "Recover, Don't Redo" → "First, confirm the run actually *didn't* land". (Observed 2026-06-12: a stale-local misread re-dispatched and double-landed task 246.)
+- **🚨 Recover, don't redo — committed work is paid for.** `dispatch-reland` / `dispatch-rereview` / `dispatch-resume_failed` before any reset-to-`pending`; decision table in `harness-workflow.md` § "Recover, Don't Redo".
 - **Inline / hand-built routing:**
   - *Bounded local work* — one coherent surface, typically D≤4, roughly ≤100 LOC across ≤5 files, focused-testable, and no positive dispatch trigger. These are hints, not an ALL-of gate. Dispatch still wins for signing/money/security, public contracts or migrations, harness/CI/repo-wide invariants, live external semantics, multiple subsystems, or useful parallel execution. A risky D2 can dispatch; a routine D4 can stay inline.
   - *Scaffolding that reshapes harness's own runtime* (supervision tree, dep stack, Endpoint) **while the run lifecycle itself is in flux**. A new phase that only adds features on stable surfaces does **not** earn a hand-build window.
