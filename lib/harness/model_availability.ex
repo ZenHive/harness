@@ -39,6 +39,7 @@ defmodule Harness.ModelAvailability do
   @builtin_catalogs %{
     claude: [
       CatalogEntry.new("claude-fable-5", "Fable 5"),
+      CatalogEntry.new("claude-opus-5-5", "Opus 5.5"),
       CatalogEntry.new("claude-opus-5", "Opus 5"),
       CatalogEntry.new("claude-sonnet-5", "Sonnet 5")
     ],
