@@ -49,7 +49,7 @@ defmodule Harness.Projects.DispatchQA.Hooks do
                   ".claude/CLAUDE.md",
                   ".claude/includes/verification-policy.md",
                   ".claude/includes/critical-rules.md",
-                  ".claude/includes/harness-workflow.md"
+                  ".claude/includes/harness-guardrails.md"
                 ],
                 &Path.join(home, &1)
               ),

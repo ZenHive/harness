@@ -2,7 +2,7 @@
 # Vendored from ZenHive/claude-marketplace at
 # 9dad443e4bdcc0f8a566713b499afa0c3fbb9333 (scripts/sync-agents-md.sh).
 # Upstream remains authoritative for other repos. Deliberate divergence:
-# resolve ~/.claude/includes from committed snapshots, except harness-workflow
+# resolve ~/.claude/includes from committed snapshots, except harness-workflow/-guardrails
 # from its canonical priv/includes source; reject other home imports. Rendering
 # (including the provenance banner) is unchanged. No ambient HOME inputs.
 # Snapshot provenance and reviewed refresh procedure: priv/agents/README.md.
@@ -84,8 +84,8 @@ fi
 resolve_path() {
   local raw="$1"
   case "$raw" in
-    '~/.claude/includes/harness-workflow.md')
-      printf '%s' './priv/includes/harness-workflow.md' ;;
+    '~/.claude/includes/harness-workflow.md' | '~/.claude/includes/harness-guardrails.md')
+      printf '%s' "./priv/includes/${raw#'~/.claude/includes/'}" ;;
     '~/.claude/includes/'*)
       printf '%s' "./priv/agents/includes/${raw#'~/.claude/includes/'}" ;;
     '~/'*)

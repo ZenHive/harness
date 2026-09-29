@@ -1,52 +1,48 @@
 defmodule Mix.Tasks.Harness.InstallIncludes do
-  @shortdoc "Install harness workflow include into ~/.claude/includes (or --dest)"
+  @shortdoc "Install harness includes into ~/.claude/includes (or --dest)"
 
   @moduledoc """
-  Copies the version-controlled harness workflow include from priv/includes/
-  into the user's ~/.claude/includes/ (or a --dest directory). This is the
-  delivery mechanism for the promoted `harness-workflow.md` include.
+  Copies the version-controlled harness includes from priv/includes/ into the
+  user's ~/.claude/includes/ (or a --dest directory): `harness-guardrails.md`
+  (the eager always-on floor) and `harness-workflow.md` (the full contract,
+  also shipped as the `harness:harness-workflow` skill).
 
       mix harness.install_includes
       mix harness.install_includes --dest /tmp/test-includes
 
-  If the target file exists and differs, a .bak-<unix> backup is made before
+  For each file: if the target exists and differs, a .bak-<unix> backup is made before
   overwrite (use --force to skip backup). Idempotent when content matches.
   The source is located via `Application.app_dir/2`.
 
-  After install, other repos adopt the harness workflow the normal way:
+  After install, repos that dispatch through harness import only the guardrails:
 
-      @~/.claude/includes/harness-workflow.md
+      @~/.claude/includes/harness-guardrails.md
 
-  in their CLAUDE.md (see the include's "Relationship to Other Includes" table
-  for layering vs workflow-philosophy.md, task-prioritization.md, etc.).
+  in their CLAUDE.md; the full workflow loads on demand as a skill.
   """
 
   use Mix.Task
+
+  @includes ~w(harness-guardrails.md harness-workflow.md)
 
   @impl Mix.Task
   @spec run([String.t()]) :: :ok
   def run(args) do
     {opts, _, _} = OptionParser.parse(args, strict: [dest: :string, force: :boolean])
     dest_dir = Keyword.get(opts, :dest) || Path.expand("~/.claude/includes")
-    src = locate_source()
-
-    if !File.regular?(src) do
-      Mix.raise(
-        "harness includes source not found at #{src} (priv/includes/harness-workflow.md missing from this harness install)"
-      )
-    end
-
     File.mkdir_p!(dest_dir)
-    target = Path.join(dest_dir, "harness-workflow.md")
 
-    action = install_file(src, target, force: Keyword.get(opts, :force, false))
-    IO.puts("harness.install_includes: #{action} #{target}")
-    :ok
-  end
+    Enum.each(@includes, fn name ->
+      src = Application.app_dir(:harness, Path.join("priv/includes", name))
 
-  @spec locate_source() :: String.t()
-  defp locate_source do
-    Application.app_dir(:harness, "priv/includes/harness-workflow.md")
+      if !File.regular?(src) do
+        Mix.raise("harness includes source not found at #{src} (priv/includes/#{name} missing from this harness install)")
+      end
+
+      target = Path.join(dest_dir, name)
+      action = install_file(src, target, force: Keyword.get(opts, :force, false))
+      IO.puts("harness.install_includes: #{action} #{target}")
+    end)
   end
 
   @spec install_file(String.t(), String.t(), keyword()) :: String.t()

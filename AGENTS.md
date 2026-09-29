@@ -279,7 +279,7 @@ OTP-native **implement → review → land** loop for roadmap-driven development
 | `agent-dispatch.md` / cloud-delegation stack | **Linear/Codex/Cursor PR delegation** without a running harness BEAM. Orthogonal path — projects can use cloud delegation *or* harness; harness subsumes the dispatch+review loop when the OTP node is running. |
 | `skills/harness-driver/SKILL.md` (harness repo) | **API surface contract** — MCP tools, `project_eval` patterns, `%LogRecord{}` fields, sharp edges. Load on demand when driving harness; this include covers *workflow*, the skill covers *surfaces*. |
 
-**Adopt per repo:** eager `@~/.claude/includes/harness-workflow.md` in the `CLAUDE.md` of every repo that dispatches through harness — its guardrails (Recover, Don't Redo; the duplicate-land trap) fail by non-recognition, so an on-demand load is not equivalent. Repos that never dispatch carry nothing.
+**Adopt per repo:** eager `@~/.claude/includes/harness-guardrails.md` in the `CLAUDE.md` of every repo that dispatches through harness — it carries the rules that fail by non-recognition (origin is truth / duplicate-land trap, settle ≠ landed, never block on await, recover don't redo). This full contract loads on demand as the `harness:harness-workflow` skill. Repos that never dispatch carry nothing.
 
 ### The Loop
 

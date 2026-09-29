@@ -11,10 +11,12 @@
 #
 # Canonical sources (here, in the harness repo — edit ONLY these):
 #   priv/includes/harness-workflow.md   portfolio implement→review→land contract (plain include, no frontmatter)
+#   priv/includes/harness-guardrails.md eager always-on floor (plain include; no skill — it IS the ambient part)
 #   skills/harness-driver/SKILL.md       AI-orchestrator driver surface (a full SKILL.md, with frontmatter)
 #
 # Destinations (never hand-edit — overwritten by this script):
 #   ~/.claude/includes/harness-workflow.md                  (cp — same effect as `mix harness.install_includes`)
+#   ~/.claude/includes/harness-guardrails.md                (cp)
 #   $MKT/plugins/harness/skills/harness-workflow/SKILL.md   (body synced; dest frontmatter preserved)
 #   $MKT/plugins/harness/skills/harness-driver/SKILL.md     (body synced; dest frontmatter preserved)
 #
@@ -121,6 +123,7 @@ DRIVER_SRC="$REPO_ROOT/skills/harness-driver/SKILL.md"
 # Leg 1: workflow include -> ~/.claude/includes (equivalent to `mix harness.install_includes`).
 mkdir -p "$INCLUDES_DIR"
 write_if_changed "$INCLUDES_DIR/harness-workflow.md" "$(cat "$WF_SRC")"
+write_if_changed "$INCLUDES_DIR/harness-guardrails.md" "$(cat "$REPO_ROOT/priv/includes/harness-guardrails.md")"
 
 # Legs 2 & 3: marketplace skills (skipped gracefully when the marketplace isn't checked out).
 if [[ "$MKT_EXPLICIT" == true && ! -d "$MKT/plugins/harness" ]]; then

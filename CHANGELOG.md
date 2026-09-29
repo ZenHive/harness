@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`harness-guardrails.md` eager include.** A ~2.5 KB always-on floor (origin is truth / duplicate-land trap, settle ≠ landed, never block on await, recover don't redo) replaces the 55 KB `harness-workflow.md` as the per-repo `@`-import; the full contract loads on demand as the `harness:harness-workflow` skill. `mix harness.install_includes` and `scripts/sync-harness-skills.sh` install both files.
+
 - **Explicit audit agent and model selection on `/harness/qa`.** Persisted selection supports a separate audit session on an existing trusted adapter; automatic routing retains its exclusions. Availability, missing trust/model prerequisites and incomplete QA reasons are visible without opening raw evidence. Invalid choices preserve the previous setting.
 
 - **QA operator dashboard at `/harness/qa` (Task 449).** Registered projects show configured/not-configured, queued/running, and latest passed/failed/incomplete facts with revision, command, and bounded evidence. Start/retry enqueue through the existing audit worker; rollout rows distinguish installed QA from focused-dispatch adoption without mutating settings. Command-match copy is hidden on unconfigured rows.

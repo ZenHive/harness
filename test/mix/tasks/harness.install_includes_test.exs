@@ -29,6 +29,10 @@ defmodule Mix.Tasks.Harness.InstallIncludesTest do
 
     # Content matches the source we ship
     assert File.read!(target) == File.read!(src)
+
+    guardrails = Path.join(dest, "harness-guardrails.md")
+    assert File.read!(guardrails) == File.read!(Path.join(Path.dirname(src), "harness-guardrails.md"))
+    assert output =~ guardrails
   end
 
   test "re-running on identical content reports up-to-date (no backup)", %{dest: dest} do
