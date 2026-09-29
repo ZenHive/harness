@@ -114,7 +114,16 @@ defmodule Harness.Roadmap do
   @typep failure :: {integer(), String.t(), [String.t()]} | {:spawn_error, term(), [String.t()]}
   @roadmap_lock_retry_delay_ms 25
   @roadmap_lock_timeout_ms 30_000
-  @fingerprint_fields ["title", "body", "acceptance_criteria", "files_to_modify", "out_of_scope"]
+  @fingerprint_fields [
+    "title",
+    "body",
+    "acceptance_criteria",
+    "files_to_modify",
+    "out_of_scope",
+    "spec_changes",
+    "context_refs",
+    "checks"
+  ]
 
   api(:ingest, "Fetch a roadmap task via rmap and render it as a ready-to-dispatch agent prompt.",
     params: [

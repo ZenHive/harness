@@ -392,6 +392,26 @@ defmodule Harness.RoadmapTest do
     end
   end
 
+  describe "task_fingerprint/1" do
+    test "changes when spec_changes, context_refs or checks change" do
+      base = %{"title" => "t", "body" => "b"}
+      fp = Roadmap.task_fingerprint(base)
+
+      for {key, value} <- [
+            {"spec_changes", [%{"rule" => "RUN-1", "op" => "change"}]},
+            {"context_refs", ["docs/a.md"]},
+            {"checks", ["mix test"]}
+          ] do
+        refute Roadmap.task_fingerprint(Map.put(base, key, value)) == fp
+      end
+    end
+
+    test "is unchanged for tasks that omit the new fields" do
+      task = %{"title" => "t", "body" => "b", "acceptance_criteria" => ["a"]}
+      assert Roadmap.task_fingerprint(Map.put(task, "status", "done")) == Roadmap.task_fingerprint(task)
+    end
+  end
+
   describe "Item" do
     test "enforces all four fields" do
       assert_raise ArgumentError, fn -> struct!(Item, id: "1") end
