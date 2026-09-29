@@ -9,9 +9,9 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (25 of 30 done · 0 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (25 of 32 done · 0 in progress)
 
-**Last shipped:** Task 359 — Separate Dispatch concerns behind the existing public facade, Task 362 — Diagnose and eliminate the AgentRegistry empty-registry test flake on 2026-09-20
+**Last shipped:** no recent shipments
 
 **Up next:** Task 360 — Enforce consumer-to-core dependency boundaries and remove accidental reverse edges [D:7/B:6/U:4 → Eff:0.71] ⚠️
 <!-- FOCUS:END -->
@@ -272,7 +272,7 @@
 | Task 351 `[P]` | ✅ | 🎁 **autolanding** · 🐛 TaskIdRewriter misses unquoted integer task ids — collision reassignment silently no-ops for integer-id projects [D:2/B:5/U:4 → Eff:2.25?] 🎯 |
 | Task 375 | ✅ | 🎁 **config-surface** · 🚀 **v0_16** · 🐛 Validate optional %Harness.Project{} fields at registration — an uncast concurrency_cap silently kills batch dispatch [D:2/B:6/U:6 → Eff:3.0?] 🎯 |
 | Task 412 | ⬜ | 🎁 **config-surface** · 🔒 Harden project-scoped agent execution policy [D:6/B:8/U:7 → Eff:1.25] 📋 |
-| Task 416 | ✅ | 🎁 **reviewer-pair** · 🐛 Fix post-merge cold-check red for 1e345b9 [D:3/B:8/U:5 → Eff:2.17] 🎯 |
+| Task 416 | ✅ | 🎁 **reviewer-pair** · 🐛 Fix post-merge cold-check red for 1e345b9 [D:3/B:8/U:5 → Eff:2.17?] 🎯 |
 | Task 432 | ⬜ | 🎁 **reviewer-pair** · 🐛 Diagnose and pin cold-check dependency bootstrap behavior [D:3/B:5/U:4 → Eff:1.5] 🚀 |
 <!-- TASKS:END -->
 
@@ -330,19 +330,19 @@
 | Task 357 | ✅ | 🎁 **core-loop** · Decompose Harness.Run.Actions (2,575 lines) by lifecycle concern [D:3/B:4/U:4 → Eff:1.33?] 📋 |
 | Task 385 | ✅ | 🎁 **core-loop** · 🐛 Strip the harness-injected ephemeral AGENTS.md header before committing the delivery [D:3/B:7/U:6 → Eff:2.17?] 🎯 |
 | Task 386 | ✅ | 🎁 **core-loop** · Make roadmap writeback recoverable after delivery has landed [D:5/B:7/U:6 → Eff:1.3?] 📋 |
-| Task 392 | ✅ | 🎁 **core-loop** · 🐛 Terminate the agent process tree, not just the direct PID — orphaned children outlive the kill and share the worktree [D:5/B:9/U:8 → Eff:1.7] 🚀 |
-| Task 393 | ✅ | 🎁 **core-loop** · 🐛 Fence .harness/review.json to the reviewer that wrote it — a killed reviewer's stale approve can settle the run :done [D:3/B:9/U:8 → Eff:2.83] 🎯 |
-| Task 396 | ✅ | 🎁 **contract** · Create the harness_agent_adapter package — move the AgentAdapter subsystem into its own repo [D:5/B:6/U:5 → Eff:1.1] 📋 |
-| Task 397 | ✅ | 🎁 **contract** · harness consumes harness_agent_adapter as a dependency — delete the in-repo AgentAdapter subsystem [D:5/B:5/U:4 → Eff:0.9] ⚠️ |
-| Task 398 | ✅ | 🎁 **agent-gate** · Injected agent rules must never be visible in a tracked file while an agent runs the project's checks [D:4/B:7/U:8 → Eff:1.88] 🚀 |
-| Task 399 | ✅ | 🎁 **core-loop** · Agent-initiated question channel — implementer parks the run with .harness/question.json, orchestrator answers via steer/resume [D:5/B:6/U:5 → Eff:1.1] 📋 |
-| Task 400 | ✅ | 🎁 **autolanding** · Self-land must not mutate the running harness node's own checkout — Git.TargetSync needs a self-host guard [D:4/B:7/U:7 → Eff:1.75] 🚀 |
-| Task 401 | ✅ | 🎁 **audit-hygiene** · mix ci is red on main: one ex_dna clone and four dialyzer warnings, all pre-dating the 397 extraction [D:4/B:7/U:6 → Eff:1.62] 🚀 |
-| Task 402 | ✅ | 🎁 **audit-hygiene** · Activate the registered ExSlop Credo checks instead of discarding them from the explicit enabled list [D:1/B:4/U:3 → Eff:3.5] 🎯 |
-| Task 410 | ✅ | 🎁 **agent-gate** · 🐛 Worktree CoW clone passes the macOS-only `cp -c` flag, so every Linux warm copy silently degrades to a full byte copy [D:3/B:7/U:7 → Eff:2.33] 🎯 |
-| Task 411 | ✅ | 🎁 **agent-gate** · 🐛 run_records read path discards a whole row when one persisted atom is absent from the reading node [D:3/B:6/U:5 → Eff:1.83] 🚀 |
-| Task 415 | ✅ | 🎁 **agent-gate** · 🐛 Close the last AgentAdapter.Driver bypass and make the single-entry-point invariant a test [D:4/B:7/U:7 → Eff:1.75] 🚀 |
-| Task 418 | ✅ | 🎁 **contract** · Publish Task 392 tree-kill in harness_agent_adapter and restore the git dependency pin [D:4/B:7/U:7 → Eff:1.75] 🚀 |
+| Task 392 | ✅ | 🎁 **core-loop** · 🐛 Terminate the agent process tree, not just the direct PID — orphaned children outlive the kill and share the worktree [D:5/B:9/U:8 → Eff:1.7?] 🚀 |
+| Task 393 | ✅ | 🎁 **core-loop** · 🐛 Fence .harness/review.json to the reviewer that wrote it — a killed reviewer's stale approve can settle the run :done [D:3/B:9/U:8 → Eff:2.83?] 🎯 |
+| Task 396 | ✅ | 🎁 **contract** · Create the harness_agent_adapter package — move the AgentAdapter subsystem into its own repo [D:5/B:6/U:5 → Eff:1.1?] 📋 |
+| Task 397 | ✅ | 🎁 **contract** · harness consumes harness_agent_adapter as a dependency — delete the in-repo AgentAdapter subsystem [D:5/B:5/U:4 → Eff:0.9?] ⚠️ |
+| Task 398 | ✅ | 🎁 **agent-gate** · Injected agent rules must never be visible in a tracked file while an agent runs the project's checks [D:4/B:7/U:8 → Eff:1.88?] 🚀 |
+| Task 399 | ✅ | 🎁 **core-loop** · Agent-initiated question channel — implementer parks the run with .harness/question.json, orchestrator answers via steer/resume [D:5/B:6/U:5 → Eff:1.1?] 📋 |
+| Task 400 | ✅ | 🎁 **autolanding** · Self-land must not mutate the running harness node's own checkout — Git.TargetSync needs a self-host guard [D:4/B:7/U:7 → Eff:1.75?] 🚀 |
+| Task 401 | ✅ | 🎁 **audit-hygiene** · mix ci is red on main: one ex_dna clone and four dialyzer warnings, all pre-dating the 397 extraction [D:4/B:7/U:6 → Eff:1.62?] 🚀 |
+| Task 402 | ✅ | 🎁 **audit-hygiene** · Activate the registered ExSlop Credo checks instead of discarding them from the explicit enabled list [D:1/B:4/U:3 → Eff:3.5?] 🎯 |
+| Task 410 | ✅ | 🎁 **agent-gate** · 🐛 Worktree CoW clone passes the macOS-only `cp -c` flag, so every Linux warm copy silently degrades to a full byte copy [D:3/B:7/U:7 → Eff:2.33?] 🎯 |
+| Task 411 | ✅ | 🎁 **agent-gate** · 🐛 run_records read path discards a whole row when one persisted atom is absent from the reading node [D:3/B:6/U:5 → Eff:1.83?] 🚀 |
+| Task 415 | ✅ | 🎁 **agent-gate** · 🐛 Close the last AgentAdapter.Driver bypass and make the single-entry-point invariant a test [D:4/B:7/U:7 → Eff:1.75?] 🚀 |
+| Task 418 | ✅ | 🎁 **contract** · Publish Task 392 tree-kill in harness_agent_adapter and restore the git dependency pin [D:4/B:7/U:7 → Eff:1.75?] 🚀 |
 | Task 433 | ✅ | 🎁 **operator-surface** · 🐛 Suite-health check leaks its test database on every successful run [D:3/B:7/U:6 → Eff:2.17] 🎯 |
 | Task 434 | ⬜ | 🎁 **operator-surface** · Orphan test-database sweeper — the Worktree.Sweeper equivalent for scratch DBs [D:7/B:7/U:6 → Eff:0.93] ⚠️ |
 | Task 437 | ✅ | 🎁 **operator-surface** · 🐛 Suite-health never runs deps.get — its guard is unreachable because warm paths always seed deps/ [D:3/B:7/U:6 → Eff:2.17] 🎯 |
@@ -355,6 +355,9 @@
 | Task 457 | ⬜ | 🎁 **audit-hygiene** · 🐛 Complete private security triage from integrated QA [D:4/B:5/U:4 → Eff:1.12] 📋 |
 | Task 458 | ⬜ | 🎁 **core-loop** · 🐛 Stop Task 386's writeback gating from permanently stranding an already-pushed run [D:4/B:8/U:7 → Eff:1.88] 🚀 |
 | Task 460 `[P]` | ⬜ | 🎁 **core-loop** · 🐛 A project without a target branch must not disable Worktree Reclaim for the whole fleet [D:2/B:6/U:6 → Eff:3.0] 🎯 |
+| Task 462 | ⬜ | 🎁 **reviewer-pair** · 🐛 Stop a reviewer from approving a delivery it authored on an empty implementer diff [D:4/B:8/U:7 → Eff:1.88] 🚀 |
+| Task 463 | ⬜ | 🎁 **run-history** · 🐛 Never attribute a landed SHA to a failed or unapproved run [D:3/B:7/U:6 → Eff:2.17] 🎯 |
+| Task 464 | ⬜ | 🎁 **audit-hygiene** · 🐛 Make the test suite refuse to write to a non-test database [D:3/B:9/U:7 → Eff:2.67] 🎯 |
 <!-- TASKS:END -->
 
 ---
@@ -385,15 +388,17 @@
 | Task 383 | ✅ | 🎁 **resilience** · 🐛 Delivery commit exclusion missed .harness/agent-rules.md — harness's own scaffolding rode in a deliverable [D:3/B:6/U:5 → Eff:1.83?] 🚀 |
 | Task 384 | ✅ | 🎁 **deferred** · Migrate anubis_mcp 1.x -> 2.0.0 (Application callback removal, transport/supervision rewrite) [D:5/B:3/U:2 → Eff:0.5?] ⚠️ |
 | Task 389 | ✅ | 🎁 **config-surface** · 🚀 **v0_16** · Expose roadmap_target_branch on the operator registration surfaces [D:3/B:6/U:5 → Eff:1.83?] 🚀 |
-| Task 391 | ✅ | 🎁 **surface** · Four `roadmap-mark_*` MCP tools expose zero parameters — declare their params, then guard the class [D:3/B:6/U:6 → Eff:2.0] 🎯 |
-| Task 403 | ✅ | 🎁 **audit-hygiene** · 🚀 **v0_16** · 🔒 Make the loopback posture true: Origin/Host guard on /harness/mcp + source-URL validation before git clone [D:2/B:9/U:7 → Eff:4.0] 🎯 |
-| Task 404 | ✅ | 🎁 **audit-perf** · 🚀 **v0_16** · Take the uncached SettingsStore reads and the synchronous CLI catalog probes off the 5s settings tick [D:3/B:5/U:5 → Eff:1.67] 🚀 |
-| Task 405 | ✅ | 🎁 **roadmap-writeback** · 🚀 **v0_16** · 🐛 Audit discovery filing writes into the operator's live checkout and is never committed [D:3/B:7/U:6 → Eff:2.17] 🎯 |
-| Task 413 | ✅ | 🎁 **witness-legibility** · Surface an in-flight audit signal on the fleet count strip, not just the ops panel [D:4/B:7/U:6 → Eff:1.62] 🚀 |
-| Task 414 | ✅ | 🎁 **config-surface** · 🐛 Give dispatch-register_project a typed languages schema so MCP clients can send a JSON array [D:3/B:7/U:6 → Eff:2.17] 🎯 |
-| Task 417 | ✅ | 🎁 **resilience** · 🐛 Delivery staging must never carry a symlink or dependency/build artifact — a leaked deps symlink destroyed the base checkout [D:3/B:9/U:8 → Eff:2.83] 🎯 |
+| Task 391 | ✅ | 🎁 **surface** · Four `roadmap-mark_*` MCP tools expose zero parameters — declare their params, then guard the class [D:3/B:6/U:6 → Eff:2.0?] 🎯 |
+| Task 403 | ✅ | 🎁 **audit-hygiene** · 🚀 **v0_16** · 🔒 Make the loopback posture true: Origin/Host guard on /harness/mcp + source-URL validation before git clone [D:2/B:9/U:7 → Eff:4.0?] 🎯 |
+| Task 404 | ✅ | 🎁 **audit-perf** · 🚀 **v0_16** · Take the uncached SettingsStore reads and the synchronous CLI catalog probes off the 5s settings tick [D:3/B:5/U:5 → Eff:1.67?] 🚀 |
+| Task 405 | ✅ | 🎁 **roadmap-writeback** · 🚀 **v0_16** · 🐛 Audit discovery filing writes into the operator's live checkout and is never committed [D:3/B:7/U:6 → Eff:2.17?] 🎯 |
+| Task 413 | ✅ | 🎁 **witness-legibility** · Surface an in-flight audit signal on the fleet count strip, not just the ops panel [D:4/B:7/U:6 → Eff:1.62?] 🚀 |
+| Task 414 | ✅ | 🎁 **config-surface** · 🐛 Give dispatch-register_project a typed languages schema so MCP clients can send a JSON array [D:3/B:7/U:6 → Eff:2.17?] 🎯 |
+| Task 417 | ✅ | 🎁 **resilience** · 🐛 Delivery staging must never carry a symlink or dependency/build artifact — a leaked deps symlink destroyed the base checkout [D:3/B:9/U:8 → Eff:2.83?] 🎯 |
 | Task 424 | ✅ | 🎁 **roadmap-writeback** · 🐛 Sync the roadmap checkout (fetch + ff-only) before ingest and writeback so dispatch reads the tasks that are actually on origin [D:3/B:7/U:6 → Eff:2.17] 🎯 |
 | Task 428 | ✅ | 🎁 **resilience** · Node-pressure gate samples a naive RSS sum, not memory headroom — switch to MemAvailable and give the mark an env override [D:3/B:5/U:4 → Eff:1.5] 🚀 |
+| Task 465 | ⬜ | 🎁 **roadmap-writeback** · 🐛 Route audit discovery filings into the separate roadmap repository for split-roadmap projects [D:4/B:6/U:5 → Eff:1.38] 📋 |
+| Task 466 | ⬜ | 🎁 **audit-hygiene** · 🐛 Injected .cursor/rules/harness-operational.mdc still lands in agent-delivery commits [D:3/B:6/U:6 → Eff:2.0] 🎯 |
 <!-- TASKS:END -->
 
 ---
@@ -405,10 +410,10 @@
 |------|--------|-------|
 | Task 387 `[P]` | ✅ | 🎁 **operator-cockpit** · 🚀 **v0_18** · Build a fleet task Kanban from rmap and Harness lifecycle facts [D:5/B:8/U:7 → Eff:1.5?] 🚀 |
 | Task 388 | ✅ | 🎁 **operator-cockpit** · 🚀 **v0_18** · Add an operator Action Inbox over existing recovery and approval contracts [D:5/B:8/U:7 → Eff:1.5] 🚀 |
-| Task 406 `[P]` | ✅ | 🎁 **witness-legibility** · Run-detail becomes where a failure is diagnosed and acted on [D:3/B:8/U:6 → Eff:2.33] 🎯 |
-| Task 407 `[P]` | ✅ | 🎁 **witness-legibility** · 🐛 Split the run-state bucket vocabulary and recompose the index around it [D:3/B:7/U:6 → Eff:2.17] 🎯 |
-| Task 408 `[P]` | ✅ | 🎁 **witness-legibility** · Responsive strategy for the dashboard [D:3/B:6/U:5 → Eff:1.83] 🚀 |
-| Task 409 `[P]` | ✅ | 🎁 **witness-legibility** · Surface the reviewer's testimony on the run row and detail [D:4/B:7/U:5 → Eff:1.5] 🚀 |
+| Task 406 `[P]` | ✅ | 🎁 **witness-legibility** · Run-detail becomes where a failure is diagnosed and acted on [D:3/B:8/U:6 → Eff:2.33?] 🎯 |
+| Task 407 `[P]` | ✅ | 🎁 **witness-legibility** · 🐛 Split the run-state bucket vocabulary and recompose the index around it [D:3/B:7/U:6 → Eff:2.17?] 🎯 |
+| Task 408 `[P]` | ✅ | 🎁 **witness-legibility** · Responsive strategy for the dashboard [D:3/B:6/U:5 → Eff:1.83?] 🚀 |
+| Task 409 `[P]` | ✅ | 🎁 **witness-legibility** · Surface the reviewer's testimony on the run row and detail [D:4/B:7/U:5 → Eff:1.5?] 🚀 |
 | Task 441 | ⬜ | 🎁 **operator-cockpit** · 🚀 **v0_18** · Expose bounded durable lifecycle Activity in the operator dashboard [D:4/B:6/U:6 → Eff:1.5] 🚀 |
 | Task 443 | ✅ | 🎁 **operator-cockpit** · Add Run Insights to observe runs and track recurring problems [D:8/B:8/U:5 → Eff:0.81] ⚠️ |
 | Task 444 | ✅ | 🎁 **repo-maintenance** · Add autonomous maintenance sweeps across opted-in repositories [D:8/B:9/U:6 → Eff:0.94] ⚠️ |
@@ -430,8 +435,8 @@
 |------|--------|-------|
 | Task 394 | ⬜ | 🎁 **gate-runner** · Gate runner: declare check dependencies, run independent gates in parallel, capture one log per gate [D:6/B:6/U:6 → Eff:1.0] 📋 |
 | Task 395 | ⬜ | 🎁 **doc-governance** · Move settled rationale and postmortems out of the eager floor into decision records, with a portable word-ceiling gate [D:4/B:7/U:7 → Eff:1.75] 🚀 |
-| Task 419 | ✅ | 🎁 **core-loop** · 🐛 Dispatch reads a local checkout the lander never syncs, so a landed task stays pending and re-dispatches forever [D:5/B:9/U:9 → Eff:1.8] 🚀 |
-| Task 420 `[P]` | ✅ | 🎁 **core-loop** · Every ready-set consumer syncs the roadmap checkout before selecting work, the cron poller included, and refuses only when the sync skips; display reads never sync [D:4/B:6/U:5 → Eff:1.38] 📋 |
+| Task 419 | ✅ | 🎁 **core-loop** · 🐛 Dispatch reads a local checkout the lander never syncs, so a landed task stays pending and re-dispatches forever [D:5/B:9/U:9 → Eff:1.8?] 🚀 |
+| Task 420 `[P]` | ✅ | 🎁 **core-loop** · Every ready-set consumer syncs the roadmap checkout before selecting work, the cron poller included, and refuses only when the sync skips; display reads never sync [D:4/B:6/U:5 → Eff:1.38?] 📋 |
 | Task 427 | ✅ | 🎁 **core-loop** · 🐛 Persist recoverable run outcomes during graceful node shutdown [D:6/B:9/U:8 → Eff:1.42] 📋 |
 | Task 431 | ✅ | 🎁 **core-loop** · 🐛 Cron orchestrator counts in-flight from rmap in_progress, so a manual-landing project deadlocks permanently at its concurrency cap [D:3/B:8/U:8 → Eff:2.67] 🎯 |
 | Task 436 | ⬜ | 🎁 **core-loop** · 🐛 Make the host-local dependency bootstrap fix reproducible from version control [D:4/B:7/U:6 → Eff:1.62] 🚀 |

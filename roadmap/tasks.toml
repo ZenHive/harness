@@ -14284,3 +14284,141 @@ The fix is deliberately trigger-agnostic, which is also what keeps it mantra-cle
 """
 created_at = "2026-09-22"
 scored_at = "2026-09-22"
+
+[[task]]
+id = "462"
+phase = 22
+bundle = "reviewer-pair"
+status = "pending"
+title = "Stop a reviewer from approving a delivery it authored on an empty implementer diff"
+scores = { d = 4, b = 8, u = 7 }
+markers = ["bug"]
+acceptance_criteria = ["A run with implementer_empty_diff? = true whose reviewer commits a non-empty diff and writes verdict approve does NOT settle :done/approved and is never enqueued for landing. It settles in a distinct, observable state (e.g. a reviewer-authored candidate awaiting independent review) with the reviewer's commit retained on harness/<run-id>.", "That retained revision can be sent through the existing rereview path to a DIFFERENT reviewer (different adapter/family than the author) and lands only on that second reviewer's approve. The authoring reviewer is excluded from that rereview.", "An empty-diff run where the reviewer adds no commits (task already satisfied on base) and approves still settles approved exactly as today.", "The ordinary non-empty implementer path is unchanged: reviewer inline fixes plus approve still settle :done. No numeric reviewer-diff-size threshold is introduced.", "The run record exposes the provenance (implementer empty diff, reviewer diff size, authoring reviewer) so KPIs and the dashboard do not count the run as an implementer first-pass success.", "Regression tests using the fake adapters: (1) empty implementer diff + reviewer commit + approve -> not landed, fails on current code; (2) empty diff + no reviewer commit + approve -> approved; (3) non-empty diff + reviewer fix + approve -> approved; (4) the retained revision approved by a second, different reviewer -> lands."]
+out_of_scope = ["Model/catalog validation before dispatch (the Task 268 trigger was an unsupported model id; the catalog gate from 0f6dfa6e covers that separately).", "Changing the reviewer prompt wording; the prompt already forbids self-implementation, this task adds the mechanical guard behind it.", "Reviewer rotation on re-prompt exhaustion (Task 461)."]
+touches = ["lib/harness/run/actions/reviewing.ex", "lib/harness/run/states/reviewing.ex", "lib/harness/run/states/committing.ex", "lib/harness/run/actions/settlement.ex", "lib/harness/run/log_record.ex"]
+domains = ["otp"]
+assignee = "codex"
+model = "gpt-6-astra"
+body = """
+What is wrong: when the implementer produces no diff, the reviewer can still write the implementation itself and approve its own work, and harness lands it. Nothing mechanical separates author from grader in that case.
+
+Verified 2026-09-29 on main a85a08c8:
+- lib/harness/run/states/committing.ex:39-41 routes an empty implementer diff to review with implementer_empty_diff?: true.
+- lib/harness/run/actions/reviewing.ex:765-777 (reviewer_situation/1, added in 0f6dfa6e on 2026-09-14) TELLS the reviewer "Do NOT implement the task yourself ... a self-approved delivery is exactly what this run exists to prevent". That is prompt-only.
+- lib/harness/run/actions/reviewing.ex:183-185 settle_review/2 turns any {:ok, %Review{verdict: :approve}} into :done/approved with no check of implementer_empty_diff? or reviewer_diff_size (measured at reviewing.ex:424/437 and delivered to states/reviewing.ex:78-87). A reviewer that ignores the prompt is approved and landed.
+
+Why it matters: the core contract (CLAUDE.md, "Evaluation stays separate — agent vs agent") says done = an independent reviewer approved. In this path the grader is the author, so the ledger records verified work that no independent party checked.
+
+Provenance: Run Insights findings "Invalid model routing again makes the reviewer the sole implementer" (2026-09-21T03:12Z) and "Task 268 was implemented and approved by the same reviewer after model rejection" (2026-09-21T23:31Z). The implementer's codex model gpt-5.1-codex-max-xhigh was rejected, the reviewer implemented the empty task and approved the same revision. The same pattern was recorded earlier for Task 19. Premise unverified — confirm before building on it: whether that Task 268 run started before or after 0f6dfa6e's prompt guard, and which project it belongs to. The code gap above is verified independently of that.
+
+Suggested shape (the observer's recommendation): keep inline fix-and-approve for genuine repairs, and use the empty-candidate role transition as the trigger, not a diff-size threshold. It is mechanical (empty implementer diff AND reviewer diff > 0 AND approve), so harness enforces a fact, not a judgment.
+"""
+created_at = "2026-09-29"
+scored_at = "2026-09-29"
+
+[[task]]
+id = "463"
+phase = 22
+bundle = "run-history"
+status = "pending"
+title = "Never attribute a landed SHA to a failed or unapproved run"
+scores = { d = 3, b = 7, u = 6 }
+markers = ["bug"]
+acceptance_criteria = ["The dashboard landed_sha reconcile never writes landed_sha on a run whose state is :failed or whose review verdict is not approve. A regression test drives reconcile over a failed run whose task has a reachable roadmap shipped_in, and asserts landed_sha stays nil. The test fails on current code.", "Reconcile for an approved :done run still backfills landed_sha when its own harness/<run-id> commit, or the task's shipped_in, is reachable from origin/<target>. The existing Task 276 reconcile regressions keep passing.", "ResultStore.mark_landed/3 (Postgres and Memory) refuses a run record that is not state done with verdict approve and returns a distinct error, so no future caller can reintroduce the false green. Tested for both backends.", "Existing inconsistent rows are surfaced, not silently rewritten: a read-only query or mix task lists run_records with landed_sha set and state != done or verdict != approve (run_id, project, task_id, state, verdict, landed_sha). Clearing them is an explicit operator action that the task documents but does not run against production.", "If a task's shipped_in needs to be shown next to a failed run, it is labeled as the task's shipped revision, never as that run's landed_sha."]
+out_of_scope = ["Splitting landed_sha into candidate/approved/merged SHA columns (the observer suggestion). Only do it if the guard above cannot be expressed without it.", "Lander stranding and reland fallback (Task 458).", "Deleting or rewriting production run_records rows; the operator runs the cleanup after reviewing the surfaced list."]
+touches = ["lib/harness/dashboard/live.ex", "lib/harness/result_store.ex", "lib/harness/result_store/postgres.ex", "lib/harness/dashboard/task_board.ex"]
+domains = ["ecto", "git"]
+assignee = "codex"
+model = "gpt-6-astra"
+body = """
+What is wrong: failed runs, including ones with no reviewer verdict and ones the reviewer rejected, carry a non-null landed_sha. The run ledger and dashboard then show them as landed, which is a false green.
+
+Verified 2026-09-29 on main a85a08c8. The writer is the dashboard history reconcile, not the lander:
+- lib/harness/dashboard/live.ex:548-551 candidate_project_name/1 selects entries with landed_sha nil AND state in [:done, :failed].
+- lib/harness/dashboard/live.ex:571-586 reconcile_history_entry/4 (same `state in [:done, :failed]` guard) takes shipped_in = RoadmapSummary.landed_sha(roadmap, project, task_id). That is keyed by TASK, not run. It then calls ResultStore.reconcile_landed_sha/4.
+- lib/harness/result_store.ex:418-426 plus landed_candidate/4 at :662-673 accept the task's shipped_in if it is an ancestor of origin/<target>, and mark_reconciled_landed/3 writes it (:692-704 -> mark_landed/3 -> postgres.ex:327-345, an unconditional update_all by run_id).
+- Result: every failed run of a task that later shipped via ANY run, a manual recovery or an inline hand-build receives that other delivery's SHA. The lander's own writes (lander.ex:834/854/893-916) happen only after an approved push and are not the cause.
+
+Why it matters: landed_sha is the persisted fact the dashboard, KPIs, PR poller (lander/pr_poller.ex:75) and recovery surfaces key on. A failed run that reads as landed hides retained work from rereview and credits the wrong run and agent.
+
+Provenance: Run Insights findings "Task 427 has a landed SHA but no reviewer verdict or repair evidence" (2026-09-24), "More failed and unreviewed runs carry ambiguous landed SHAs" (2026-09-20, aave_sim tasks 127 and 25) and "Task 206 retains an ambiguous landed SHA" (trading_dashboard). Production harness_runtime, last 30 days: state=failed/verdict NULL has 29 rows, all 29 with landed_sha; failed/reject has 24 rows, all 24 with landed_sha. Task 427's SHA 55fc50c1 was later attributed to an inline recovery, which is consistent with the task-keyed shipped_in mechanism above.
+"""
+created_at = "2026-09-29"
+scored_at = "2026-09-29"
+
+[[task]]
+id = "464"
+phase = 22
+bundle = "audit-hygiene"
+status = "pending"
+title = "Make the test suite refuse to write to a non-test database"
+scores = { d = 3, b = 9, u = 7 }
+markers = ["bug"]
+acceptance_criteria = ["Under MIX_ENV=test, Harness.Repo can only point at a database whose name ends in _test, optionally followed by a partition suffix. If HARNESS_DATABASE_URL, DATABASE_URL or HARNESS_DB_NAME resolves to any other name (e.g. harness_runtime), the suite aborts at boot before any test runs, with a message naming the offending variable and the database. A regression test or scripted check proves `HARNESS_DATABASE_URL=postgres://.../harness_runtime mix test` fails fast. On current code it connects and writes.", "MIX_TEST_PARTITION, which Harness.Run.TestDbIsolation already sets for agent runs, is honoured by harness's own test DB name, so concurrent agent runs on the host get distinct _test databases.", "Integration tests that enable the repo (the 18 files setting :repo_enabled true, including test/harness/maintenance/queue_test.exs) leave no rows behind. Maintenance settings/progress documents written by Maintenance.configure and the test's own Store writes are removed in on_exit, or the tests run inside a checked-out SQL Sandbox. A test asserts no `settings/maintenance-queue-*` document and no `maintenance-queue-*` project row remain after the module.", "Agent runs on the host still work: the implementer and reviewer Ports can run `mix test --include integration` for harness and reach a _test database without the operator's production URL.", 'The one-off production cleanup is documented as an operator runbook step with the exact selectors: the 44 `settings/maintenance-queue-<uuid>` maintenance_documents and the 12 `maintenance-queue-<uuid>` projects with source {:local, "/tmp/maintenance-queue"}. It is not executed by the dispatched agent.']
+out_of_scope = ["Running the production cleanup itself (operator action).", "The orphan scratch-database sweeper (Task 434).", "General agent-seat environment policy beyond the test DB guard. The private advisory behind Task 412 may overlap; do not widen this task into it.", "Cron/Maintenance model-config test-order isolation (Task 455)."]
+touches = ["config/runtime.exs", "config/config.exs", "test/test_helper.exs", "test/harness/maintenance/queue_test.exs", "lib/harness/run/test_db_isolation.ex", "lib/harness/maintenance.ex"]
+domains = ["ecto", "testing"]
+assignee = "codex"
+model = "gpt-6-astra"
+body = """
+What is wrong: the harness test suite writes into the PRODUCTION runtime database. Production harness_runtime holds 44 maintenance_documents rows `settings/maintenance-queue-<uuid>` (all enabled, codex/gpt-6-astra, deadline 60s). 12 `maintenance-queue-<uuid>` projects are registered in the production ProjectRegistry with source {:local, "/tmp/maintenance-queue"}.
+
+Fixture source, verified 2026-09-29 on main a85a08c8: test/harness/maintenance/queue_test.exs:14-33 (@moduletag :integration) sets repo_enabled true, starts Harness.Repo, registers `maintenance-queue-#{Ecto.UUID.generate()}` from "/tmp/maintenance-queue", and calls Maintenance.configure(name, true, 10_080, "codex", "gpt-6-astra", 60). Those are the exact leaked values. The on_exit at :22-30 only unregisters the project. It was reordered in 1c075ad4 (2026-09-22), whose comment already admits "Fourteen maintenance-queue-<uuid> projects leaked ... into the live projects table". The `settings/` document written by Maintenance.configure (lib/harness/maintenance.ex:52, Store.put_many) is never removed, which explains 44 settings rows versus 12 surviving projects.
+
+How it reaches production, verified in code:
+- config/runtime.exs:5-46 honours HARNESS_DATABASE_URL / DATABASE_URL / HARNESS_DB_NAME in EVERY Mix env, test included, and has no _test guard.
+- docs/hardware.md:187-195: the production node runs with HARNESS_DATABASE_URL pointing at harness_runtime in its systemd environment.
+- deps/harness_agent_adapter/lib/harness/agent_adapter/capabilities.ex:65: agent Ports inherit the BEAM's environment. Only provider auth keys are scrubbed (claude.ex:55).
+- test/test_helper.exs sets no Sandbox mode, and config/config.exs:222-224 only selects the Sandbox pool. Repo-enabled integration tests therefore commit rows for real.
+- lib/harness/run/test_db_isolation.ex:16 injects MIX_TEST_PARTITION, but harness's own config never reads it, and a URL would override it anyway.
+So any `mix test --include integration` run by an implementer, reviewer or audit seat on the production host, dogfooding harness itself, writes to harness_runtime.
+
+Premise unverified — confirm before building on it: which process actually wrote the rows (an agent seat under harness.service vs an operator shell on the host with the service env exported). The timing matches the Task 444 run run-1789896419787-da2364ed on 2026-09-20 (commits 64405ed6/1d3088a4) and the 1c075ad4 comment's 2026-09-20/21 window, but no journal evidence ties them together. The guard is correct either way.
+
+Why it matters: fixture projects in the production registry are swept by the hourly Maintenance tick into source_unavailable failures (per the 1c075ad4 comment). Any repo-enabled test can also mutate or delete real run_records, settings or projects. This is the most damaging class of test leak for a self-hosted orchestrator.
+"""
+created_at = "2026-09-29"
+scored_at = "2026-09-29"
+
+[[task]]
+id = "465"
+phase = 23
+bundle = "roadmap-writeback"
+status = "pending"
+title = "Route audit discovery filings into the separate roadmap repository for split-roadmap projects"
+scores = { d = 4, b = 6, u = 5 }
+markers = ["bug"]
+depends_on = [405]
+acceptance_criteria = ["For a project whose roadmap_path is outside the code repository, both audit filing channels (the prompt-driven `rmap new --tasks-path` handed to the audit agent, and the harness-side cold-check rmap_new/rmap_status_blocked) write to the roadmap repository through its durable-write path. The filed task is reachable on the roadmap repository's configured branch on origin. A test drives a split-roadmap audit that files one discovery and asserts that reachability. It fails on current code.", "No fallback roadmap/tasks.toml is created or modified inside the code repository's audit worktree for a split-roadmap project. The same test asserts the audit(<sha>) commit contains no roadmap/ path.", "The operator's roadmap checkout gains no uncommitted change from the filing (git status --porcelain snapshot before/after), preserving Task 405's guarantee.", "Single-repo projects keep Task 405's behaviour unchanged: the filing rides the audit(<sha>) commit. The existing 405 regressions, including the non-descendant escape test, still pass.", "If the roadmap repository has no durable target, the filing fails visibly (witness or notification), not silently into the wrong repository."]
+out_of_scope = ["Changing what the audit agent decides to file or how it scores discoveries.", "The mark_* transition machinery itself (Tasks 378/379); reuse it, don't redesign it.", "Lander writeback stranding (Task 458)."]
+touches = ["lib/harness/audit.ex", "lib/harness/roadmap.ex", "lib/harness/roadmap/durable.ex"]
+domains = ["git"]
+assignee = "codex"
+model = "gpt-6-astra"
+body = """
+What is wrong: Task 405 made audit discoveries durable for single-repo projects, but for split-roadmap projects (roadmap_path outside the code repository, e.g. bourse) a discovery is filed into the WRONG repository. It goes into a fallback roadmap/tasks.toml inside the code repo's audit worktree and rides the code repo's audit(<sha>) commit, instead of reaching the project's real roadmap.
+
+Verified 2026-09-29 on main a85a08c8: lib/harness/audit.ex:934-942 relative_tasks_path/2. When tasks_path is not a descendant of the code repo, it returns Path.join("roadmap", "tasks.toml"), i.e. "Fall back to the in-worktree convention rather than writing outside". tasks_path_in_worktree/3 (:929-931) feeds that to the agent prompt (:542) and to the cold-check filing (:840-844 -> rmap_new :874, rmap_status_blocked :879). The durable split-repo write path already exists for transitions (lib/harness/roadmap.ex mark_landed/2 § Durability, :581 require_durable, :708-712 roadmap repo/target derivation; lib/harness/roadmap/durable.ex) but audit filing does not use it.
+
+Why it matters: a split-roadmap project never sees its audit discoveries in its own roadmap, so they are lost to dispatch. The code repository also accumulates a stray roadmap/tasks.toml that nobody reads.
+
+Provenance: Run Insights finding "Task 405 makes audit discoveries durable, but split roadmaps still land in the wrong repository" (2026-09-25T12:23Z). Task 405 shipped in 38dea6c944e9ffbe20b7b4a0a646a70b871b53fb with this limitation explicitly retained.
+"""
+created_at = "2026-09-29"
+scored_at = "2026-09-29"
+
+[[task]]
+id = "466"
+phase = 23
+bundle = "audit-hygiene"
+status = "pending"
+title = "Injected .cursor/rules/harness-operational.mdc still lands in agent-delivery commits"
+scores = { d = 3, b = 6, u = 6 }
+markers = ["bug"]
+acceptance_criteria = ["A test reproduces a Cursor-implemented run, and a run whose reviewer commits a fix, and asserts no harness-injected rule file (.cursor/rules/harness-operational.mdc, .harness/agent-rules.md, injected AGENTS.md block) appears in any commit harness creates", "The fix does not rely on the consumer repo gitignoring the file"]
+out_of_scope = ["Changing rule content", "Consumer-side workarounds"]
+assignee = "codex"
+model = "gpt-6-astra"
+body = "Regression of task 36. rmap run run-1790671356689-974db76b (task 61) delivered commit 005e639 in ZenHive/rmap containing the harness-owned .cursor/rules/harness-operational.mdc (42 lines, 'Harness operational rules injected at dispatch time'). Worktree.prepare_for_staging calls RulesInjection.cleanup_injected_rules before staging, so either cleanup misses the Cursor channel on some path (reviewer fix-commit, recovery, cross-family reviewer) or the file is written after cleanup. Find the path and close it. The consumer repo was cleaned by hand (rmap 1651a21) and gitignores the file as a stopgap; the fix belongs here."
+created_at = "2026-09-29"
+scored_at = "2026-09-29"
