@@ -38,6 +38,42 @@ class FlutterRunnerTest(unittest.TestCase):
             with self.assertRaisesRegex(runner.VerificationError, 'HARNESS_ANDROID_IMAGE'):
                 runner.android(Path.cwd(), {}, Path.cwd(), 1)
 
+    def test_failed_golden_records_the_check_and_copies_the_diff(self):
+        with tempfile.TemporaryDirectory(dir=Path.cwd()) as root:
+            root = Path(root)
+            app = root / 'app'
+            failure = app / 'test' / 'failures'
+            failure.mkdir(parents=True)
+            (app / 'pubspec.yaml').write_text('name: fixture\n')
+            (failure / 'panel.png').write_bytes(b'\x89PNG\r\n\x1a\n')
+            args = argparse.Namespace(app=app, worktree=root, attempt='reviewer-1', timeout=1)
+
+            def fake_run(command, _cwd, _env, log, _timeout):
+                log.write_bytes(b'golden mismatch\n')
+                if command[:3] == ['flutter', 'test', '--reporter=json']:
+                    raise runner.VerificationError('Exit 1: flutter test; see widget-golden.jsonl')
+                if command[:2] in (['flutter', 'pub'], ['flutter', 'analyze']):
+                    return None
+                raise runner.VerificationError('Exit 1: ' + ' '.join(command))
+
+            with patch.object(runner, 'require', return_value='/tool'), patch.object(
+                runner, 'run', side_effect=fake_run
+            ), patch.object(
+                runner, 'android', side_effect=runner.VerificationError('Missing prerequisite: readable/writable /dev/kvm (KVM)')
+            ):
+                self.assertEqual(runner.verify(args), 1)
+
+            report = json.loads((root / '.harness/evidence/reviewer-1/checks.json').read_text())
+            golden = report['flutter test (widget and golden)']
+            self.assertFalse(golden['passed'])
+            self.assertIn('Exit 1', golden['output'])
+            diff = '.harness/evidence/reviewer-1/golden-diffs/failures/panel.png'
+            self.assertIn(diff, golden['evidence'])
+            self.assertTrue((root / diff).is_file())
+            android = report['integration_test android']
+            self.assertFalse(android['passed'])
+            self.assertIn('/dev/kvm', android['output'])
+
     def test_failed_tool_is_not_converted_to_success(self):
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as root:
             log = Path(root) / 'tool.log'

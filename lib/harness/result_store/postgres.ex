@@ -759,7 +759,7 @@ defmodule Harness.ResultStore.Postgres do
         review_facets: r.review_facets,
         review_skills: r.review_skills,
         review_checks: r.review_checks,
-        review_evidence: fragment("? - 'files'", r.review_evidence),
+        review_evidence: fragment("(?::jsonb - ?)", r.review_evidence, "files"),
         review_concerns: r.review_concerns,
         review_proposed_tasks: r.review_proposed_tasks,
         review_warning?: r.review_warning?,

@@ -1121,7 +1121,8 @@ defmodule Harness.Dashboard.LiveTest do
       assert html =~ "Verification evidence (2)"
       assert html =~ ~s(src="data:image/png;base64,cG5n")
       assert html =~ ~s(alt=".harness/evidence/linux.png")
-      assert html =~ ~s(download="report.json")
+      assert html =~ ~s(download=".harness_evidence_report.json")
+      assert html =~ ~s(download=".harness_evidence_linux.png")
       refute html =~ ~s(src="data:application/octet-stream)
       assert html =~ "has-review-warning"
       refute html =~ "average"

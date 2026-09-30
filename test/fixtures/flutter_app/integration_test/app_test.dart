@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -13,22 +14,27 @@ void main() {
   final screenshots = <String, String>{};
   binding.reportData = {'screenshots': screenshots};
 
-  Future<void> capture(String name) async {
-    final boundary = screen.currentContext!.findRenderObject()! as RenderRepaintBoundary;
-    final image = await boundary.toImage(pixelRatio: 1);
-    final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-    screenshots[name] = base64Encode(bytes!.buffer.asUint8List());
-    image.dispose();
+  Future<void> capture(WidgetTester tester, String name) async {
+    await tester.runAsync(() async {
+      final boundary = screen.currentContext!.findRenderObject()! as RenderRepaintBoundary;
+      final image = await boundary.toImage(pixelRatio: 1);
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+      screenshots[name] = base64Encode(bytes!.buffer.asUint8List());
+      image.dispose();
+    });
   }
 
   testWidgets('increment flow on device', (tester) async {
     await tester.pumpWidget(RepaintBoundary(key: screen, child: const FixtureApp()));
+    if (Platform.isAndroid) {
+      await binding.convertFlutterSurfaceToImage();
+    }
     await tester.pumpAndSettle();
     expect(find.text('Count: 0'), findsOneWidget);
-    await capture('before');
+    await capture(tester, 'before');
     await tester.tap(find.text('Increment'));
     await tester.pumpAndSettle();
     expect(find.text('Count: 1'), findsOneWidget);
-    await capture('after');
+    await capture(tester, 'after');
   });
 }

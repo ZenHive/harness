@@ -1231,7 +1231,7 @@ defmodule Harness.Dashboard.Live do
           <figcaption>
             <a
               href={"data:application/octet-stream;base64,#{file["content"]}"}
-              download={Path.basename(path)}
+              download={String.replace(path, "/", "_")}
             >
               {path}
             </a>

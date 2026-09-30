@@ -60,8 +60,13 @@ timeout or SIGTERM/SIGINT. It never attaches to an operator's emulator or ADB se
 The integration driver must write screenshots to `HARNESS_SCREENSHOT_DIR`.
 The fixture illustrates two flow states and a host-side report callback supported by
 [Flutter's integrationDriver](https://api.flutter.dev/flutter/package-integration_test_integration_test_driver/integrationDriver.html).
-Golden baselines live in `test/goldens/`; Flutter's failure diffs are copied into
-the evidence directory. Do not update baselines simply to clear a red test.
+Linux captures a `RepaintBoundary` with `toImage` inside `WidgetTester.runAsync`, because
+`IntegrationTestWidgetsFlutterBinding.takeScreenshot` has no desktop implementation.
+Android calls `convertFlutterSurfaceToImage` before that same layer capture. Golden
+baselines live in `test/goldens/`. The fixture golden is the 100 logical-pixel panel at
+device pixel ratio 1; tests that compare it pin `tester.view.devicePixelRatio` and
+`physicalSize`, because Flutter's default test surface is 3x. Flutter's failure diffs
+are copied into the evidence directory. Do not update baselines simply to clear a red test.
 
 The runner writes `checks.json` with command outcomes and exact evidence paths.
 The reviewer incorporates those entries into `.harness/review.json`:

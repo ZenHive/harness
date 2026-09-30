@@ -172,6 +172,7 @@ defmodule Harness.ResultStoreContract do
         review_facets: %{"surface" => "otp"},
         review_skills: %{"otp" => %{"score" => 8}},
         review_checks: %{"mix check.dispatch" => %{"passed" => false}},
+        task_id: "r-upsert-evidence",
         review_evidence: %{"count" => 1, "files" => %{".harness/evidence/check.log" => %{"content" => "cmVk"}}},
         review_concerns: [%{"kind" => "dismissed_red"}],
         review_proposed_tasks: [%{"title" => "Add handoff trace"}],
@@ -193,6 +194,7 @@ defmodule Harness.ResultStoreContract do
     sparse =
       log_record(
         run_id: "r-upsert",
+        task_id: "r-upsert-evidence",
         state: :done,
         reason: :approved,
         duration_ms: 5,
@@ -225,6 +227,12 @@ defmodule Harness.ResultStoreContract do
     assert rec.review_skills == %{"otp" => %{"score" => 8}}
     assert rec.review_checks == %{"mix check.dispatch" => %{"passed" => false}}
     assert rec.review_evidence == rich.review_evidence
+
+    assert {:ok, summaries} = ResultStore.list_run_records(store, task_id: "r-upsert-evidence")
+    assert [summary] = Enum.filter(summaries, &(&1.run_id == "r-upsert"))
+    assert summary.review_evidence["count"] == 1
+    refute Map.has_key?(summary.review_evidence, "files")
+
     assert rec.review_concerns == [%{"kind" => "dismissed_red"}]
     assert rec.review_proposed_tasks == [%{"title" => "Add handoff trace"}]
     assert rec.review_warning? == true
