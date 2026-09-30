@@ -18,6 +18,7 @@ defmodule Harness.Run.Actions.Settlement do
   alias Harness.ResultStore
   alias Harness.Run.Actions.Control
   alias Harness.Run.Admission
+  alias Harness.Run.Evidence
   alias Harness.Run.LogRecord
   alias Harness.Run.Result
   alias Harness.Run.Review
@@ -362,7 +363,7 @@ defmodule Harness.Run.Actions.Settlement do
   defp snapshot_evidence(record, nil), do: record
 
   defp snapshot_evidence(%{review_evidence: evidence} = record, path) when evidence == %{} do
-    %{record | review_evidence: Harness.Run.Evidence.capture(path, record.review_checks)}
+    %{record | review_evidence: Evidence.capture(path, record.review_checks)}
   end
 
   defp snapshot_evidence(record, _path), do: record

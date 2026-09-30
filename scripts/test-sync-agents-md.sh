@@ -8,7 +8,7 @@ mkdir -p "$tmp/repo/scripts" "$tmp/repo/priv/includes" "$tmp/empty-home"
 cp "$root/CLAUDE.md" "$root/AGENTS.md" "$tmp/repo/"
 cp "$root/scripts/sync-agents-md.sh" "$tmp/repo/scripts/"
 cp -R "$root/priv/agents" "$tmp/repo/priv/"
-cp "$root/priv/includes/harness-workflow.md" "$tmp/repo/priv/includes/"
+cp "$root/priv/includes/harness-guardrails.md" "$tmp/repo/priv/includes/"
 cd "$tmp/repo"
 
 render() { env HOME="$tmp/empty-home" bash scripts/sync-agents-md.sh "$@"; }
@@ -34,7 +34,7 @@ render --check
 # Compare the unmodified upstream algorithm using exactly the same snapshots.
 mkdir -p "$tmp/upstream-home/.claude/includes"
 cp priv/agents/includes/*.md "$tmp/upstream-home/.claude/includes/"
-cp priv/includes/harness-workflow.md "$tmp/upstream-home/.claude/includes/"
+cp priv/includes/harness-guardrails.md "$tmp/upstream-home/.claude/includes/"
 env HOME="$tmp/upstream-home" bash "$root/test/fixtures/agents/upstream-sync-agents-md.sh"
 cmp AGENTS.md "$tmp/expected"
 
@@ -75,7 +75,7 @@ expect_failure 'unsupported home @-import: ~/unvendored.md'
 cmp AGENTS.md "$tmp/before-error"
 
 cp "$root/priv/agents/includes/critical-rules.md" priv/agents/includes/critical-rules.md
-rm priv/includes/harness-workflow.md
-expect_failure 'cannot read @-import: ~/.claude/includes/harness-workflow.md'
+rm priv/includes/harness-guardrails.md
+expect_failure 'cannot read @-import: ~/.claude/includes/harness-guardrails.md'
 cmp AGENTS.md "$tmp/before-error"
 echo 'PASS: portable rendering, upstream parity, idempotence, drift, missing imports, depth and HOME isolation'

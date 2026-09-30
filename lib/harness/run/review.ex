@@ -52,6 +52,7 @@ defmodule Harness.Run.Review do
   """
 
   alias Harness.Artifact
+  alias Harness.Run.Evidence
 
   @artifact_path ".harness/review.json"
   @run_id_env "HARNESS_RUN_ID"
@@ -160,7 +161,7 @@ defmodule Harness.Run.Review do
     with {:ok, contents} <- Artifact.read(worktree_path, @artifact_path),
          {:ok, review} <- parse(contents),
          :ok <- match_identity(contents, run_id, attempt) do
-      evidence = Harness.Run.Evidence.capture(worktree_path, review.checks)
+      evidence = Evidence.capture(worktree_path, review.checks)
 
       if review.verdict == :approve and (evidence["missing"] != [] or evidence["errors"] != []) do
         {:error, {:malformed, {:evidence, Map.delete(evidence, "files")}}}

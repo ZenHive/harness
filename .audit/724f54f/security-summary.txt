@@ -1,0 +1,1 @@
+mix sobelow --exit --skip: exit 1; one low-confidence finding. Raw output retained in a private draft security advisory created by this audit. No exploit established. Existing router coverage warning persists. No new skip or baseline was added.

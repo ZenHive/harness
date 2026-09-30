@@ -9,6 +9,7 @@ defmodule Harness.FlutterLiveAgentTest do
   alias Harness.ResultStore
   alias Harness.Roadmap.Item
   alias Harness.Run
+  alias Harness.Run.Evidence
 
   @moduletag :integration
   @moduletag :live_agent
@@ -109,7 +110,7 @@ defmodule Harness.FlutterLiveAgentTest do
       path = ".harness/evidence/reviewer-1/#{target}/#{flow}.png"
       assert files[path]["media_type"] == "image/png"
       assert byte_size(Base.decode64!(files[path]["content"])) > 100
-      assert path in Harness.Run.Evidence.references(record.review_checks)
+      assert path in Evidence.references(record.review_checks)
     end
 
     assert Enum.all?(record.review_checks, fn {_command, check} -> check["passed"] == true end)

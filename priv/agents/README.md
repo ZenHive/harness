@@ -7,7 +7,7 @@ checkout supplies inputs. Never hand-edit AGENTS.md.
 
 Only standalone `@path` lines are imports, as in the upstream generator.
 Inline references and load-on-demand tables remain prose. The complete eager
-closure is verification-policy, critical-rules, and harness-workflow; these
+closure is verification-policy, critical-rules, and harness-guardrails; these
 snapshots have no further standalone imports. New recursive imports must ship
 their sources too. Unreadable imports or recursion beyond five levels abort
 before writing. Other `~/` imports are rejected instead of reading ambient HOME.
@@ -42,7 +42,18 @@ run used an empty HOME. Both byte comparisons passed.
 Snapshot refreshes are explicit code-review changes: obtain the intended source
 version, review its diff, copy every transitive dependency into this tree, and
 record its origin and SHA-256 here. Update the upstream fixture and vendor header
-when refreshing the generator. Edit harness-workflow at its canonical source.
+when refreshing the generator. Edit harness-workflow and harness-guardrails at
+their canonical sources.
 Run `bash scripts/test-sync-agents-md.sh`, regenerate AGENTS.md, and run `--check`.
 Commit the input changes, provenance, and generated result together. No hook or
 command automatically refreshes these snapshots from HOME or the network.
+
+### 2026-09-30 audit refresh
+
+Restored the stack-selection and released-dependency policies from the committed
+`AGENTS.md` at `724f54f101ba5c397f17574039f471614082a256` into the
+critical-rules input snapshot. This preserves the landed instructions without
+reading ambient HOME inputs. Updated snapshot SHA-256:
+`c0913d8d0374c9a228d9c558ee7ae1166bc59f202e7b6fa1dafe5b36de8832e2`.
+The eager harness input is
+`priv/includes/harness-guardrails.md`; harness-workflow remains on demand.

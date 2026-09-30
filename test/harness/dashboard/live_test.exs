@@ -1168,6 +1168,27 @@ defmodule Harness.Dashboard.LiveTest do
       refute html =~ "n/a"
     end
 
+    test "evidence alone makes reviewer testimony visible" do
+      status = %Status{run_id: "r", task_id: "1", state: :done, review_verdict: :approve}
+
+      for evidence <- [
+            %{"count" => 1},
+            %{"errors" => ["evidence unreadable"]},
+            %{"missing" => [".harness/evidence/missing.png"]}
+          ] do
+        record = %{log_record("r", []) | review_evidence: evidence}
+
+        html =
+          status
+          |> show_render_assigns("")
+          |> Map.put(:review_record, record)
+          |> Live.render()
+          |> rendered_to_string()
+
+        assert html =~ "Reviewer testimony"
+      end
+    end
+
     test "zero reviewer diff size is rendered as a fact, not omitted as empty" do
       status = %Status{run_id: "r", task_id: "1", state: :done, review_verdict: :approve}
 

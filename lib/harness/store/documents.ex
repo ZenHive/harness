@@ -5,6 +5,7 @@ defmodule Harness.Store.Documents do
   alias Harness.Repo
   alias Harness.Store.EtsHeir
 
+  @typedoc "Schema, table ownership and lock settings for an isolated document store."
   @type config :: %{
           schema: module(),
           table: atom(),

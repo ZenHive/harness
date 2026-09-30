@@ -1619,13 +1619,18 @@ defmodule Harness.Dashboard.Live do
     is_integer(record.reviewer_diff_size) or
       present_review_fact?(record.review_concerns) or
       present_review_fact?(record.review_checks) or
-      Map.get(record.review_evidence, "count", 0) > 0 or
-      present_review_fact?(record.review_evidence["errors"]) or
-      present_review_fact?(record.review_evidence["missing"]) or
+      review_evidence_present?(record.review_evidence) or
       present_review_fact?(record.review_ratings) or
       present_review_fact?(record.review_facets) or
       present_review_fact?(record.review_skills) or
       present_review_fact?(record.review_proposed_tasks)
+  end
+
+  @spec review_evidence_present?(map()) :: boolean()
+  defp review_evidence_present?(evidence) do
+    Map.get(evidence, "count", 0) > 0 or
+      present_review_fact?(evidence["errors"]) or
+      present_review_fact?(evidence["missing"])
   end
 
   @spec present_review_fact?(term()) :: boolean()
