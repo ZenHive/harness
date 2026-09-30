@@ -231,6 +231,7 @@ end
 - `:project_root` — string path; fallback when `:project` is omitted. Defaults to `File.cwd!/0` (which is harness's cwd when called via `project_eval` — almost never what you want; pass `:project` explicitly).
 - `:agent` — any of the six harness adapters `rmap delegate --to` renders natively: `:claude | :codex | :cursor | :grok | :antigravity | :pi`. Defaults to `:claude`. The ingested prompt is rendered for *this* agent and runs directly on its adapter. `:droid` (or any agent without a harness adapter) is rejected — see "Renderable vs executable agents" below.
 - `:rmap_bin` — override the `rmap` binary name/path.
+- The ingested prompt is `rmap delegate` stdout. `Harness.Roadmap.render_prompt/3` passes it through untouched and does not parse section headers. Sections, when present, follow: Context → Read first (`context_refs`) → Task → Acceptance criteria (`- [x]` when status is done, otherwise `- [ ]`) → Reviewer checks (`checks`; hints for the reviewer, not an automated gate — rmap never executes them and harness does not either) → Out of scope → Files to modify → Scoring → Environment notes. Optional sections (Read first, Reviewer checks, Task, Acceptance criteria, Out of scope, Files to modify, Prior attempts, What was actually implemented) are omitted when empty. Environment notes describe that agent's execution runtime and name no language, toolchain, or package manager. `@fingerprint_fields` remains `title` / `body` / `acceptance_criteria` / `files_to_modify` / `out_of_scope`; `context_refs` and `checks` stay outside that hash. `Harness.Lander.PR.acceptance_section/1` builds its own PR-body acceptance list with plain bullets and does not read the delegate prompt.
 
 **Browsing a roadmap before you ingest.** To see *what's there* — pick a task id, scope a session — use the structured browse functions instead of shelling `rmap` into the live checkout (which is wrong from harness's cwd, and breaks for `{:github, _}` sources):
 
@@ -664,6 +665,7 @@ Changes that require an update to this skill:
 - Additional MCP backends beyond `Harness.Chat.Claude` (if/when a library-backed metered-API backend lands as an opt-in)
 - New or changed `Harness.Playbooks` (catalog entries, `priv/playbooks/*.md` recipes that drift from the actual tool surface, or the `list/0` / `get/1` shapes)
 - New or changed implementer question-channel protocol (`.harness/question.json` schema, identity fence, sidecar consumption, timeout policy, or the steer/resume answer path)
+- Changes to the `rmap delegate` prompt contract (section order, `context_refs` / `checks`, done-task checkboxes, or environment-note footers). `render_prompt/3` still passes the prompt through untouched.
 
 **How this skill reaches the orchestrator's context.**
 

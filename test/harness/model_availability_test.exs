@@ -134,6 +134,8 @@ defmodule Harness.ModelAvailabilityTest do
       output =
         ~s({"models":[) <>
           ~s({"slug":"gpt-6-astra","display_name":"GPT-6 Astra","visibility":"list"},) <>
+          ~s({"slug":"gpt-6-sol","display_name":"GPT-6-Sol","visibility":"list"},) <>
+          ~s({"slug":"gpt-6-luna","display_name":"GPT-6-Luna","visibility":"list"},) <>
           ~s({"slug":"gpt-5.6-sol","display_name":"GPT-5.6-Sol","visibility":"list"},) <>
           ~s({"slug":"gpt-5.6-terra","display_name":"GPT-5.6-Terra","visibility":"list"},) <>
           ~s({"slug":"gpt-5.6-luna","display_name":"GPT-5.6-Luna","visibility":"list"},) <>
@@ -141,6 +143,8 @@ defmodule Harness.ModelAvailabilityTest do
 
       assert [
                %{id: "gpt-6-astra", label: "GPT-6 Astra", annotations: []},
+               %{id: "gpt-6-sol", label: "GPT-6-Sol", annotations: []},
+               %{id: "gpt-6-luna", label: "GPT-6-Luna", annotations: []},
                %{id: "gpt-5.6-sol", label: "GPT-5.6-Sol", annotations: []},
                %{id: "gpt-5.6-terra", label: "GPT-5.6-Terra", annotations: []},
                %{id: "gpt-5.6-luna", label: "GPT-5.6-Luna", annotations: []}
@@ -245,6 +249,10 @@ defmodule Harness.ModelAvailabilityTest do
 
       assert {:ok, codex_models} = ModelAvailability.catalog(:codex)
       assert "gpt-6-astra" in Enum.map(codex_models, & &1.id)
+      assert "gpt-6-sol" in Enum.map(codex_models, & &1.id)
+      assert "gpt-6-luna" in Enum.map(codex_models, & &1.id)
+      assert ModelAvailability.available?(:codex, "gpt-6-sol")
+      assert ModelAvailability.available?(:codex, "gpt-6-luna")
 
       assert {:ok, claude_models} = ModelAvailability.catalog(:claude)
       assert "claude-opus-5" in Enum.map(claude_models, & &1.id)

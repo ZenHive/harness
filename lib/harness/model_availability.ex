@@ -44,7 +44,10 @@ defmodule Harness.ModelAvailability do
       CatalogEntry.new("claude-sonnet-5", "Sonnet 5")
     ],
     codex: [
+      # GPT-6 additions verified with `codex debug models` on 2026-09-28.
       CatalogEntry.new("gpt-6-astra", "GPT-6 Astra (flagship)"),
+      CatalogEntry.new("gpt-6-sol", "GPT-6 Sol (coding)"),
+      CatalogEntry.new("gpt-6-luna", "GPT-6 Luna (fast/cheap)"),
       CatalogEntry.new("gpt-5.6-sol", "GPT-5.6 Sol (frontier)"),
       CatalogEntry.new("gpt-5.6-terra", "GPT-5.6 Terra (balanced)"),
       CatalogEntry.new("gpt-5.6-luna", "GPT-5.6 Luna (fast/cheap)")
