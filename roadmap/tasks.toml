@@ -135,6 +135,11 @@ name = "Check & Doc Infrastructure — machine-readable gates, bounded standing 
 order = 25
 status = "pending"
 
+[phases.26]
+name = "Client-App Verification — agents build, run and see Flutter and native apps"
+order = 26
+status = "pending"
+
 # ----------------------------------------------------------------------------
 # Bundles
 # ----------------------------------------------------------------------------
@@ -387,6 +392,11 @@ phase = 25
 description = "The eager floor pays for every word on every cross-family reviewer run (rendered AGENTS.md: 14,038 words on 2026-08-23). Separate the three tiers CLAUDE.md currently carries inline — standing orders, settled-decision rationale, incident postmortems — into a decision-record tier with mandatory alternatives and a postmortem tier, and enforce the discipline with a portable format + word-ceiling check instead of periodic hand-trimming."
 order = 2
 phase = 25
+
+[bundles.client-verification]
+description = "Implementers and reviewers of Flutter and native client apps get a build → launch → screenshot → UI-test loop whose artifacts are review evidence, locally on the Linux host and remotely on the Mac mini (macOS/iOS, Windows VM)."
+order = 1
+phase = 26
 
 [milestones.v0_1]
 name = "Core loop & contract proof"
@@ -14422,3 +14432,98 @@ model = "gpt-6-astra"
 body = "Regression of task 36. rmap run run-1790671356689-974db76b (task 61) delivered commit 005e639 in ZenHive/rmap containing the harness-owned .cursor/rules/harness-operational.mdc (42 lines, 'Harness operational rules injected at dispatch time'). Worktree.prepare_for_staging calls RulesInjection.cleanup_injected_rules before staging, so either cleanup misses the Cursor channel on some path (reviewer fix-commit, recovery, cross-family reviewer) or the file is written after cleanup. Find the path and close it. The consumer repo was cleaned by hand (rmap 1651a21) and gitignores the file as a stopgap; the fix belongs here."
 created_at = "2026-09-29"
 scored_at = "2026-09-29"
+
+[[task]]
+id = "467"
+phase = 26
+bundle = "client-verification"
+status = "pending"
+title = "Prepare the Mac mini as the macOS/iOS and Windows build host for client-app verification"
+scores = { d = 2, b = 5, u = 6 }
+assignee = "human"
+body = """
+Hand-build reason: operator-gated installs and licences (Apple ID for Xcode, a Windows 11 licence, a VM hypervisor) and physical-host access that no dispatched agent has.
+
+Operator decision 2026-09-30: the Mac mini (Tailscale, `efu@100.81.145.85`) is the remote host for everything that cannot run on the Linux harness host. It is also the archive/backup host (`/Volumes/RAID1-2TB`), so the runner must never touch the RAID.
+
+- Dedicated macOS user for the runner, workspace on the internal disk only; that user has no access to `/Volumes/RAID1-2TB`.
+- Xcode + command line tools, iOS simulator runtimes, CocoaPods, Flutter SDK.
+- Windows 11 ARM VM on the Mac mini (UTM or Parallels) with OpenSSH server, the Visual Studio build tools Flutter-for-Windows and WinUI 3 need, and the Flutter SDK; reachable from the harness host over Tailscale.
+- Authorize the harness host's SSH key for both (macOS runner user and Windows VM); record host aliases in the harness host's `~/.ssh/config`.
+- Record in `implemented`: host aliases, installed Xcode/Flutter/Windows SDK versions, the workspace paths.
+"""
+created_at = "2026-09-30"
+scored_at = "2026-09-30"
+
+[[task]]
+id = "468"
+phase = 26
+bundle = "client-verification"
+status = "pending"
+title = "Flutter verification loop: implementers and reviewers build, run, screenshot and UI-test Flutter apps as review evidence"
+scores = { d = 5, b = 6, u = 6 }
+acceptance_criteria = ["A fixture Flutter app in the harness test suite is dispatched end to end: implementer changes a screen, reviewer runs widget, golden and integration tests on Linux desktop and Android emulator, and the run record contains the screenshots referenced from review.json.", "The run detail page renders the evidence screenshots for that run.", "Evidence files never appear in the delivery commit.", "With the Flutter SDK or KVM missing, the check fails and review.json records the named missing prerequisite; no approve is possible without evidence when the task's acceptance criteria require UI verification.", "A deliberately broken golden (negative control) makes the reviewer's recorded check fail."]
+out_of_scope = ["macOS, iOS and Windows targets (remote runner task)", "Per-platform native toolchains (native loop task)", "Automated visual judgment in harness code"]
+assignee = "codex"
+model = "gpt-6-astra"
+body = """
+Operator decision 2026-09-30: harness supports agent-built client apps — Flutter and per-platform native. For agents the bottleneck is verification, not writing code (critical-rules § Stack, rule 1): a reviewer that only sees a green compile cannot judge a screen. The web already has this loop (isolated Playwright in tapakly); Flutter needs its equivalent. Tapakly's Flutter Pro app is the first consumer.
+
+Scope — locally on the Linux harness host:
+- `flutter analyze`, `flutter test` including golden (screenshot) tests.
+- `integration_test` runs against the Linux desktop target under a headless display and against an Android emulator (KVM), producing screenshots of the flows under test.
+
+Evidence contract (decided, vetoable): implementer and reviewer write screenshots, golden diffs and test reports under `.harness/evidence/` in the run worktree; `.harness/review.json` references them from its `checks`; harness persists the files with the run record (not in the delivery commit) and the run detail page shows them. Harness counts and stores these facts; the reviewer AI looks at the screenshots and judges them — no image comparison or pass/fail logic in harness code beyond what the test tools themselves report.
+
+Toolchain provisioning in fresh worktrees follows the existing cold-worktree pattern (deps fetched per run, budgeted in timeouts). Missing prerequisites (no Flutter SDK, no KVM, no emulator image) fail the check with the exact missing piece — never a silent pass.
+"""
+created_at = "2026-09-30"
+scored_at = "2026-09-30"
+
+[[task]]
+id = "469"
+phase = 26
+bundle = "client-verification"
+status = "pending"
+title = "Remote build hosts: runs execute platform-bound builds and UI tests on the Mac mini and its Windows VM"
+scores = { d = 6, b = 6, u = 5 }
+depends_on = [467, 468]
+acceptance_criteria = ["The fixture Flutter app from the Flutter loop task builds, runs integration tests and returns screenshots for macOS desktop, iOS simulator and Windows desktop via the remote hosts, and those screenshots appear in the run's evidence.", "Two concurrent runs needing the Mac mini serialize on its lock; neither sees the other's workspace.", "The remote per-run workspace is gone after the run settles, including after a failed run.", "An unreachable host fails the check with the host alias and SSH error recorded; the run does not hang past its timeout.", "A test proves the remote command cannot write outside the configured workspace root (negative control against a path under the RAID mount)."]
+out_of_scope = ["Provisioning the hosts (Mac mini prep task)", "Cloud CI runners", "Store signing and upload"]
+assignee = "codex"
+model = "gpt-6-astra"
+body = """
+Some client targets cannot build on the Linux harness host: macOS and iOS need Xcode (macOS only), Windows targets need Windows. The Mac mini and its Windows VM (prepared in the Mac mini prep task) become remote build hosts.
+
+- Operator registers remote hosts in harness settings: SSH alias plus the platforms each serves (e.g. macos, ios, windows). Credentials piggyback on the harness host's existing SSH config — no auth layer inside harness (same rule as the remote-repo clone support).
+- Inside a run, implementer and reviewer invoke one harness-provided command that syncs the run worktree to the host's per-run workspace, runs a command there, and brings back logs, screenshots and test reports into `.harness/evidence/` (the Flutter loop's evidence contract).
+- Mechanics only: a per-host concurrency lock (the Mac mini runs one job at a time unless configured otherwise), a per-run remote workspace removed on settle, timeouts, and a witnessed failure when a host is unreachable. The runner stays inside its workspace on the internal disk; nothing touches the Mac mini's RAID volume.
+- The Flutter loop extends to macOS desktop, iOS simulator and Windows desktop through this path.
+"""
+created_at = "2026-09-30"
+scored_at = "2026-09-30"
+
+[[task]]
+id = "470"
+phase = 26
+bundle = "client-verification"
+status = "pending"
+title = "Native verification loop: SwiftUI, Compose, WinUI and GTK apps get build, run, screenshot and UI-test evidence"
+scores = { d = 6, b = 4, u = 3 }
+depends_on = [468, 469]
+acceptance_criteria = ["For each of Apple, Android, Windows and Linux, a fixture app is built, launched, UI-tested and screenshotted by a dispatched reviewer, and the screenshots and test reports appear in the run's evidence.", "A deliberately failing UI test per platform (negative control) is recorded as a failed check.", "Missing toolchains fail with the named missing prerequisite."]
+out_of_scope = ["Flutter (Flutter loop task)", "Store signing and upload"]
+assignee = "cursor"
+model = "cursor-grok-4.6-high"
+body = """
+Per-platform native apps are allowed only when harness has their verification loop (critical-rules § Stack, rule 1, amended 2026-09-30). This task provides that loop on the same evidence contract as the Flutter loop, using the remote hosts where the platform requires it:
+
+- Apple (remote, Mac mini): xcodebuild, iOS simulator via simctl screenshots, XCUITest.
+- Android (local, Linux host): Gradle build, emulator, Espresso.
+- Windows (remote, Windows VM): WinUI 3 build, a maintained Windows UI-automation driver — verify its maintenance status before choosing it and record the choice — plus screenshots.
+- Linux (local): GTK4 build, run under a headless display, screenshots, UI tests driven through the accessibility tree.
+
+One small fixture app per platform in the test suite proves each loop, including a negative control per platform.
+"""
+created_at = "2026-09-30"
+scored_at = "2026-09-30"
