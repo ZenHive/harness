@@ -58,11 +58,9 @@ defmodule Harness.Audit do
   alias Harness.Artifact
   alias Harness.Audit.QA
   alias Harness.Audit.Selection
-  alias Harness.Config
   alias Harness.Dashboard.OpsFeed
   alias Harness.Dashboard.OpsFeed.Op
   alias Harness.Git
-  alias Harness.ModelAvailability
   alias Harness.Notification
   alias Harness.Notification.Event
   alias Harness.Project
@@ -326,7 +324,7 @@ defmodule Harness.Audit do
          {:ok, %Outcome{output: output, kind: kind}} <-
            AgentDriver.run(
              auditor,
-             invocation(worktree, repo, target, project, request, range, request.audit_model),
+             invocation(worktree, target, project, request, range, request.audit_model),
              driver_options(project)
            ) do
       finalize_after_run(worktree, repo, target, project, Map.put(request, :termination, kind), range, agent, output)
@@ -449,11 +447,11 @@ defmodule Harness.Audit do
     end
   end
 
-  @spec invocation(Worktree.t(), String.t(), String.t(), Project.t(), request(), map(), String.t() | nil) ::
+  @spec invocation(Worktree.t(), String.t(), Project.t(), request(), map(), String.t() | nil) ::
           Invocation.t()
-  defp invocation(worktree, repo, target, project, request, range, model) do
+  defp invocation(worktree, target, project, request, range, model) do
     %Invocation{
-      prompt: audit_prompt(target, project, range, rejection_history(project, request), worktree.path, repo),
+      prompt: audit_prompt(target, project, range, rejection_history(project, request), worktree.path),
       cwd: worktree.path,
       log_tag: "audit-#{project.name}-#{range.short_sha}",
       model: model,
@@ -514,8 +512,8 @@ defmodule Harness.Audit do
   # The audit agent's instructions. The judgment (what is a hygiene issue, what
   # matters, what to fix) lives entirely in the agent; harness only frames the
   # range and pushes whatever it commits.
-  @spec audit_prompt(String.t(), Project.t(), map(), String.t(), String.t(), String.t()) :: String.t()
-  defp audit_prompt(target, project, range, rejections, worktree_path, repo) do
+  @spec audit_prompt(String.t(), Project.t(), map(), String.t(), String.t()) :: String.t()
+  defp audit_prompt(target, project, range, rejections, worktree_path) do
     """
     You are the post-merge audit agent for project #{project.name}: a best-effort hygiene pass over
     commits that already landed on `#{target}`. The merge is settled — you fix forward and never
@@ -537,20 +535,12 @@ defmodule Harness.Audit do
        {"findings": <count>, "fixed": <count>, "report": "<one-paragraph summary>"}
        Do NOT commit this file — it is harness-internal.
 
-    Discovery filing: when you notice follow-up work during this commit-range review — tech debt,
-    an orphaned code path, an uncovered edge case, or a deferred decision — FILE it as a real rmap task
-    via `rmap new --from-stdin --tasks-path #{inspect(tasks_path_in_worktree(project, worktree_path, repo))}`. Provide a TOML
-    `[[task]]` fragment. In `.audit/#{range.short_sha}.md`, name the filed task id(s). Do not leave TODO
-    comments in source for audit follow-ups; the rmap task is the durable record.
-    Harness does not decide what counts as a discovery; it does not score it, and reads nothing back — you decide
-    whether to file and run the CLI yourself.
-
-    Routing for a filed task: `assignee` and `model` are required, and `model` MUST be one of the exact
-    catalog ids below, read from this node at audit time — never a model name from memory. An id that
-    is not in the assignee's catalog is rejected at dispatch and the task sits in the queue unrun.
-    Use the assignee's standing model unless the task names a reason for another catalog id.
-    `assignee = "human"` (no `model`) is only for work an agent cannot do.
-    #{routing_pins()}
+    Follow-up work: fix it inline when it fits this pass, otherwise drop it. Lint, docs, coverage,
+    style and naming findings are never tasks — fix them here or leave them. Only a correctness
+    defect, security risk or failing check that blocks shipping and is too large for this pass may be
+    proposed: list it under `## Proposed tasks` in `.audit/#{range.short_sha}.md` with title, why it
+    blocks shipping, and evidence. Never run `rmap new` and never edit `roadmap/`, `ROADMAP.md` or
+    `CHANGELOG.md`; the orchestrator decides what gets filed. Proposing nothing is the normal outcome.
 
     Reviewer-quality feedback loop — recent reviewer rejections for this project (a cross-family
     reviewer is THE gate, and rejection is rare by design). If a task in the landed range above also
@@ -597,9 +587,9 @@ defmodule Harness.Audit do
     Copy the command JSON value EXACTLY (no shell wrapper). Passed requires every configured check
     completed successfully. Keep full evidence in the report; it is persisted before worktree cleanup.
     Record the original integrated revision, not a later hygiene commit.
-    For failed or incomplete checks, own repair: inspect existing roadmap tasks and prior QA evidence,
-    semantically deduplicate the cause, and file or update a concrete repair task. Substantial changes
-    require normal implementation and independent review; do not perform them in this audit.
+    For failed or incomplete checks: fix mechanical findings (format, Credo, Doctor, docs) inline.
+    A failure that needs a substantial change goes under `## Proposed tasks` in the audit report,
+    deduplicated against existing roadmap tasks and prior QA evidence — never filed by you.
     Never put undisclosed vulnerability details in public tasks, reports or commits: use a private
     draft security advisory and only a generic reference in the roadmap. Keep ordinary repair task
     references in the QA report. The focused reviewer hint is separate from these complete checks.
@@ -671,37 +661,6 @@ defmodule Harness.Audit do
   end
 
   defp finish_qa(_request, _report, _output), do: :ok
-
-  # The live `assignee` → standing model + catalog facts the audit agent files
-  # against. Read from the node, never from the agent's training: agents' model
-  # ids churn and a remembered id is the exact failure this block exists for
-  # (`gpt-5.1-codex-max-xhigh`, filed by a claude auditor on 2026-09-14).
-  # Facts only — which agent to pick stays the agent's judgment.
-  @doc false
-  @spec routing_pins() :: String.t()
-  def routing_pins do
-    AgentRegistry.agents()
-    |> Enum.filter(fn {agent, _module} -> AgentSettings.enabled?(agent) end)
-    |> Enum.sort_by(fn {agent, _module} -> agent end)
-    |> Enum.map(&routing_pin_line/1)
-    |> case do
-      [] -> "  (no agent is enabled for dispatch on this node — file with assignee = \"human\")"
-      lines -> Enum.join(lines, "\n")
-    end
-  end
-
-  @spec routing_pin_line({atom(), module()}) :: String.t()
-  defp routing_pin_line({agent, _module}) do
-    standing = Config.agent_model(agent) || "(none configured)"
-
-    catalog =
-      case ModelAvailability.list_available_ids(agent) do
-        [] -> "(no catalog — model-incapable, or nothing selected)"
-        ids -> Enum.join(ids, ", ")
-      end
-
-    "  assignee = \"#{agent}\" — standing model = \"#{standing}\"; catalog: #{catalog}"
-  end
 
   # Best-effort visibility: surface the agent's machine-readable summary in the
   # logs. A missing or malformed file is fine — the .audit/<sha>.md commit is

@@ -20,7 +20,6 @@ defmodule Harness.AuditTest do
   alias Harness.AgentAdapter.Pi
   alias Harness.AgentRegistry
   alias Harness.Audit
-  alias Harness.Config
   alias Harness.Dashboard.OpsFeed
   alias Harness.Dashboard.OpsFeed.Op
   alias Harness.GitFixture
@@ -187,7 +186,7 @@ defmodule Harness.AuditTest do
       # module and silently flip every later settings read to the no-op store.
       restore(:settings_store, prior_settings_store)
       # Config.put/3 writes the operator override through to the :harness app
-      # env, so a routing_pins test that pins a standing model leaves
+      # env, so a test that pins a standing model leaves
       # :agent_model set for every module that runs after this one — the later
       # module then reads a model it never configured and fails only under the
       # seed orders that put it downstream. Restoring the key here keeps the
@@ -303,29 +302,6 @@ defmodule Harness.AuditTest do
 
       subject = GitFixture.git!(ctx.repo, ["log", "-1", "--format=%s", "origin/main"])
       assert subject =~ "audit(#{short})"
-    end
-
-    test "an auditor discovery reaches the target without dirtying the source checkout", ctx do
-      land_work!(ctx)
-      short = ctx.repo |> GitFixture.git!(["rev-parse", "--short", "HEAD"]) |> String.trim()
-      rmap_log = Path.join(System.tmp_dir!(), "harness-audit-discovery-#{System.unique_integer([:positive])}.log")
-      rmap_dir = fake_blocking_rmap_dir(rmap_log)
-      with_path("#{rmap_dir}:#{System.get_env("PATH", "")}")
-      before_status = GitFixture.git!(ctx.repo, ["status", "--porcelain"])
-
-      assert {:audited, _sha} =
-               Audit.run(%{
-                 project: ctx.project,
-                 base_sha: ctx.base_sha,
-                 auditor: FakeAdapter,
-                 auditor_opts: [command: {:audit_file_discovery, short}]
-               })
-
-      assert GitFixture.git!(ctx.repo, ["status", "--porcelain"]) == before_status
-      GitFixture.git!(ctx.repo, ["fetch", "-q", "origin"])
-      tasks = GitFixture.git!(ctx.repo, ["show", "origin/main:roadmap/tasks.toml"])
-      assert tasks =~ "Audit discovery"
-      refute File.read!(rmap_log) =~ Path.join(ctx.repo, "roadmap/tasks.toml")
     end
 
     test "the audited tip is the next audit's base — re-running is a :noop", ctx do
@@ -599,7 +575,7 @@ defmodule Harness.AuditTest do
       refute prompt =~ "t.99"
     end
 
-    test "discovery filing instructions ride into the audit prompt", ctx do
+    test "the audit proposes follow-ups instead of filing them", ctx do
       land_work!(ctx)
       short = ctx.repo |> GitFixture.git!(["rev-parse", "--short", "HEAD"]) |> String.trim()
 
@@ -615,18 +591,11 @@ defmodule Harness.AuditTest do
       GitFixture.git!(ctx.repo, ["fetch", "-q", "origin"])
       prompt = GitFixture.git!(ctx.repo, ["show", "origin/main:.audit/#{short}.md"])
 
-      assert prompt =~ "Discovery filing"
-      assert prompt =~ "rmap new --from-stdin"
-      assert prompt =~ "--tasks-path"
-      assert prompt =~ "roadmap/tasks.toml"
-      refute prompt =~ ctx.project.roadmap_path
-      assert prompt =~ "FILE it as a real rmap task"
-      assert prompt =~ "name the filed task id"
-      assert prompt =~ "Do not leave TODO"
-      assert prompt =~ "Harness does not decide what counts as a discovery"
-      assert prompt =~ "Routing for a filed task"
-      assert prompt =~ "never a model name from memory"
-      assert prompt =~ "rejected at dispatch"
+      assert prompt =~ "## Proposed tasks"
+      assert prompt =~ "never tasks"
+      assert prompt =~ "Never run `rmap new`"
+      refute prompt =~ "FILE it as a real rmap task"
+      refute prompt =~ "Routing for a filed task"
       assert prompt =~ "Cold-build witness"
       assert prompt =~ "intentionally UN-warmed"
       assert prompt =~ "`cold_check`: {\"passed\": true|false"
@@ -831,28 +800,6 @@ defmodule Harness.AuditTest do
         # so the skip is the correct answer — but never because of enabled?.
         assert {:skipped, :no_audit_agent} = result
       end
-    end
-  end
-
-  describe "routing_pins/0 — the live assignee/model facts the auditor files against" do
-    # The 2026-09-14 audit (claude/claude-opus-5) filed trading_dashboard task 268
-    # with `model = "gpt-5.1-codex-max-xhigh"` — an id from training, not from
-    # this node. The prompt now carries the standing model and catalog per
-    # enabled agent so the fragment is written from facts.
-    test "renders each enabled agent's standing model and catalog ids" do
-      assert :ok = Config.put({:agent_model, :codex}, "gpt-6-astra", "test")
-
-      pins = Audit.routing_pins()
-
-      assert pins =~ ~s(assignee = "codex" — standing model = "gpt-6-astra")
-      assert pins =~ "gpt-5.6-sol"
-      refute pins =~ "gpt-5.1"
-    end
-
-    test "a disabled agent is not offered as an assignee" do
-      assert :ok = AgentSettings.set_enabled(:codex, false, "test")
-
-      refute Audit.routing_pins() =~ ~s(assignee = "codex")
     end
   end
 
