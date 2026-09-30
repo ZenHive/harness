@@ -14133,7 +14133,7 @@ scored_at = "2026-09-21"
 id = "455"
 phase = 22
 bundle = "audit-hygiene"
-status = "superseded"
+status = "pending"
 title = "Repair model configuration isolation behind the integrated Cron and Maintenance failures"
 scores = { d = 4, b = 6, u = 5 }
 markers = ["bug"]
