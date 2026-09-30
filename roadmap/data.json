@@ -21858,7 +21858,7 @@
       "id": "468",
       "phase": 26,
       "bundle": "client-verification",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Flutter verification loop: implementers and reviewers build, run, screenshot and UI-test Flutter apps as review evidence",
       "scores": {
         "d": 5,
@@ -21886,6 +21886,7 @@
       ],
       "body": "Operator decision 2026-09-30: harness supports agent-built client apps — Flutter and per-platform native. For agents the bottleneck is verification, not writing code (critical-rules § Stack, rule 1): a reviewer that only sees a green compile cannot judge a screen. The web already has this loop (isolated Playwright in tapakly); Flutter needs its equivalent. Tapakly's Flutter Pro app is the first consumer.\n\nScope — locally on the Linux harness host:\n- `flutter analyze`, `flutter test` including golden (screenshot) tests.\n- `integration_test` runs against the Linux desktop target under a headless display and against an Android emulator (KVM), producing screenshots of the flows under test.\n\nEvidence contract (decided, vetoable): implementer and reviewer write screenshots, golden diffs and test reports under `.harness/evidence/` in the run worktree; `.harness/review.json` references them from its `checks`; harness persists the files with the run record (not in the delivery commit) and the run detail page shows them. Harness counts and stores these facts; the reviewer AI looks at the screenshots and judges them — no image comparison or pass/fail logic in harness code beyond what the test tools themselves report.\n\nToolchain provisioning in fresh worktrees follows the existing cold-worktree pattern (deps fetched per run, budgeted in timeouts). Missing prerequisites (no Flutter SDK, no KVM, no emulator image) fail the check with the exact missing piece — never a silent pass.\n",
       "created_at": "2026-09-30",
+      "started_at": "2026-09-30",
       "scored_at": "2026-09-30",
       "cross_repo": []
     },

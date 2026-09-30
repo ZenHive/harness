@@ -14459,7 +14459,7 @@ scored_at = "2026-09-30"
 id = "468"
 phase = 26
 bundle = "client-verification"
-status = "pending"
+status = "in_progress"
 title = "Flutter verification loop: implementers and reviewers build, run, screenshot and UI-test Flutter apps as review evidence"
 scores = { d = 5, b = 6, u = 6 }
 acceptance_criteria = ["A fixture Flutter app in the harness test suite is dispatched end to end: implementer changes a screen, reviewer runs widget, golden and integration tests on Linux desktop and Android emulator, and the run record contains the screenshots referenced from review.json.", "The run detail page renders the evidence screenshots for that run.", "Evidence files never appear in the delivery commit.", "With the Flutter SDK or KVM missing, the check fails and review.json records the named missing prerequisite; no approve is possible without evidence when the task's acceptance criteria require UI verification.", "A deliberately broken golden (negative control) makes the reviewer's recorded check fail."]
@@ -14478,6 +14478,7 @@ Evidence contract (decided, vetoable): implementer and reviewer write screenshot
 Toolchain provisioning in fresh worktrees follows the existing cold-worktree pattern (deps fetched per run, budgeted in timeouts). Missing prerequisites (no Flutter SDK, no KVM, no emulator image) fail the check with the exact missing piece — never a silent pass.
 """
 created_at = "2026-09-30"
+started_at = "2026-09-30"
 scored_at = "2026-09-30"
 
 [[task]]
