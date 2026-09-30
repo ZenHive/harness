@@ -172,6 +172,7 @@ defmodule Harness.ResultStoreContract do
         review_facets: %{"surface" => "otp"},
         review_skills: %{"otp" => %{"score" => 8}},
         review_checks: %{"mix check.dispatch" => %{"passed" => false}},
+        review_evidence: %{"count" => 1, "files" => %{".harness/evidence/check.log" => %{"content" => "cmVk"}}},
         review_concerns: [%{"kind" => "dismissed_red"}],
         review_proposed_tasks: [%{"title" => "Add handoff trace"}],
         review_warning?: true,
@@ -223,6 +224,7 @@ defmodule Harness.ResultStoreContract do
     assert rec.review_facets == %{"surface" => "otp"}
     assert rec.review_skills == %{"otp" => %{"score" => 8}}
     assert rec.review_checks == %{"mix check.dispatch" => %{"passed" => false}}
+    assert rec.review_evidence == rich.review_evidence
     assert rec.review_concerns == [%{"kind" => "dismissed_red"}]
     assert rec.review_proposed_tasks == [%{"title" => "Add handoff trace"}]
     assert rec.review_warning? == true

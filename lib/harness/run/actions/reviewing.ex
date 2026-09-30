@@ -581,6 +581,10 @@ defmodule Harness.Run.Actions.Reviewing do
     in `checks` and `concerns` (command, failing output, mechanism); a red you cannot reproduce a
     benign cause for is a real defect.
 
+    Required UI verification cannot be waived as environmental. If required screenshots or checks
+    are missing or failing, record the named missing prerequisite and reject. Reference screenshots,
+    golden diffs and reports under `.harness/evidence/` from each check's `evidence` list.
+
     #{reviewer_identity_instruction(data)}
     Verdict artifact — write this, then stop:
 
@@ -646,6 +650,14 @@ defmodule Harness.Run.Actions.Reviewing do
     scope, first reproduce the benign cause and record that reproduced cause in `checks` and
     `concerns` (command, failing output, mechanism). A red you cannot reproduce a benign cause for
     is a real defect.
+
+    When acceptance criteria require UI verification, missing screenshots or a failed required UI
+    check cannot be dismissed as environmental: record the named missing prerequisite or failure in
+    `checks` and reject. For Flutter, run analyze, widget/golden tests, Linux desktop integration under
+    a private headless display, and Android integration on a private KVM emulator. Inspect the flow
+    screenshots yourself. Store screenshots, golden diffs and reports in `.harness/evidence/` and
+    reference their exact worktree-relative paths in each check's `"evidence": ["..."]` list.
+    Harness retains these files with the run, outside the delivery commit; it does not judge images.
 
     Your last action is writing the verdict to `#{Review.artifact_path()}` (format below), then
     stopping. Harness reads only this file — prose in your transcript has no effect — and a run that

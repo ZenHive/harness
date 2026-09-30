@@ -46,6 +46,7 @@ defmodule Harness.ResultStore.Schema.RunRecord do
     field :review_facets, :map
     field :review_skills, :map
     field :review_checks, :map
+    field :review_evidence, :map, default: %{}
     field :review_concerns, :map
     field :review_proposed_tasks, :map
     field :review_warning?, :boolean, source: :review_warning
@@ -105,6 +106,7 @@ defmodule Harness.ResultStore.Schema.RunRecord do
       :review_facets,
       :review_skills,
       :review_checks,
+      :review_evidence,
       :review_concerns,
       :review_proposed_tasks,
       :review_warning?,

@@ -353,9 +353,19 @@ defmodule Harness.Run.Actions.Settlement do
       dispatch_decision: Map.get(data, :dispatch_decision, %{}),
       reviewer_model: reviewer_model(data)
     )
+    |> snapshot_evidence(result.worktree_path)
     |> ResultStore.record_run(data.result_store)
     |> log_store_error(result.run_id)
   end
+
+  @spec snapshot_evidence(LogRecord.t(), String.t() | nil) :: LogRecord.t()
+  defp snapshot_evidence(record, nil), do: record
+
+  defp snapshot_evidence(%{review_evidence: evidence} = record, path) when evidence == %{} do
+    %{record | review_evidence: Harness.Run.Evidence.capture(path, record.review_checks)}
+  end
+
+  defp snapshot_evidence(record, _path), do: record
 
   @doc false
   @spec log_store_error(:ok | {:error, term()}, String.t()) :: :ok

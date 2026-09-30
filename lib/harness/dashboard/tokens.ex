@@ -833,6 +833,8 @@ defmodule Harness.Dashboard.Tokens do
       .review-testimony.has-review-warning { border-color: var(--verdict-warn); }
       .review-fact pre { white-space: pre-wrap; overflow-wrap: anywhere; }
       .kpi-section,
+      .run-evidence-image { display: block; max-width: 100%; max-height: 40rem; object-fit: contain; }
+      #run-evidence figure { margin: 1rem 0; overflow-wrap: anywhere; }
       .run-section { scroll-margin-top: calc(var(--navbar-height) + 3rem); }
 
       /* File rows */

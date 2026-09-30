@@ -1082,6 +1082,19 @@ defmodule Harness.Dashboard.LiveTest do
         review_warning?: true,
         review_concerns: ["release caveat exactly as written"],
         review_checks: %{"mix check" => %{"passed" => false, "log_path" => "/tmp/review.log"}},
+        review_evidence: %{
+          "count" => 2,
+          "files" => %{
+            ".harness/evidence/linux.png" => %{"content" => "cG5n", "media_type" => "image/png", "bytes" => 3},
+            ".harness/evidence/report.json" => %{
+              "content" => "e30=",
+              "media_type" => "application/octet-stream",
+              "bytes" => 2
+            }
+          },
+          "errors" => [],
+          "missing" => []
+        },
         review_ratings: %{"truthfulness" => 7},
         review_facets: %{"surface" => "liveview"},
         review_skills: %{"accessibility" => %{"score" => 6, "note" => "keyboard pass"}},
@@ -1105,6 +1118,11 @@ defmodule Harness.Dashboard.LiveTest do
       assert html =~ "liveview"
       assert html =~ "accessibility"
       assert html =~ "Follow-up witness"
+      assert html =~ "Verification evidence (2)"
+      assert html =~ ~s(src="data:image/png;base64,cG5n")
+      assert html =~ ~s(alt=".harness/evidence/linux.png")
+      assert html =~ ~s(download="report.json")
+      refute html =~ ~s(src="data:application/octet-stream)
       assert html =~ "has-review-warning"
       refute html =~ "average"
       refute html =~ "composite"

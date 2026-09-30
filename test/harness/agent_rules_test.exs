@@ -14,6 +14,10 @@ defmodule Harness.AgentRulesTest do
       assert rendered =~ "HARNESS_RUN_ID"
       assert rendered =~ "HARNESS_IMPLEMENTER_ATTEMPT"
       assert rendered =~ "genuinely ambiguous"
+      assert rendered =~ "Client UI verification evidence"
+      assert rendered =~ ".harness/evidence/<role>-<attempt>/"
+      assert rendered =~ "failed golden"
+      assert rendered =~ "**reject**"
     end
 
     test "excludes check-expectation thresholds from the injected set" do

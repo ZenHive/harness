@@ -64,6 +64,7 @@ defmodule Harness.Run.Review do
     facets: %{},
     skills: %{},
     checks: %{},
+    evidence: %{},
     concerns: [],
     proposed_tasks: [],
     ratings: %{},
@@ -100,6 +101,7 @@ defmodule Harness.Run.Review do
           facets: %{optional(String.t()) => term()},
           skills: %{optional(String.t()) => term()},
           checks: %{optional(String.t()) => term()},
+          evidence: map(),
           concerns: [term()],
           proposed_tasks: [term()],
           ratings: %{optional(String.t()) => term()},
@@ -158,7 +160,13 @@ defmodule Harness.Run.Review do
     with {:ok, contents} <- Artifact.read(worktree_path, @artifact_path),
          {:ok, review} <- parse(contents),
          :ok <- match_identity(contents, run_id, attempt) do
-      {:ok, review}
+      evidence = Harness.Run.Evidence.capture(worktree_path, review.checks)
+
+      if review.verdict == :approve and (evidence["missing"] != [] or evidence["errors"] != []) do
+        {:error, {:malformed, {:evidence, Map.delete(evidence, "files")}}}
+      else
+        {:ok, %{review | evidence: evidence}}
+      end
     end
   end
 

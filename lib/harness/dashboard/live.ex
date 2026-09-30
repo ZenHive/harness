@@ -1218,6 +1218,29 @@ defmodule Harness.Dashboard.Live do
       </dl>
       <.review_fact label="Concerns" value={@record.review_concerns} />
       <.review_fact label="Checks" value={@record.review_checks} />
+      <div :if={map_size(Map.get(@record.review_evidence, "files", %{})) > 0} id="run-evidence">
+        <h3>Verification evidence ({@record.review_evidence["count"]})</h3>
+        <figure :for={{path, file} <- Enum.sort(Map.get(@record.review_evidence, "files", %{}))}>
+          <img
+            :if={file["media_type"] in ["image/png", "image/jpeg"]}
+            src={"data:#{file["media_type"]};base64,#{file["content"]}"}
+            alt={path}
+            loading="lazy"
+            class="run-evidence-image"
+          />
+          <figcaption>
+            <a
+              href={"data:application/octet-stream;base64,#{file["content"]}"}
+              download={Path.basename(path)}
+            >
+              {path}
+            </a>
+            ({file["bytes"]} bytes)
+          </figcaption>
+        </figure>
+      </div>
+      <.review_fact label="Evidence collection errors" value={@record.review_evidence["errors"]} />
+      <.review_fact label="Missing evidence" value={@record.review_evidence["missing"]} />
       <.review_fact label="Ratings" value={@record.review_ratings} />
       <.review_fact label="Facets" value={@record.review_facets} />
       <.review_fact label="Skills" value={@record.review_skills} />
@@ -1596,6 +1619,9 @@ defmodule Harness.Dashboard.Live do
     is_integer(record.reviewer_diff_size) or
       present_review_fact?(record.review_concerns) or
       present_review_fact?(record.review_checks) or
+      Map.get(record.review_evidence, "count", 0) > 0 or
+      present_review_fact?(record.review_evidence["errors"]) or
+      present_review_fact?(record.review_evidence["missing"]) or
       present_review_fact?(record.review_ratings) or
       present_review_fact?(record.review_facets) or
       present_review_fact?(record.review_skills) or

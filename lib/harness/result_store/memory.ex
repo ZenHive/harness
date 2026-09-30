@@ -181,6 +181,7 @@ defmodule Harness.ResultStore.Memory do
          reviewer_output: non_empty_binary(incoming.reviewer_output, existing.reviewer_output),
          review_facets: non_empty_map(incoming.review_facets, existing.review_facets),
          review_skills: non_empty_map(incoming.review_skills, existing.review_skills),
+         review_evidence: non_empty_map(incoming.review_evidence, existing.review_evidence),
          review_checks: non_empty_map(incoming.review_checks, existing.review_checks),
          review_concerns: non_empty_list(incoming.review_concerns, existing.review_concerns),
          review_proposed_tasks: non_empty_list(incoming.review_proposed_tasks, existing.review_proposed_tasks),
@@ -222,7 +223,10 @@ defmodule Harness.ResultStore.Memory do
 
   @spec maybe_strip_agent_output(LogRecord.t(), boolean()) :: LogRecord.t()
   defp maybe_strip_agent_output(%LogRecord{} = record, true), do: record
-  defp maybe_strip_agent_output(%LogRecord{} = record, false), do: %{record | agent_output: "", reviewer_output: ""}
+
+  defp maybe_strip_agent_output(%LogRecord{} = record, false) do
+    %{record | agent_output: "", reviewer_output: "", review_evidence: Map.delete(record.review_evidence, "files")}
+  end
 
   @spec maybe_take([LogRecord.t()], pos_integer() | nil) :: [LogRecord.t()]
   defp maybe_take(records, nil), do: records

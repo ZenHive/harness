@@ -179,6 +179,24 @@ defmodule Harness.ResultStore.PostgresCodecTest do
       assert roundtrip(record).token_usage == usage
     end
 
+    test "evidence bytes and metadata round-trip independently of the worktree" do
+      evidence = %{
+        "count" => 1,
+        "files" => %{
+          ".harness/evidence/report.json" => %{
+            "content" => "e30=",
+            "bytes" => 2,
+            "media_type" => "application/octet-stream"
+          }
+        },
+        "errors" => [],
+        "missing" => []
+      }
+
+      record = ResultStoreContract.log_record(run_id: "jsonb-evidence", review_evidence: evidence)
+      assert roundtrip(record).review_evidence == evidence
+    end
+
     test "review_ratings outer keys stay strings; values decode" do
       ratings = %{"performance" => 8, "code_quality" => 7}
       record = ResultStoreContract.log_record(run_id: "jsonb-ratings", review_ratings: ratings)
