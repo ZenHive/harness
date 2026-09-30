@@ -20170,7 +20170,7 @@
       "id": "432",
       "phase": 20,
       "bundle": "reviewer-pair",
-      "status": "pending",
+      "status": "superseded",
       "title": "Diagnose and pin cold-check dependency bootstrap behavior",
       "scores": {
         "d": 3,
@@ -21332,7 +21332,7 @@
       "id": "455",
       "phase": 22,
       "bundle": "audit-hygiene",
-      "status": "pending",
+      "status": "superseded",
       "title": "Repair model configuration isolation behind the integrated Cron and Maintenance failures",
       "scores": {
         "d": 4,
@@ -21367,7 +21367,7 @@
       "id": "456",
       "phase": 22,
       "bundle": "audit-hygiene",
-      "status": "pending",
+      "status": "superseded",
       "title": "Make the AgentDriver Codex-channel fixture available before asynchronous tests run",
       "scores": {
         "d": 2,
