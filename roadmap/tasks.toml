@@ -14589,14 +14589,16 @@ status = "pending"
 title = "Bound project-cache generation disk usage (no eviction exists)"
 scores = { d = 3, b = 7, u = 8 }
 markers = ["bug"]
-acceptance_criteria = ["Generations under the project_cache root are reclaimed mechanically by a configurable bound (age and/or count/bytes per compatibility key); the newest generation per key is never removed", "Reclaim never deletes a generation while a preparation or per-run seed copy reads it, and never unlinks live .lock files (docs/project-cache.md invariant preserved)", "Abandoned .building-* stages older than the preparation deadline are reclaimed", "Bound is operator config (Harness.Config / settings), with a sane default; docs/project-cache.md replaces 'no automatic eviction' with the policy", "Tests cover: bound enforced, newest-per-key retained, in-use generation retained, lock files untouched"]
-touches = ["lib/harness/project_cache.ex", "docs/project-cache.md", "test/harness/project_cache_test.exs"]
+acceptance_criteria = ["Generations under the project_cache root are reclaimed mechanically by a configurable bound (age and/or count/bytes per compatibility key); the newest generation per key is never removed", "Reclaim never deletes a generation while a preparation or per-run seed copy reads it, and never unlinks live .lock files (docs/project-cache.md invariant preserved)", "Abandoned .building-* stages older than the preparation deadline are reclaimed", "Bound is operator config (Harness.Config / settings), with a sane default; docs/project-cache.md replaces 'no automatic eviction' with the policy", "Tests cover: bound enforced, newest-per-key retained, in-use generation retained, lock files untouched", "The cache root is settable at runtime without recompiling (config/runtime.exs reads an env var, e.g. HARNESS_PROJECT_CACHE_ROOT, mirroring HARNESS_WORKTREE_ROOT); docs/project-cache.md recommends placing it on the same reflink-capable filesystem as the worktree root"]
+touches = ["lib/harness/project_cache.ex", "config/runtime.exs", "docs/project-cache.md", "test/harness/project_cache_test.exs"]
 assignee = "codex"
 model = "gpt-6-astra"
 body = """
 Observed 2026-10-03 on the self-host server: /home hit 100% (0 bytes free). ~/.cache/harness/project-cache held 84 immutable generations at ~700 MB each (51 GB); nothing ever reclaims them. Symptom surfaced as agent CLI self-updates (codex, grok) failing silently mid-install; agent runs writing session state under ~ are exposed to the same ENOSPC. Manually removed 61 generations older than 3 days (freed ~38 GB) as stopgap.
 
 This is mechanical substrate (counting bytes/ages, deleting files) — no judgment. Task 47's out_of_scope deferred eviction as "manual for now"; this closes it for ProjectCache generations.
+
+Second root cause (2026-10-03): the cache landed on /home at all because `project_cache.ex` hardcodes the laptop default `~/.cache/harness/project-cache` and there is no config/env override — the same class of bug BOOTSTRAP documented for `base_dir` (fixed there via HARNESS_WORKTREE_ROOT). On the server, worktrees live on the reflink XFS volume (/data/postgresql/harness/worktrees) while the cache sat on a 98 GB ext4 LV shared with every user's home, so seed copies were also full cross-device copies instead of reflinks. Host stopgap: cache moved to /data/postgresql/harness/project-cache, old path is a symlink to it. Once the env override lands, set it in /etc/harness/harness.env and drop the symlink.
 """
 created_at = "2026-10-02"
 scored_at = "2026-10-02"
