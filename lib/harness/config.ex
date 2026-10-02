@@ -105,6 +105,11 @@ defmodule Harness.Config do
       e("Worktree", "base_dir", {:worktree, :base_dir}, Path.expand("~/_DATA/worktrees/.harness"), :path,
         env_var: "HARNESS_WORKTREE_ROOT"
       ),
+      e("Project cache", "root", {:project_cache, :root}, Path.expand("~/.cache/harness/project-cache"), :path,
+        env_var: "HARNESS_PROJECT_CACHE_ROOT"
+      ),
+      e("Project cache", "max_idle_ms", {:project_cache, :max_idle_ms}, 604_800_000, :integer, ui_editable?: true),
+      e("Project cache", "max_bytes", {:project_cache, :max_bytes}, 42_949_672_960, :integer, ui_editable?: true),
       e("Worktree", "retain_on_failure", {:worktree, :retain_on_failure}, true, :boolean),
       e("Worktree", "sweep_on_boot", {:worktree, :sweep_on_boot}, true, :boolean),
       e("Retry policy", "max_retries", {:retry_policy, :max_retries}, 3, :integer),

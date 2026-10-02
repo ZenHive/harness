@@ -8,10 +8,12 @@ defmodule Harness.ProjectCache do
   `docs/project-cache.md` for the recipe and compatibility contract.
   """
 
+  alias Harness.Config
   alias Harness.Git
   alias Harness.ProjectCache.Artifacts
   alias Harness.ProjectCache.Command
   alias Harness.ProjectCache.Recipe
+  alias Harness.ProjectCache.Retention
   alias Harness.Worktree
 
   require Logger
@@ -84,32 +86,63 @@ defmodule Harness.ProjectCache do
     started = System.monotonic_time(:millisecond)
     deadline = started + recipe["timeout_ms"]
     environment = Map.merge(System.get_env(), recipe["env"])
-    config = Application.get_env(:harness, :project_cache, [])
-    root = Path.expand(Keyword.get(opts, :cache_root, Keyword.get(config, :root, "~/.cache/harness/project-cache")))
+    root = Path.expand(Keyword.get(opts, :cache_root, Config.get({:project_cache, :root})))
 
-    with :ok <- File.mkdir_p(root),
-         {:ok, seed} <- resolve_seed(worktree, recipe["seed"], environment, owner, deadline),
-         {:ok, key} <- key(worktree, recipe, environment, owner, deadline, seed) do
-      destination = Path.join(root, key)
+    with :ok <- File.mkdir_p(root) do
+      reclaim(root, owner, deadline)
 
-      build_recipe = recipe |> Map.put("env", environment) |> Map.put(:seed_context, seed)
-      seed_generation(worktree, build_recipe, destination, owner, deadline, key, started)
+      result =
+        Command.locked(
+          Retention.lock_path(root),
+          owner,
+          deadline,
+          fn ->
+            with {:ok, seed} <- resolve_seed(worktree, recipe["seed"], environment, owner, deadline),
+                 {:ok, key} <- key(worktree, recipe, environment, owner, deadline, seed) do
+              destination = Path.join(root, key)
+
+              build_recipe =
+                recipe
+                |> Map.put("env", environment)
+                |> Map.put(:seed_context, seed)
+                |> Map.put(:retention_family, Retention.family(worktree.repo, :outer))
+
+              seed_generation(worktree, build_recipe, destination, owner, deadline, key, started)
+            end
+          end,
+          shared: true
+        )
+
+      reclaim(root, owner, deadline)
+      result
     end
+  end
+
+  @spec reclaim(String.t(), reference(), integer()) :: :ok
+  defp reclaim(root, owner, deadline) do
+    case Retention.reclaim(root, owner, deadline) do
+      {:ok, %{over_budget: true} = report} -> Logger.warning("harness cache retention: #{inspect(report)}")
+      {:ok, _report} -> :ok
+      {:error, {:lock_exit, 75}} -> :ok
+      {:error, reason} -> Logger.warning("harness cache retention failed: #{inspect(reason)}")
+    end
+
+    :ok
   end
 
   @spec seed_generation(Worktree.t(), map(), String.t(), reference(), integer(), String.t(), integer()) ::
           {:ok, map()} | {:error, term()}
   defp seed_generation(worktree, recipe, destination, owner, deadline, key, started) do
-    with {:ok, state} <-
-           Command.locked(destination <> ".lock", owner, deadline, fn ->
-             generation(worktree, recipe, destination, owner, deadline)
-           end),
-         :ok <- Command.check(owner, deadline),
-         {:ok, copied} <- Artifacts.seed(destination, worktree.path, recipe, owner, deadline),
-         {:ok, manifest} <- Artifacts.manifest(destination) do
-      report = %{key: key, state: state, copied: copied, elapsed_ms: System.monotonic_time(:millisecond) - started}
-      {:ok, if(manifest["seed"], do: Map.put(report, :seed, manifest["seed"]), else: report)}
-    end
+    Command.locked(destination <> ".lock", owner, deadline, fn ->
+      with {:ok, state} <- generation(worktree, recipe, destination, owner, deadline),
+           :ok <- Retention.used(destination, recipe.retention_family),
+           :ok <- Command.check(owner, deadline),
+           {:ok, copied} <- Artifacts.seed(destination, worktree.path, recipe, owner, deadline),
+           {:ok, manifest} <- Artifacts.manifest(destination) do
+        report = %{key: key, state: state, copied: copied, elapsed_ms: System.monotonic_time(:millisecond) - started}
+        {:ok, if(manifest["seed"], do: Map.put(report, :seed, manifest["seed"]), else: report)}
+      end
+    end)
   end
 
   @spec key(Worktree.t(), map(), map(), reference(), integer(), map() | nil) :: {:ok, String.t()} | {:error, term()}
@@ -195,6 +228,13 @@ defmodule Harness.ProjectCache do
 
     try do
       with :ok <- File.mkdir_p(stage),
+           :ok <-
+             File.write(
+               Path.join(stage, ".deadline"),
+               Integer.to_string(
+                 System.system_time(:millisecond) + max(deadline - System.monotonic_time(:millisecond), 0)
+               )
+             ),
            {:ok, _} <- Git.run(["clone", "--shared", "--no-checkout", "--", worktree.repo, source], stage),
            {:ok, _} <- Git.run(["checkout", "--detach", worktree.base_sha], source),
            {:ok, physical_source} <- Git.run(["rev-parse", "--show-toplevel"], source),
@@ -210,6 +250,7 @@ defmodule Harness.ProjectCache do
                Path.join(artifacts, "complete.json"),
                Jason.encode!(%{
                  source: source,
+                 retention_family: recipe.retention_family,
                  commands: length(recipe["commands"]),
                  exit_status: 0,
                  prepared_ms: System.monotonic_time(:millisecond) - started,
@@ -229,7 +270,7 @@ defmodule Harness.ProjectCache do
   defp seed_build(worktree, %{"seed" => seed, :seed_context => context}, destination, owner, _deadline) do
     seed_generation(
       worktree,
-      Map.put(seed, "env", context.environment),
+      seed |> Map.put("env", context.environment) |> Map.put(:retention_family, Retention.family(worktree.repo, :seed)),
       Path.join(Path.dirname(destination), context.key),
       owner,
       context.deadline,

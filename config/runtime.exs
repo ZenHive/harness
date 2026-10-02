@@ -66,6 +66,10 @@ if base = System.get_env("HARNESS_WORKTREE_ROOT") do
   config :harness, :worktree, base_dir: Path.expand(base)
 end
 
+if root = System.get_env("HARNESS_PROJECT_CACHE_ROOT") do
+  config :harness, :project_cache, root: Path.expand(root)
+end
+
 # Dashboard runtime overrides (Task 50). HARNESS_DASHBOARD_PORT relocates the
 # standalone Endpoint; HARNESS_SECRET_KEY_BASE replaces the dev default for any
 # non-127.0.0.1 binding.

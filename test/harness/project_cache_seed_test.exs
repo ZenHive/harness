@@ -54,6 +54,30 @@ defmodule Harness.ProjectCacheSeedTest do
     assert key == warm.key
   end
 
+  test "automatic retention enforces configured cap and protects outer and seed families", c do
+    prior = Application.get_env(:harness, :project_cache)
+
+    on_exit(fn ->
+      if prior,
+        do: Application.put_env(:harness, :project_cache, prior),
+        else: Application.delete_env(:harness, :project_cache)
+    end)
+
+    Application.put_env(:harness, :project_cache, max_bytes: 1)
+
+    assert {:ok, cold} = prepare(c)
+    change(c, "app", "two")
+    assert {:ok, warm} = prepare(c)
+    refute File.exists?(Path.join(c.cache, cold.key))
+    assert File.dir?(Path.join(c.cache, warm.key))
+    assert File.dir?(Path.join(c.cache, warm.seed["key"]))
+
+    for {key, kind} <- [{warm.key, :outer}, {warm.seed["key"], :seed}] do
+      manifest = c.cache |> Path.join(key) |> Path.join("complete.json") |> File.read!() |> Jason.decode!()
+      assert manifest["retention_family"] == Harness.ProjectCache.Retention.family(c.repo, kind)
+    end
+  end
+
   test "lock, configuration, local dependency, tool and seed environment invalidate full and seed generations", c do
     recipe = put_in(c.recipe, ["seed", "inputs"], ["lock", "config", "vendor"])
     c = %{c | recipe: recipe}

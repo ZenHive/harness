@@ -4,6 +4,7 @@ defmodule Harness.ProjectCacheTest do
   alias Harness.GitFixture
   alias Harness.ProjectCache
   alias Harness.ProjectCache.Recipe
+  alias Harness.ProjectCache.Retention
   alias Harness.ProjectFixture
   alias Harness.Worktree
 
@@ -40,6 +41,36 @@ defmodule Harness.ProjectCacheTest do
     assert {:ok, %{state: :hit, copied: []}} = ProjectCache.prepare(first, recipe, cache_root: c.cache)
     assert File.read!(Path.join(first.path, "deps/value")) == "agent"
     assert Path.wildcard(Path.join(c.cache, "*.building-*")) == []
+  end
+
+  test "reuse updates LRU metadata and the root stays locked throughout restore", c do
+    File.mkdir_p!(c.base)
+    ready = Path.join(c.base, "restore-ready")
+    fifo = Path.join(c.base, "restore-release")
+    assert {_, 0} = System.cmd("mkfifo", [fifo])
+
+    recipe =
+      c
+      |> recipe()
+      |> Map.put("restore_commands", [~s(printf ready > "#{ready}"; read permit < "#{fifo}")])
+
+    task = Task.async(fn -> ProjectCache.prepare(c.wt, recipe, cache_root: c.cache) end)
+    await_file(ready)
+    [manifest_path] = Path.wildcard(Path.join(c.cache, "*/complete.json"))
+    destination = Path.dirname(manifest_path)
+    manifest = Jason.decode!(File.read!(manifest_path))
+    family = Retention.family(c.repo, :outer)
+    assert manifest["retention_family"] == family
+    usage = Jason.decode!(File.read!(destination <> ".usage"))
+    assert is_integer(usage[family])
+
+    assert {:error, {:lock_exit, 75}} =
+             Retention.reclaim(c.cache, make_ref(), System.monotonic_time(:millisecond) + 5000, max_bytes: 1)
+
+    File.write!(fifo, "go\n")
+    assert {:ok, %{state: :built}} = Task.await(task)
+    assert {:ok, %{state: :hit, copied: []}} = ProjectCache.prepare(c.wt, recipe, cache_root: c.cache)
+    assert Jason.decode!(File.read!(destination <> ".usage"))[family] > usage[family]
   end
 
   test "committed input, recipe, toolchain and environment changes invalidate; unrelated changes can reuse", c do

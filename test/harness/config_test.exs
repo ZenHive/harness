@@ -21,6 +21,7 @@ defmodule Harness.ConfigTest do
   @default_transcript_retention_ms to_timeout(hour: @hours_per_day) * @default_transcript_retention_days
 
   setup do
+    prior_cache = Application.get_env(:harness, :project_cache)
     prior_run = Application.get_env(:harness, :run)
     prior_run_records = Application.get_env(:harness, :run_records)
     prior_dashboard = Application.get_env(:harness, :dashboard)
@@ -35,6 +36,7 @@ defmodule Harness.ConfigTest do
     Application.put_env(:harness, :settings_store, {SettingsStoreMemory, scope: scope})
 
     on_exit(fn ->
+      restore(:project_cache, prior_cache)
       restore(:run, prior_run)
       restore(:run_records, prior_run_records)
       restore(:dashboard, prior_dashboard)
@@ -46,6 +48,37 @@ defmodule Harness.ConfigTest do
     end)
 
     {:ok, scope: scope}
+  end
+
+  test "cache bounds have finite defaults and accept only positive live settings" do
+    Application.delete_env(:harness, :project_cache)
+    assert Config.get({:project_cache, :max_idle_ms}) == 604_800_000
+    assert Config.get({:project_cache, :max_bytes}) == 42_949_672_960
+
+    for key <- [:max_idle_ms, :max_bytes] do
+      for invalid <- [nil, 0, -1, "100"] do
+        assert {:error, :invalid_value} = Config.put({:project_cache, key}, invalid, "test")
+      end
+
+      assert :ok = Config.put({:project_cache, key}, 1234, "test")
+      assert Config.get({:project_cache, key}) == 1234
+    end
+  end
+
+  test "runtime project-cache root environment override is expanded without compilation" do
+    previous = System.get_env("HARNESS_PROJECT_CACHE_ROOT")
+    on_exit(fn -> System.put_env(%{"HARNESS_PROJECT_CACHE_ROOT" => previous}) end)
+    System.put_env("HARNESS_PROJECT_CACHE_ROOT", "~/cache-on-data")
+
+    config =
+      "../../config/runtime.exs"
+      |> Path.expand(__DIR__)
+      |> Elixir.Config.Reader.read!(env: :test, target: :host)
+      |> Keyword.fetch!(:harness)
+      |> Keyword.fetch!(:project_cache)
+
+    assert config[:root] == Path.expand("~/cache-on-data")
+    assert {:ok, %{env_var: "HARNESS_PROJECT_CACHE_ROOT"}} = Config.get("project_cache.root")
   end
 
   describe "schema/0" do

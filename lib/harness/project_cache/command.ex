@@ -45,24 +45,31 @@ defmodule Harness.ProjectCache.Command do
   end
 
   @doc false
-  @spec locked(String.t(), reference(), integer(), (-> term())) :: term()
-  def locked(path, owner, deadline, fun) do
+  @spec locked(String.t(), reference(), integer(), (-> term()), keyword()) :: term()
+  def locked(path, owner, deadline, fun, opts \\ []) do
     # The lock process holds an OS advisory lock until stdin closes. The BEAM
     # owns publication; a surviving command after a host crash cannot publish.
     with {:ok, port} <-
            open(
              "flock",
-             ["-x", path, "sh", "-c", "printf '__HARNESS_CACHE_LOCKED__\\n'; cat >/dev/null"],
+             lock_args(path, opts),
              Path.dirname(path),
              %{}
            ) do
       try do
-        with :ok <- await_lock(port, owner, deadline, ""), do: fun.()
+        with :ok <- await_lock(port, owner, deadline, ""), :ok <- check(owner, deadline), do: fun.()
       after
         if pid = OSProcess.os_pid(port), do: OSProcess.sigkill(pid)
         OSProcess.close(port)
       end
     end
+  end
+
+  @spec lock_args(String.t(), keyword()) :: [String.t()]
+  defp lock_args(path, opts) do
+    mode = if Keyword.get(opts, :shared, false), do: "-s", else: "-x"
+    wait = if Keyword.get(opts, :nonblock, false), do: ["-n", "-E", "75"], else: []
+    [mode] ++ wait ++ [path, "sh", "-c", "printf '__HARNESS_CACHE_LOCKED__\\n'; cat >/dev/null"]
   end
 
   @doc false
