@@ -129,6 +129,19 @@ defmodule Harness.ModelAvailabilityTest do
              ] = ModelAvailability.parse_catalog_output(:antigravity, output)
     end
 
+    test "antigravity tab-separated rows (agy >= 1.2) split into id and label" do
+      output = """
+      Fetching available models...
+      gemini-3.8-flash-high\tGemini 3.8 Flash (High)
+      claude-opus-4-6-thinking\tClaude Opus 4.6 (Thinking)
+      """
+
+      assert [
+               %{id: "gemini-3.8-flash-high", label: "Gemini 3.8 Flash (High)"},
+               %{id: "claude-opus-4-6-thinking", label: "Claude Opus 4.6 (Thinking)"}
+             ] = ModelAvailability.parse_catalog_output(:antigravity, output)
+    end
+
     test "codex JSON yields visibility=list slugs, dropping hidden internal models" do
       # `codex debug models` response shape with the supported model family.
       output =

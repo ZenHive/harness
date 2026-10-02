@@ -38,13 +38,18 @@ defmodule Harness.ModelAvailability do
   #   codex  — https://developers.openai.com/codex/models
   @builtin_catalogs %{
     claude: [
+      # Fable 5.1 + Sonnet 5.5 added 2026-10-03 (cursor-agent + pi catalogs list both).
+      CatalogEntry.new("claude-fable-5-1", "Fable 5.1"),
       CatalogEntry.new("claude-fable-5", "Fable 5"),
       CatalogEntry.new("claude-opus-5-5", "Opus 5.5"),
       CatalogEntry.new("claude-opus-5", "Opus 5"),
+      CatalogEntry.new("claude-sonnet-5-5", "Sonnet 5.5"),
       CatalogEntry.new("claude-sonnet-5", "Sonnet 5")
     ],
     codex: [
       # GPT-6 additions verified with `codex debug models` on 2026-09-28.
+      # gpt-6.1-sol verified with `codex debug models` (codex-cli 0.160.0) on 2026-10-03.
+      CatalogEntry.new("gpt-6.1-sol", "GPT-6.1 Sol (coding)"),
       CatalogEntry.new("gpt-6-astra", "GPT-6 Astra (flagship)"),
       CatalogEntry.new("gpt-6-sol", "GPT-6 Sol (coding)"),
       CatalogEntry.new("gpt-6-luna", "GPT-6 Luna (fast/cheap)"),
@@ -900,7 +905,17 @@ defmodule Harness.ModelAvailability do
       String.starts_with?(line, "#") -> :error
       String.starts_with?(line, "Fetching") -> :error
       String.starts_with?(line, "Available") -> :error
+      String.contains?(line, "\t") -> antigravity_tab_entry(line)
       true -> antigravity_catalog_entry(line)
+    end
+  end
+
+  # agy >= 1.2 prints `id<TAB>Display Label` rows; the id column is the `--model` id.
+  @spec antigravity_tab_entry(String.t()) :: catalog_entry() | :error
+  defp antigravity_tab_entry(line) do
+    case String.split(line, "\t", parts: 2) do
+      [id, label] when id != "" -> CatalogEntry.new(String.trim(id), String.trim(label))
+      _ -> :error
     end
   end
 
