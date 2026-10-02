@@ -167,6 +167,59 @@ IOWeight=200
 when harness runs a dialyzer peak. With 20 cores and ~50 GB elastic, this is
 belt-and-braces rather than necessity.
 
+## As-Built Layout (observed 2026-10-03)
+
+What the box actually runs, as opposed to the plan above. Inspect it with
+`lsblk`, `findmnt` and `xfs_info` rather than trusting this table if anything
+looks off.
+
+```
+/                          <- vg0-root, ext4 100G   (no reflink)
+/home                      <- vg0-home, ext4 100G   (no reflink; shared with all users)
+└── harness/               <- $HOME of the service user
+    ├── .local/bin/        <- agent CLI entry points (symlinks into versioned installs)
+    ├── .codex .cursor .grok .claude .gemini   <- agent CLI state, ~16 GB together
+    ├── .asdf .rustup .cargo .npm              <- toolchains
+    ├── .secrets           <- sourced by bin/harness-start before `mix run`
+    └── .cache/harness/project-cache -> /data/postgresql/harness/project-cache
+/data/postgresql           <- md128, XFS RAID1 2.8T, reflink=1
+├── 18/                    <- Postgres 18 cluster (harness_runtime DB)
+├── code/<project>/        <- registered projects' local checkouts ({:local, dir} sources)
+└── harness/
+    ├── base/              <- harness.service WorkingDirectory: the node's own checkout
+    ├── worktrees/         <- HARNESS_WORKTREE_ROOT; <project>/run-<id> per run
+    ├── project-cache/     <- ProjectCache generations (seed for warm deps/_build)
+    └── qa-rollout-captures/
+/data/reth                 <- md127, XFS RAID0 7T  (Ethereum execution client)
+/data/lighthouse           <- single NVMe partition, XFS 783G (consensus client)
+```
+
+**Everything a run writes in bulk lives on md128**: the base checkout, the
+project checkouts, every worktree and the project cache. That is what keeps
+`Worktree.clone_copy/2` and ProjectCache seed copies on one reflink-capable
+filesystem. Anything new that copies `deps/`/`_build/`-sized trees belongs
+there too, never under `$HOME`.
+
+**`/home` is the ext4 trap.** The project cache's root is hardcoded to
+`~/.cache/harness/project-cache`, so it originally landed on `/home`, filled it
+to 100 % and broke agent CLI self-updates (task 473). The current symlink into
+md128 is a host stopgap until the root is configurable. `/home` should hold
+only CLI state and toolchains; its growth comes from agent session logs
+under `.codex`/`.cursor`/`.grok`/`.claude`.
+
+**Service wiring** (`systemctl cat harness.service`): `User=harness`,
+`WorkingDirectory=/data/postgresql/harness/base`,
+`Environment=HARNESS_WORKTREE_ROOT=/data/postgresql/harness/worktrees`,
+`EnvironmentFile=/etc/harness/harness.env` (DB URL, secret key base, run memory
+threshold, `PGHOST`), and `ExecStart=/home/harness/bin/harness-start`.
+`ExecStartPre` runs `mix deps.get` and `mix ecto.migrate`. `ExecStartPost`
+writes the running SHA to `/run/harness/running-sha`.
+
+**NVMe names re-enumerate across boots.** The "as found" table above names the
+2026-08-23 enumeration. On 2026-10-03 md127 sat on nvme2n1+nvme3n1, md128 on
+nvme0n1p1+nvme1n1p4, and the vg0 PV on nvme1n1p3. Refer to volumes by md
+device, mount point or UUID (as `/etc/fstab` does), never by `nvmeN`.
+
 ## Migration Checklist
 
 Installed: `git` 2.43, `cargo` 1.98, Postgres 18.6, `claude`
