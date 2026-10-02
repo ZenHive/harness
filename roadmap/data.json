@@ -20768,7 +20768,7 @@
       },
       "eff": 0.94,
       "dep_layer": 0,
-      "unlocks": 0,
+      "unlocks": 1,
       "markers": [],
       "depends_on": [],
       "assignee": "codex",
@@ -21968,6 +21968,77 @@
       "body": "Per-platform native apps are allowed only when harness has their verification loop (critical-rules § Stack, rule 1, amended 2026-09-30). This task provides that loop on the same evidence contract as the Flutter loop, using the remote hosts where the platform requires it:\n\n- Apple (remote, Mac mini): xcodebuild, iOS simulator via simctl screenshots, XCUITest.\n- Android (local, Linux host): Gradle build, emulator, Espresso.\n- Windows (remote, Windows VM): WinUI 3 build, a maintained Windows UI-automation driver — verify its maintenance status before choosing it and record the choice — plus screenshots.\n- Linux (local): GTK4 build, run under a headless display, screenshots, UI tests driven through the accessibility tree.\n\nOne small fixture app per platform in the test suite proves each loop, including a negative control per platform.\n",
       "created_at": "2026-09-30",
       "scored_at": "2026-09-30",
+      "cross_repo": []
+    },
+    {
+      "id": "471",
+      "phase": 26,
+      "bundle": "repo-maintenance",
+      "status": "pending",
+      "title": "Add documentation drift as a maintenance sweep category",
+      "scores": {
+        "d": 5,
+        "b": 7,
+        "u": 6
+      },
+      "eff": 1.3,
+      "dep_layer": 1,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [
+        444
+      ],
+      "assignee": "codex",
+      "model": "gpt-6-astra",
+      "acceptance_criteria": [
+        "A live sweep on a disposable repo where a landed change contradicts a README statement produces a documentation-drift finding naming the stale statement and the commit that invalidated it, and publishes a task through the existing publication path",
+        "A sweep on a repo whose docs match its code produces no documentation-drift task",
+        "Drift findings on generated files (AGENTS.md, synced SKILL.md) target the canonical source or the missing regeneration, never the generated file itself",
+        "Documentation-drift tasks count toward the existing three-unfinished-tasks cap and reuse prior-finding reassessment; no separate queue or scheduler",
+        "The category is visible and individually toggleable in the Maintenance UI and the bounded MCP configure surface, alongside the existing categories",
+        "Canonical driver documentation describes the new category"
+      ],
+      "out_of_scope": [
+        "Writing doc changes directly from the sweep — publication is tasks only",
+        "Spell/style linting of prose",
+        "Changing the Task 444 cap, cadence or publication mechanics"
+      ],
+      "body": "Extend the Task 444 maintenance sweep with a documentation-drift category. The operator decided (2026-10-02) that durable project knowledge belongs in versioned, reviewed repo docs rather than in private agent memory or global includes — and docs are only worth trusting if something keeps them current. The operator does not read most code; docs are the layer they review.\n\nEach sweep compares what changed since the previous sweep (commits, landed roadmap tasks, public API and config surface) against the repo's documentation: README, docs/, CLAUDE.md/AGENTS.md prose, moduledocs of changed public modules, and usage-rules.md where the package ships one. The agent judges whether a change made a statement false, left a new public capability undocumented, or orphaned a doc reference — that is judgment, not a regex or path heuristic. Justified findings publish as ordinary maintenance tasks (doc update with the specific stale statements named) through the existing publication, cap and reviewer-gated landing path; no direct commits.\n\nGenerated AGENTS.md and synced skill bodies are outputs of generators: a drift finding there targets the source (CLAUDE.md, include) or reports that the generator was not re-run, never a hand-edit of the generated file.\n\nInspiration: Zach Daniel, ElixirConf 2026 talk on agentic tooling — nightly docs-drift PR so agents write shared docs, not private notes.\n",
+      "created_at": "2026-10-02",
+      "scored_at": "2026-10-02",
+      "cross_repo": []
+    },
+    {
+      "id": "472",
+      "phase": 26,
+      "bundle": "agent-rules",
+      "status": "pending",
+      "title": "Configure usage_rules to build dependency skills",
+      "scores": {
+        "d": 2,
+        "b": 4,
+        "u": 3
+      },
+      "eff": 1.75,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "cursor",
+      "model": "cursor-grok-4.6-high",
+      "acceptance_criteria": [
+        "mix.exs declares {:usage_rules, \"~> 1.2\", only: :dev, runtime: false} and a usage_rules config building skills for the rule-shipping deps chosen per the body",
+        "mix usage_rules.sync generates the skill files and they are committed",
+        "mix usage_rules.sync --check passes and is part of the precommit/ci alias",
+        "Both .agents/skills and .claude/skills resolve to the generated skills"
+      ],
+      "out_of_scope": [
+        "Writing usage-rules.md for this repo's own code",
+        "Building skills for phoenix/ecto/elixir core rules"
+      ],
+      "body": "Add the usage_rules dev dependency and configure it so dependency-shipped usage rules become versioned agent skills in this repo, following the pattern in the `elixir-setup` include (section usage_rules; reference implementation tapakly/mix.exs `usage_rules/0`).\n\nBuild skills only for dependencies that actually ship usage-rules.md (check with `mix usage_rules.list`) and that a current model knows poorly; skip phoenix/ecto/elixir/liveview core rules. As of 2026-10-02 the shipping deps here are igniter and sobelow — oban does not ship usage rules (checked in deps/). Dispatched agents read `.agents/skills`; use that location with `.claude/skills` as a symlink to it, unless the repo already has a different layout, in which case keep it.\n\nAdd `usage_rules.sync --check` to the precommit/ci alias so a dependency bump that changes shipped rules fails until the skills are re-synced.\n",
+      "created_at": "2026-10-02",
+      "scored_at": "2026-10-02",
       "cross_repo": []
     }
   ]
