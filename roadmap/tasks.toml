@@ -14603,3 +14603,64 @@ Second root cause (2026-10-03): the cache landed on /home at all because `projec
 created_at = "2026-10-02"
 started_at = "2026-10-02"
 scored_at = "2026-10-02"
+
+[[task]]
+id = "474"
+phase = 26
+bundle = "repo-maintenance"
+status = "pending"
+title = "Scheduled project verification: benchmarks with stored baselines, property/fuzz/stress runs"
+scores = { d = 6, b = 8, u = 6 }
+acceptance_criteria = ["A project with no scheduled commands configured behaves exactly as today", "A real benchmark command in a fleet project runs on schedule in a fresh worktree of origin/<target> and its output is stored keyed by project, command and revision", "A second run after a deliberately slower change produces a regression finding naming the command, both revisions and the measured delta, published as a maintenance task within the existing cap", "A run with no meaningful change against the baseline publishes no task", "A failing or timed-out command is recorded as failed with its log, never as a passing result", "Scheduled commands are configurable via the project registry and the bounded MCP/dashboard config surface"]
+out_of_scope = ["Gating dispatch, landing or deploy on scheduled results", "Shipping benchmark or fuzz harnesses for target projects — those are project-owned", "Changing suite health's per-language test commands"]
+assignee = "codex"
+model = "gpt-6-astra"
+body = """
+Give each registered project an optional set of scheduled verification commands that harness runs on idle compute against `origin/<target>`, stores per revision, and compares with the previous baseline. Today the only scheduled executor is suite health, whose commands are fixed per language; maintenance cannot execute anything and `qa_command` runs only per land (verified by reading suite_health/commands, maintenance/agent.ex and audit.ex, 2026-10-03).
+
+Decided (operator, 2026-10-03): long runs — benchmarks, property/fuzz/stress — belong in a scheduled lane, never in implementer or reviewer runs (`verification-policy.md` § Scheduled). The lane is nonblocking: it never gates dispatch, landing or deploy. Commands are project-owned and declared in the project registry alongside `qa_command`; harness stays mechanical (run, capture, store). Whether a change against the baseline is a regression is judgment: an agent reads current vs. stored results and decides, and justified regressions publish as maintenance tasks through the existing publication path and cap.
+
+Inspiration: Chris McCord, ElixirConf 2026 closing keynote — nightly agent-driven benchmark and fuzz runs with stored history, "testing is free".
+"""
+created_at = "2026-10-03"
+scored_at = "2026-10-03"
+
+[[task]]
+id = "475"
+phase = 26
+bundle = "agent-gate"
+status = "pending"
+title = "Blast radius as a task input that scales review depth"
+scores = { d = 6, b = 7, u = 5 }
+acceptance_criteria = ["rmap validates a task carrying the high-blast-radius signal, and roadmap ingestion exposes it on the item", "A dispatched task with the signal fires the discernment gate even when d < 6 and no security/bug marker is present", "The reviewer prompt for such a task names the declared surface and requires benchmark, fuzz or boundary evidence; a live run shows the reviewer rejecting a delivery that lacks it", "Tasks without the signal produce the same reviewer selection and prompt as today", "Canonical harness-workflow documentation describes the signal"]
+out_of_scope = ["Automatically inferring blast radius from diffs", "Changing D/B/U scoring"]
+assignee = "codex"
+model = "gpt-6-astra"
+body = """
+Let a task declare its blast radius so review depth follows the stakes. Today only `d` and the `security`/`bug` markers trigger the in-run discernment gate; the reviewer's `risk` facet is written after the fact and only feeds routing; reviewer selection and reviewer model ignore the task (verified by reading run/actions/discernment.ex and run/actions/reviewing.ex, 2026-10-03).
+
+Decided (operator, 2026-10-03): the acceptance bar is "as confident as if hand-written", scaled by blast radius (`verification-policy.md`, `task-writing.md` § Blast Radius). Back-office UI gets focused checks; persisted formats, money, authorization, distribution/protocol paths and hot paths get deeper review plus benchmark or fuzz evidence. Encode it as one optional high-blast-radius signal on the task (a marker in the closed marker set or a task field — implementer's choice, rmap compatibility required). A high signal makes the discernment gate fire, tells the reviewer to demand benchmark/fuzz/boundary evidence for the declared surface, and allows a stronger reviewer model where configured. The reviewer still judges whether evidence suffices; harness only routes the signal.
+"""
+created_at = "2026-10-03"
+scored_at = "2026-10-03"
+
+[[task]]
+id = "476"
+phase = 26
+bundle = "repo-maintenance"
+status = "pending"
+title = "Read-only runtime diagnostics on staging for agents"
+scores = { d = 6, b = 6, u = 4 }
+acceptance_criteria = ["Against a real staging node of a fleet project, an agent retrieves process info, mailbox lengths and distribution port status through the new surface", "A write or state-changing command is refused unless the operator approves it, and the refusal is visible in the run transcript", "Missing connection configuration fails loudly with the exact setting to provide", "No credentials or node cookies appear in logs, run records or committed files"]
+out_of_scope = ["Production access", "Deploys, hot code upgrades or restarts", "Non-BEAM runtimes"]
+assignee = "codex"
+model = "gpt-6-astra"
+body = """
+Let an agent diagnose a deployed staging BEAM node by reading its runtime: remote shell (remsh or `fly ssh console`), process and mailbox inspection, tracing, `erlang:system_info` / port and distribution stats. Today harness has no remote-runtime access and the audit prompt forbids touching the server (verified by reading audit.ex, 2026-10-03).
+
+Decided (operator, 2026-10-03): running systems are evidence (`verification-policy.md`). Staging is readable; any write, state change, deploy, restart or code load on a shared environment requires per-command operator approval; production is out of scope. Connection details are per project and come from the project registry or secrets, never from committed files. The read-only boundary is enforced mechanically (an allowlist), not by prompt wording.
+
+Inspiration: Chris McCord, ElixirConf 2026 — an agent with remsh access to staging found a `busy_dist_port` suspension in seconds that had evaded manual diagnosis for weeks.
+"""
+created_at = "2026-10-03"
+scored_at = "2026-10-03"
