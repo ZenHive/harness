@@ -318,8 +318,14 @@ can publish it: publication is owned by the BEAM, and retries use a new stage.
 
 ## Automatic retention
 
-Before and after each configured preparation, harness attempts a nonblocking
-reclamation pass. `Harness.Config` / Settings exposes positive integer bounds:
+Before each configured preparation, harness waits for the exclusive retention
+lock and reclaims. The wait happens before the shared read lock is requested:
+Linux `flock` grants a new shared lock ahead of a waiting exclusive lock, so a
+nonblocking exclusive attempt followed by the shared read would never reclaim
+while another preparation is queued or running. After publication and copying,
+harness tries one more nonblocking pass and leaves a still-busy root for the
+next preparation's waiting sweep. `Harness.Config` / Settings exposes positive
+integer bounds:
 
 - `project_cache.max_idle_ms`: **604800000** (7 days since last use).
 - `project_cache.max_bytes`: **42949672960** (40 GiB across the cache root).
@@ -328,7 +334,9 @@ Both settings apply to the next pass without restart. They can also be set with
 `config :harness, :project_cache, max_idle_ms: ..., max_bytes: ...`.
 The byte budget counts logical file lengths, including metadata and stages,
 without following symlinks; it is conservative for reflinked/sparse files and
-is not a measurement of exclusive physical extents.
+is not a measurement of exclusive physical extents. A published generation's
+directory size is recorded in a sibling `<key>.bytes` file and reused on later
+passes. The generation is immutable after rename, so the record is not refreshed.
 
 A retention family is the expanded repository path plus recipe kind (`outer`
 or `seed`), independent of source revision, environment, toolchain and recipe
@@ -351,14 +359,15 @@ Reclamation removes unprotected generations in oldest-last-use order, deleting
 idle entries and then enough entries to meet the total byte cap. Protected or
 busy entries can keep usage above the cap; a completed pass reports remaining
 bytes and logs when still over budget. Bounds are not a disk quota: a build may
-transiently exceed them, and idle roots are swept when preparation next runs.
-`Harness.ProjectCache.Retention.reclaim/4` also provides an explicit pass for
-maintenance callers with a caller monitor and monotonic deadline.
+transiently exceed them, and a root with no preparations is swept when
+preparation next runs. `Harness.ProjectCache.Retention.reclaim/4` also provides
+an explicit pass for maintenance callers with a caller monitor and monotonic
+deadline. That pass is nonblocking unless `nonblock: false` is passed.
 
 All preparations hold a shared `.retention.lock` through building, nested seed
-reads, per-run copies and restoration. Reclamation requires its exclusive lock;
-a busy root defers cleanup to another preparation. It also tries each candidate's
-per-key lock without waiting, skipping held keys. **Lock files are never unlinked**:
+reads, per-run copies and restoration. The pre-pass holds that file exclusively
+until the sweep finishes; the post-pass does not wait. Reclamation also tries
+each candidate's per-key lock without waiting, skipping held keys. **Lock files are never unlinked**:
 replacing an inode would let processes hold different locks for the same key.
 When upgrading from versions without the root read lock, let existing preparations
 and copies finish before allowing the new reclaimer to run against their root.
@@ -368,8 +377,10 @@ stage past that deadline is reclaimed; stages from older versions or a crash
 before writing the marker use directory mtime plus the recipe's default 30-minute
 timeout. Root and per-key locks protect live stages even past their deadline.
 Unknown directories and generation-shaped symlinks are not deletion candidates.
-Filesystem/metadata errors are logged as retention failures rather than successful
-reclamation; preparation still attempts to use/build its requested generation.
+A generation whose manifest or usage record cannot be read is logged and left
+in place; other generations are still reclaimed. A failure to list or measure
+the root is a retention failure rather than a successful reclamation.
+Preparation still attempts to use or build its requested generation.
 
 ## PLT relocation
 

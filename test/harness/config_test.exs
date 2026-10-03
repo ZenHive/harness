@@ -11,6 +11,7 @@ defmodule Harness.ConfigTest do
   # async: false because tests read and mutate global :harness application env.
   use ExUnit.Case, async: false
 
+  alias Config.Reader, as: ConfigReader
   alias Harness.Config
   alias Harness.Config.Entry
   alias Harness.SettingsStore
@@ -73,7 +74,7 @@ defmodule Harness.ConfigTest do
     config =
       "../../config/runtime.exs"
       |> Path.expand(__DIR__)
-      |> Elixir.Config.Reader.read!(env: :test, target: :host)
+      |> ConfigReader.read!(env: :test, target: :host)
       |> Keyword.fetch!(:harness)
       |> Keyword.fetch!(:project_cache)
 

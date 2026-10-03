@@ -4,6 +4,7 @@ defmodule Harness.ProjectCacheSeedTest do
   alias Harness.GitFixture
   alias Harness.ProjectCache
   alias Harness.ProjectCache.Recipe
+  alias Harness.ProjectCache.Retention
   alias Harness.ProjectFixture
   alias Harness.Worktree
 
@@ -63,7 +64,7 @@ defmodule Harness.ProjectCacheSeedTest do
         else: Application.delete_env(:harness, :project_cache)
     end)
 
-    Application.put_env(:harness, :project_cache, max_bytes: 1)
+    Application.put_env(:harness, :project_cache, Keyword.put(prior || [], :max_bytes, 1))
 
     assert {:ok, cold} = prepare(c)
     change(c, "app", "two")
@@ -74,7 +75,7 @@ defmodule Harness.ProjectCacheSeedTest do
 
     for {key, kind} <- [{warm.key, :outer}, {warm.seed["key"], :seed}] do
       manifest = c.cache |> Path.join(key) |> Path.join("complete.json") |> File.read!() |> Jason.decode!()
-      assert manifest["retention_family"] == Harness.ProjectCache.Retention.family(c.repo, kind)
+      assert manifest["retention_family"] == Retention.family(c.repo, kind)
     end
   end
 

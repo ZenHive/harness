@@ -89,38 +89,51 @@ defmodule Harness.ProjectCache do
     root = Path.expand(Keyword.get(opts, :cache_root, Config.get({:project_cache, :root})))
 
     with :ok <- File.mkdir_p(root) do
-      reclaim(root, owner, deadline)
-
-      result =
-        Command.locked(
-          Retention.lock_path(root),
-          owner,
-          deadline,
-          fn ->
-            with {:ok, seed} <- resolve_seed(worktree, recipe["seed"], environment, owner, deadline),
-                 {:ok, key} <- key(worktree, recipe, environment, owner, deadline, seed) do
-              destination = Path.join(root, key)
-
-              build_recipe =
-                recipe
-                |> Map.put("env", environment)
-                |> Map.put(:seed_context, seed)
-                |> Map.put(:retention_family, Retention.family(worktree.repo, :outer))
-
-              seed_generation(worktree, build_recipe, destination, owner, deadline, key, started)
-            end
-          end,
-          shared: true
-        )
-
+      # Wait for the exclusive lock before requesting the shared read lock.
+      # Linux flock grants a new shared lock ahead of a waiting writer, so a
+      # nonblocking exclusive attempt followed by the shared read never
+      # reclaims while another preparation is queued or running.
+      reclaim(root, owner, deadline, nonblock: false)
+      result = prepare_locked(root, worktree, recipe, environment, owner, deadline, started)
       reclaim(root, owner, deadline)
       result
     end
   end
 
-  @spec reclaim(String.t(), reference(), integer()) :: :ok
-  defp reclaim(root, owner, deadline) do
-    case Retention.reclaim(root, owner, deadline) do
+  @spec prepare_locked(String.t(), Worktree.t(), map(), map(), reference(), integer(), integer()) ::
+          {:ok, map()} | {:error, term()}
+  defp prepare_locked(root, worktree, recipe, environment, owner, deadline, started) do
+    Command.locked(
+      Retention.lock_path(root),
+      owner,
+      deadline,
+      fn ->
+        prepare_under_lock(root, worktree, recipe, environment, owner, deadline, started)
+      end,
+      shared: true
+    )
+  end
+
+  @spec prepare_under_lock(String.t(), Worktree.t(), map(), map(), reference(), integer(), integer()) ::
+          {:ok, map()} | {:error, term()}
+  defp prepare_under_lock(root, worktree, recipe, environment, owner, deadline, started) do
+    with {:ok, seed} <- resolve_seed(worktree, recipe["seed"], environment, owner, deadline),
+         {:ok, key} <- key(worktree, recipe, environment, owner, deadline, seed) do
+      destination = Path.join(root, key)
+
+      build_recipe =
+        recipe
+        |> Map.put("env", environment)
+        |> Map.put(:seed_context, seed)
+        |> Map.put(:retention_family, Retention.family(worktree.repo, :outer))
+
+      seed_generation(worktree, build_recipe, destination, owner, deadline, key, started)
+    end
+  end
+
+  @spec reclaim(String.t(), reference(), integer(), keyword()) :: :ok
+  defp reclaim(root, owner, deadline, opts \\ []) do
+    case Retention.reclaim(root, owner, deadline, opts) do
       {:ok, %{over_budget: true} = report} -> Logger.warning("harness cache retention: #{inspect(report)}")
       {:ok, _report} -> :ok
       {:error, {:lock_exit, 75}} -> :ok

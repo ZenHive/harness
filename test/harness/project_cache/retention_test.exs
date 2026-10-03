@@ -34,7 +34,9 @@ defmodule Harness.ProjectCache.RetentionTest do
     assert remaining <= 2500
     [oldest, middle, newest] = paths
     refute File.exists?(oldest)
+    refute File.exists?(oldest <> ".bytes")
     assert File.dir?(middle)
+    assert File.regular?(middle <> ".bytes")
     assert File.dir?(newest)
   end
 
@@ -129,15 +131,36 @@ defmodule Harness.ProjectCache.RetentionTest do
     assert File.dir?(path)
   end
 
-  test "malformed metadata reports failure without deleting generations", c do
-    path = generation(c, 1, nil, 30)
+  test "malformed metadata is left in place while healthy generations are reclaimed", c do
+    bad = generation(c, 1, nil, 30)
 
     for malformed <- ["not json", "[]", ~s({"family":"yesterday"})] do
-      File.write!(path <> ".usage", malformed)
-      assert {:error, {:cache_retention, _}} = reclaim(c.root, max_bytes: 1)
-      assert {:error, {:cache_usage, _}} = Retention.used(path, "family")
-      assert File.dir?(path)
+      stale = generation(c, 2, nil, 30)
+      File.write!(bad <> ".usage", malformed)
+      assert {:ok, _} = reclaim(c.root, max_bytes: 1)
+      assert {:error, {:cache_usage, _}} = Retention.used(bad, "family")
+      assert File.dir?(bad)
+      refute File.exists?(stale)
     end
+  end
+
+  test "a waiting reclaim sweeps after the shared reader releases", c do
+    path = generation(c, 1, nil, 30)
+    parent = self()
+    holder = hold_lock(Retention.lock_path(c.root), shared: true)
+
+    task =
+      Task.async(fn ->
+        send(parent, :waiting)
+        reclaim(c.root, nonblock: false, max_idle_ms: 1)
+      end)
+
+    assert_receive :waiting, 5_000
+    refute_receive {_ref, _result}, 300
+    assert File.dir?(path)
+    release(holder)
+    assert {:ok, _} = Task.await(task)
+    refute File.exists?(path)
   end
 
   @spec generation(map(), integer(), String.t() | nil, integer()) :: String.t()

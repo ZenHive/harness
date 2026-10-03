@@ -3,6 +3,7 @@ defmodule Harness.ProjectCacheTest do
 
   alias Harness.GitFixture
   alias Harness.ProjectCache
+  alias Harness.ProjectCache.Command
   alias Harness.ProjectCache.Recipe
   alias Harness.ProjectCache.Retention
   alias Harness.ProjectFixture
@@ -41,6 +42,46 @@ defmodule Harness.ProjectCacheTest do
     assert {:ok, %{state: :hit, copied: []}} = ProjectCache.prepare(first, recipe, cache_root: c.cache)
     assert File.read!(Path.join(first.path, "deps/value")) == "agent"
     assert Path.wildcard(Path.join(c.cache, "*.building-*")) == []
+  end
+
+  test "preparation waits to reclaim before building while the root lock is shared", c do
+    File.mkdir_p!(c.base)
+    File.mkdir_p!(c.cache)
+    marker = Path.join(c.base, "build-started")
+
+    recipe =
+      c
+      |> recipe(~s(printf started > "#{marker}"; mkdir -p deps; printf prepared > deps/value))
+      |> Map.put("timeout_ms", 15_000)
+
+    parent = self()
+
+    holder =
+      Task.async(fn ->
+        Command.locked(
+          Retention.lock_path(c.cache),
+          make_ref(),
+          System.monotonic_time(:millisecond) + 15_000,
+          fn ->
+            send(parent, :held)
+
+            receive do
+              :release -> :ok
+            after
+              15_000 -> flunk("lock was never released")
+            end
+          end,
+          shared: true
+        )
+      end)
+
+    assert_receive :held, 5_000
+    build = Task.async(fn -> ProjectCache.prepare(c.wt, recipe, cache_root: c.cache) end)
+    refute file_appeared?(marker, System.monotonic_time(:millisecond) + 800)
+    send(holder.pid, :release)
+    assert Task.await(holder) == :ok
+    assert {:ok, %{state: :built}} = Task.await(build, 20_000)
+    assert File.exists?(marker)
   end
 
   test "reuse updates LRU metadata and the root stays locked throughout restore", c do
@@ -460,6 +501,23 @@ defmodule Harness.ProjectCacheTest do
   defp new_tree(c) do
     {:ok, wt} = Worktree.create(c.project, base_dir: c.base)
     wt
+  end
+
+  @spec file_appeared?(String.t(), integer()) :: boolean()
+  defp file_appeared?(path, deadline) do
+    cond do
+      File.exists?(path) ->
+        true
+
+      System.monotonic_time(:millisecond) >= deadline ->
+        false
+
+      true ->
+        receive do
+        after
+          20 -> file_appeared?(path, deadline)
+        end
+    end
   end
 
   defp await_file(path, attempts \\ 500)
