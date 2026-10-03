@@ -22045,7 +22045,7 @@
       "id": "473",
       "phase": 4,
       "bundle": "multi-agent",
-      "status": "in_progress",
+      "status": "done",
       "title": "Bound project-cache generation disk usage (no eviction exists)",
       "scores": {
         "d": 3,
@@ -22075,10 +22075,17 @@
         "docs/project-cache.md",
         "test/harness/project_cache_test.exs"
       ],
+      "shipped_in": "9ab4cbac57e33f0cd365307c0ee144b8112eb29f",
       "body": "Observed 2026-10-03 on the self-host server: /home hit 100% (0 bytes free). ~/.cache/harness/project-cache held 84 immutable generations at ~700 MB each (51 GB); nothing ever reclaims them. Symptom surfaced as agent CLI self-updates (codex, grok) failing silently mid-install; agent runs writing session state under ~ are exposed to the same ENOSPC. Manually removed 61 generations older than 3 days (freed ~38 GB) as stopgap.\n\nThis is mechanical substrate (counting bytes/ages, deleting files) — no judgment. Task 47's out_of_scope deferred eviction as \"manual for now\"; this closes it for ProjectCache generations.\n\nSecond root cause (2026-10-03): the cache landed on /home at all because `project_cache.ex` hardcodes the laptop default `~/.cache/harness/project-cache` and there is no config/env override — the same class of bug BOOTSTRAP documented for `base_dir` (fixed there via HARNESS_WORKTREE_ROOT). On the server, worktrees live on the reflink XFS volume (/data/postgresql/harness/worktrees) while the cache sat on a 98 GB ext4 LV shared with every user's home, so seed copies were also full cross-device copies instead of reflinks. Host stopgap: cache moved to /data/postgresql/harness/project-cache, old path is a symlink to it. Once the env override lands, set it in /etc/harness/harness.env and drop the symlink.\n",
       "created_at": "2026-10-02",
       "started_at": "2026-10-02",
+      "done_at": "2026-10-03",
       "scored_at": "2026-10-02",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1790982598198-ff3a03d8, 9ab4cbac57e33f0cd365307c0ee144b8112eb29f). Writeback recorded by orchestrator: the lander refused it with roadmap_task_drift because the acceptance criteria were amended mid-run (8e1307b8).",
+      "delivered_by": "codex",
+      "verified": true,
+      "verified_by": "cursor",
+      "verification_ref": "harness-run:run-1790982598198-ff3a03d8",
       "cross_repo": []
     },
     {
