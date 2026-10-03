@@ -22184,6 +22184,38 @@
       "created_at": "2026-10-03",
       "scored_at": "2026-10-03",
       "cross_repo": []
+    },
+    {
+      "id": "477",
+      "phase": 1,
+      "bundle": "autolanding",
+      "status": "pending",
+      "title": "Keep agent attribution trailers out of landed commits",
+      "scores": {
+        "d": 3,
+        "b": 5,
+        "u": 6
+      },
+      "eff": 1.83,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-6-astra",
+      "acceptance_criteria": [
+        "A cursor review run that commits reviewer fixes lands commits without any Co-authored-by trailer; evidence is a real run's landed commit message",
+        "The mechanism covers every committing adapter, or the delivery names which adapters cannot add trailers and why",
+        "A focused test pins the behavior so a CLI update reintroducing the trailer fails the test",
+        "Other message content (title, body) is preserved byte-for-byte"
+      ],
+      "out_of_scope": [
+        "Rewriting already-pushed history in any target repo"
+      ],
+      "body": "Landed commits must not carry agent attribution trailers. The operator does not want Co-authored-by footers in any repo. Observed in ZenHive/mpp: reviewer-fix commits made during cursor review runs carry `Co-authored-by: Cursor <cursoragent@cursor.com>` (b29fe65, ef0d453, bcc232a, 154db8f, 0065e24), while implementer deliveries committed by harness do not. Premise unverified: whether the trailer is added by the cursor CLI on its own commit or elsewhere; confirm before choosing the fix. Prefer disabling the attribution at its source (adapter/CLI configuration) over rewriting messages; if only rewriting is possible, strip the trailer before the branch is landed, never after a push. Applies to every adapter that can commit, not only cursor.",
+      "created_at": "2026-10-03",
+      "scored_at": "2026-10-03",
+      "cross_repo": []
     }
   ]
 }

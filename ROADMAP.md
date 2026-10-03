@@ -23,7 +23,7 @@
 > The contract before the code. Scaffold the OTP app, confirm a thin OTP core beats adopting an orchestration library, and pin the `AgentAdapter` behaviour — invocation and raw-output capture, no normalized event model.
 
 <!-- TASKS:BEGIN phase=1 -->
-> 3 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-1-foundation).
+> 4 tasks. See [CHANGELOG.md](CHANGELOG.md#phase-1-foundation).
 <!-- TASKS:END -->
 
 ---
