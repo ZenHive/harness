@@ -87,7 +87,8 @@ defmodule Harness.Projects.DispatchQA.Hooks do
   @doc "Reads source bytes with their digest; absence and invalid text stay visible."
   @spec read_file(String.t()) :: map()
   def read_file(path) do
-    # sobelow_skip ["Traversal.FileModule"] — path is a configured hook/plugin/instruction file.
+    # sobelow_skip ["Traversal.FileModule"]
+    # path is a configured hook/plugin/instruction file.
     case File.read(path) do
       {:ok, text} ->
         if String.valid?(text),
@@ -156,7 +157,8 @@ defmodule Harness.Projects.DispatchQA.Hooks do
 
   @spec read_json(String.t()) :: {:ok, map()} | {:error, term()}
   defp read_json(path) do
-    # sobelow_skip ["Traversal.FileModule"] — path is a configured settings or plugin-registry file.
+    # sobelow_skip ["Traversal.FileModule"]
+    # path is a configured settings or plugin-registry file.
     with {:ok, content} <- File.read(path), do: Jason.decode(content)
   end
 

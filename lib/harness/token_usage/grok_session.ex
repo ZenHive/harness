@@ -41,7 +41,8 @@ defmodule Harness.TokenUsage.GrokSession do
   `:total` (grok reports no input/output split), or `TokenUsage.empty/0` when the
   log can't be found or carries no usage.
   """
-  # sobelow_skip ["Traversal.FileModule"] — `id` is constrained to a uuid-shaped
+  # sobelow_skip ["Traversal.FileModule"]
+  # `id` is constrained to a uuid-shaped
   # token by `safe_id/1` (no `/` or `.`), so it can't escape `sessions_root`.
   @spec usage(term()) :: TokenUsage.t()
   def usage(transcript) when is_binary(transcript) do

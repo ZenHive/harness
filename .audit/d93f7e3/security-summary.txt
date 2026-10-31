@@ -1,0 +1,1 @@
+Original and repaired mix sobelow --exit --skip both exited 1. Original scan: eleven source parse warnings and router coverage warning. Repaired scan: zero source parse warnings; router coverage warning remains. Unresolved diagnostics retained in the existing private draft security advisory; no new suppression or baseline was added. Private update succeeded.

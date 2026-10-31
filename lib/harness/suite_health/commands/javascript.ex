@@ -4,7 +4,8 @@ defmodule Harness.SuiteHealth.Commands.JavaScript do
   alias Harness.Project
 
   @doc false
-  # sobelow_skip ["Traversal.FileModule"] — `repo_path` is a registered project checkout.
+  # sobelow_skip ["Traversal.FileModule"]
+  # `repo_path` is a registered project checkout.
   @spec command(Project.t(), String.t()) :: {:ok, {String.t(), [String.t()]}} | {:skipped, term()}
   def command(_project, repo_path) when is_binary(repo_path) do
     package_json = Path.join(repo_path, "package.json")

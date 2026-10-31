@@ -327,7 +327,8 @@ defmodule Harness.Projects.DispatchQA do
     result = %{capture_path: capture_path, applied?: apply?, projects: results}
     encoded = Jason.encode!(json_safe(result), pretty: true) <> "\n"
 
-    # sobelow_skip ["Traversal.FileModule"] — capture_path is written under capture_dir (tmp or caller).
+    # sobelow_skip ["Traversal.FileModule"]
+    # capture_path is written under capture_dir (tmp or caller).
     case File.write(capture_path <> ".result.json", encoded, [:exclusive]) do
       :ok -> {:ok, result}
       {:error, reason} -> {:error, reason}
@@ -343,7 +344,8 @@ defmodule Harness.Projects.DispatchQA do
 
   @spec write_capture(String.t(), [project_result()], map()) :: {:ok, String.t()} | {:error, term()}
   defp write_capture(dir, planned, inventory) do
-    # sobelow_skip ["Traversal.FileModule"] — dir is System.tmp_dir! or an explicit capture_dir.
+    # sobelow_skip ["Traversal.FileModule"]
+    # dir is System.tmp_dir! or an explicit capture_dir.
     File.mkdir_p!(dir)
     path = Path.join(dir, "dispatch-qa-capture-#{Ecto.UUID.generate()}.json")
 
@@ -353,7 +355,8 @@ defmodule Harness.Projects.DispatchQA do
       inventory: json_safe(inventory)
     }
 
-    # sobelow_skip ["Traversal.FileModule"] — path is capture_dir plus a generated UUID filename.
+    # sobelow_skip ["Traversal.FileModule"]
+    # path is capture_dir plus a generated UUID filename.
     case File.write(path, Jason.encode!(payload, pretty: true) <> "\n", [:exclusive]) do
       :ok -> {:ok, path}
       {:error, reason} -> {:error, reason}

@@ -163,6 +163,7 @@ dropdb harness_insights_445
 
 The browser command starts only a test-mode server with memory fixtures, no
 scheduler and no database. Its loopback port defaults to 44045 and can be set with
-`INSIGHTS_BROWSER_PORT`; conflicts fail. Production activation, deployment,
+`INSIGHTS_BROWSER_PORT`; conflicts fail. Set `INSIGHTS_BROWSER_OUTPUT` to retain
+screenshots and `browser.json` under a run-specific evidence directory. Production activation, deployment,
 installed-skill propagation and the independent review verdict remain with the
 orchestrator/reviewer.

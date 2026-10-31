@@ -20,7 +20,8 @@ defmodule Harness.ProjectCache.Retention do
     |> Base.encode16(case: :lower)
   end
 
-  # sobelow_skip ["Traversal.FileModule"] — destination is a generation path; the sidecar is its sibling.
+  # sobelow_skip ["Traversal.FileModule"]
+  # destination is a generation path; the sidecar is its sibling.
   @doc "Records use under the generation lock without modifying cached artifacts."
   @spec used(String.t(), String.t()) :: :ok | {:error, term()}
   def used(destination, family) do
@@ -126,7 +127,8 @@ defmodule Harness.ProjectCache.Retention do
   defp report_remaining({:ok, remaining}, cap), do: {:ok, %{bytes: remaining, over_budget: remaining > cap}}
   defp report_remaining({:error, _} = error, _cap), do: error
 
-  # sobelow_skip ["Traversal.FileModule"] — names come from the cache root and must be 64 hex digits.
+  # sobelow_skip ["Traversal.FileModule"]
+  # names come from the cache root and must be 64 hex digits.
   @spec generations(String.t()) :: [map()]
   defp generations(root) do
     root
@@ -137,7 +139,8 @@ defmodule Harness.ProjectCache.Retention do
     |> Enum.flat_map(&generation_entry/1)
   end
 
-  # sobelow_skip ["Traversal.FileModule"] — path is a generation directory under the cache root.
+  # sobelow_skip ["Traversal.FileModule"]
+  # path is a generation directory under the cache root.
   @spec generation_entry(String.t()) :: [map()]
   defp generation_entry(path) do
     manifest = read_json(Path.join(path, "complete.json"))
@@ -162,7 +165,8 @@ defmodule Harness.ProjectCache.Retention do
 
   # Published generations are immutable, so the directory size is stable.
   # Later passes read the sibling record instead of walking artifact trees.
-  # sobelow_skip ["Traversal.FileModule"] — the size record is the generation path plus `.bytes`.
+  # sobelow_skip ["Traversal.FileModule"]
+  # the size record is the generation path plus `.bytes`.
   @spec directory_bytes(String.t()) :: non_neg_integer()
   defp directory_bytes(path) do
     case File.read(path <> ".bytes") do
@@ -181,7 +185,8 @@ defmodule Harness.ProjectCache.Retention do
     end
   end
 
-  # sobelow_skip ["Traversal.FileModule"] — writes only the sibling size record of a generation directory.
+  # sobelow_skip ["Traversal.FileModule"]
+  # writes only the sibling size record of a generation directory.
   @spec measure_directory(String.t()) :: non_neg_integer()
   defp measure_directory(path) do
     size = bytes(path)
@@ -189,7 +194,8 @@ defmodule Harness.ProjectCache.Retention do
     size
   end
 
-  # sobelow_skip ["Traversal.FileModule"] — lists only the operator-configured cache root.
+  # sobelow_skip ["Traversal.FileModule"]
+  # lists only the operator-configured cache root.
   @spec accounted_total(String.t(), [map()]) :: non_neg_integer()
   defp accounted_total(root, entries) do
     paths = MapSet.new(Enum.map(entries, & &1.path))
@@ -227,7 +233,8 @@ defmodule Harness.ProjectCache.Retention do
     |> MapSet.new(fn {_family, uses} -> uses |> Enum.max_by(&{elem(&1, 1), elem(&1, 2)}) |> elem(2) end)
   end
 
-  # sobelow_skip ["Traversal.FileModule"] — path is a generation directory; lock files are not removed.
+  # sobelow_skip ["Traversal.FileModule"]
+  # path is a generation directory; lock files are not removed.
   @spec remove(String.t(), reference(), integer()) :: :ok | {:error, term()}
   defp remove(path, owner, deadline) do
     Command.locked(
@@ -245,7 +252,8 @@ defmodule Harness.ProjectCache.Retention do
     )
   end
 
-  # sobelow_skip ["Traversal.FileModule"] — stage names must match `<64-hex>.building-<id>` under the cache root.
+  # sobelow_skip ["Traversal.FileModule"]
+  # stage names must match `<64-hex>.building-<id>` under the cache root.
   @spec sweep_stages(String.t(), reference(), integer(), integer()) :: :ok | {:error, term()}
   defp sweep_stages(root, owner, deadline, now) do
     root
@@ -256,7 +264,8 @@ defmodule Harness.ProjectCache.Retention do
     end)
   end
 
-  # sobelow_skip ["Traversal.FileModule"] — stage path is joined from a matched cache-root name.
+  # sobelow_skip ["Traversal.FileModule"]
+  # stage path is joined from a matched cache-root name.
   @spec drop_stage(String.t(), String.t(), reference(), integer(), integer()) ::
           {:cont, :ok} | {:halt, {:error, term()}}
   defp drop_stage(root, name, owner, deadline, now) do
@@ -269,7 +278,8 @@ defmodule Harness.ProjectCache.Retention do
     |> stage_result()
   end
 
-  # sobelow_skip ["Traversal.FileModule"] — removes only an expired stage directory, never its lock.
+  # sobelow_skip ["Traversal.FileModule"]
+  # removes only an expired stage directory, never its lock.
   @spec remove_expired_stage(String.t(), integer()) :: :ok
   defp remove_expired_stage(path, now) do
     if directory?(path) and stage_deadline(path) < now, do: File.rm_rf!(path)
@@ -281,7 +291,8 @@ defmodule Harness.ProjectCache.Retention do
   defp stage_result({:error, {:lock_exit, 75}}), do: {:cont, :ok}
   defp stage_result({:error, _} = error), do: {:halt, error}
 
-  # sobelow_skip ["Traversal.FileModule"] — reads `.deadline` inside a matched stage directory.
+  # sobelow_skip ["Traversal.FileModule"]
+  # reads `.deadline` inside a matched stage directory.
   @spec stage_deadline(String.t()) :: integer()
   defp stage_deadline(path) do
     case File.read(Path.join(path, ".deadline")) do
@@ -299,11 +310,13 @@ defmodule Harness.ProjectCache.Retention do
     end
   end
 
-  # sobelow_skip ["Traversal.FileModule"] — stats a matched stage directory.
+  # sobelow_skip ["Traversal.FileModule"]
+  # stats a matched stage directory.
   @spec legacy_deadline(String.t()) :: integer()
   defp legacy_deadline(path), do: File.stat!(path, time: :posix).mtime * 1000 + @legacy_stage_timeout_ms
 
-  # sobelow_skip ["Traversal.FileModule"] — path is a generation manifest or its usage sidecar.
+  # sobelow_skip ["Traversal.FileModule"]
+  # path is a generation manifest or its usage sidecar.
   @spec read_json(String.t()) :: map()
   defp read_json(path) do
     case File.read(path) do
@@ -332,11 +345,13 @@ defmodule Harness.ProjectCache.Retention do
     end
   end
 
-  # sobelow_skip ["Traversal.FileModule"] — lstats a path already joined under the cache root.
+  # sobelow_skip ["Traversal.FileModule"]
+  # lstats a path already joined under the cache root.
   @spec directory?(String.t()) :: boolean()
   defp directory?(path), do: match?({:ok, %{type: :directory}}, File.lstat(path))
 
-  # sobelow_skip ["Traversal.FileModule"] — stats the usage sidecar of a generation directory.
+  # sobelow_skip ["Traversal.FileModule"]
+  # stats the usage sidecar of a generation directory.
   @spec optional_bytes(String.t()) :: non_neg_integer()
   defp optional_bytes(path) do
     case File.lstat(path) do
@@ -346,7 +361,8 @@ defmodule Harness.ProjectCache.Retention do
     end
   end
 
-  # sobelow_skip ["Traversal.FileModule"] — walks a cache-root child without following symlinks.
+  # sobelow_skip ["Traversal.FileModule"]
+  # walks a cache-root child without following symlinks.
   @spec bytes(String.t()) :: non_neg_integer()
   defp bytes(path) do
     case File.lstat!(path) do

@@ -174,7 +174,8 @@ defmodule Harness.Run.TestDbIsolation do
   end
 
   @spec config_mentions_env?(String.t(), String.t()) :: boolean()
-  # sobelow_skip ["Traversal.FileModule"] — worktree_path is a harness-managed checkout.
+  # sobelow_skip ["Traversal.FileModule"]
+  # worktree_path is a harness-managed checkout.
   defp config_mentions_env?(test_config, env_name) do
     case File.read(test_config) do
       {:ok, config} -> String.contains?(config, env_name)

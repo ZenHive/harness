@@ -4,7 +4,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { once } from 'node:events';
 
 const port = process.env.INSIGHTS_BROWSER_PORT || '44045';
-const output = 'docs/verification/run-insights/task-445';
+const output = process.env.INSIGHTS_BROWSER_OUTPUT || 'docs/verification/run-insights/task-445';
 await mkdir(output, { recursive: true });
 const server = spawn('mix', ['run', 'test/browser/run_insights_server.exs'], {
   env: { ...process.env, MIX_ENV: 'test', INSIGHTS_BROWSER_PORT: port },
@@ -48,7 +48,7 @@ try {
   const capture = async (name, path, mobile) => {
     await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 1000 });
     await page.goto(`http://127.0.0.1:${port}${path}`);
-    await page.locator('.phx-connected').waitFor();
+    await page.locator('[data-phx-main].phx-connected').waitFor();
     await page.screenshot({ path: `${output}/${name}.png`, fullPage: true });
     const layout = await page.evaluate(() => ({ width: innerWidth, contentWidth: document.documentElement.scrollWidth }));
     if (layout.contentWidth > layout.width) throw new Error(`Horizontal overflow: ${name}`);

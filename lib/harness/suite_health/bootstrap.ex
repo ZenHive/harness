@@ -93,7 +93,8 @@ defmodule Harness.SuiteHealth.Bootstrap do
   end
 
   @spec ecto_test_project?(String.t()) :: boolean()
-  # sobelow_skip ["Traversal.FileModule"] — `worktree_path` is a harness-managed checkout.
+  # sobelow_skip ["Traversal.FileModule"]
+  # `worktree_path` is a harness-managed checkout.
   defp ecto_test_project?(worktree_path) do
     test_config = Path.join(worktree_path, "config/test.exs")
 
@@ -116,7 +117,8 @@ defmodule Harness.SuiteHealth.Bootstrap do
   end
 
   @doc false
-  # sobelow_skip ["CI.System"] — argv-list spawn for language-derived suite commands.
+  # sobelow_skip ["CI.System"]
+  # argv-list spawn for language-derived suite commands.
   @spec default_runner(String.t(), [String.t()], String.t(), keyword()) :: {String.t(), non_neg_integer()}
   def default_runner(cmd, args, cwd, env) do
     System.cmd(cmd, args, cd: cwd, env: env, stderr_to_stdout: true)

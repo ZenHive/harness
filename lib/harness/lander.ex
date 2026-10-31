@@ -294,7 +294,8 @@ defmodule Harness.Lander do
     result
   end
 
-  # sobelow_skip ["Traversal.FileModule"] — tasks_path is Path.join(worktree.path, "roadmap/tasks.toml")
+  # sobelow_skip ["Traversal.FileModule"]
+  # tasks_path is Path.join(worktree.path, "roadmap/tasks.toml")
   @spec rewrite_colliding_roadmap_task_ids(Worktree.t(), String.t(), String.t()) :: {:ok, String.t()} | {:error, term()}
   defp rewrite_colliding_roadmap_task_ids(%Worktree{path: path}, base_sha, tip) do
     tasks_path = Path.join(path, "roadmap/tasks.toml")
@@ -317,7 +318,8 @@ defmodule Harness.Lander do
     end
   end
 
-  # sobelow_skip ["Traversal.FileModule"] — tasks_path is the landing worktree's roadmap/tasks.toml
+  # sobelow_skip ["Traversal.FileModule"]
+  # tasks_path is the landing worktree's roadmap/tasks.toml
   @spec apply_task_id_rewrite(String.t(), String.t(), String.t(), String.t(), String.t()) ::
           {:ok, String.t()} | {:error, term()}
   defp apply_task_id_rewrite(path, tasks_path, base_toml, head_toml, tip) do

@@ -90,7 +90,8 @@ defmodule Harness.CodeSearch do
   )
 
   @spec definitions(String.t(), String.t(), keyword()) :: result()
-  # sobelow_skip ["SQL.Query"] - query SQL uses a sanitized DuckDB table prefix and positional parameters.
+  # sobelow_skip ["SQL.Query"]
+  # query SQL uses a sanitized DuckDB table prefix and positional parameters.
   def definitions(project_name, name, opts \\ []) when is_binary(project_name) and is_binary(name) and is_list(opts) do
     query(project_name, opts, &definition_query(&1, name, &2, opts))
   end
@@ -105,7 +106,8 @@ defmodule Harness.CodeSearch do
   )
 
   @spec callers(String.t(), String.t(), keyword()) :: result()
-  # sobelow_skip ["SQL.Query"] - query SQL uses a sanitized DuckDB table prefix and positional parameters.
+  # sobelow_skip ["SQL.Query"]
+  # query SQL uses a sanitized DuckDB table prefix and positional parameters.
   def callers(project_name, symbol, opts \\ []) when is_binary(project_name) and is_binary(symbol) and is_list(opts) do
     query(project_name, opts, fn index, ctx ->
       case ctx.exograph.search_callers(index, symbol, limit: limit(opts)) do
@@ -125,7 +127,8 @@ defmodule Harness.CodeSearch do
   )
 
   @spec callees(String.t(), String.t(), keyword()) :: result()
-  # sobelow_skip ["SQL.Query"] - query SQL uses a sanitized DuckDB table prefix and positional parameters.
+  # sobelow_skip ["SQL.Query"]
+  # query SQL uses a sanitized DuckDB table prefix and positional parameters.
   def callees(project_name, symbol, opts \\ []) when is_binary(project_name) and is_binary(symbol) and is_list(opts) do
     query(project_name, opts, fn index, ctx ->
       case ctx.exograph.search_callees(index, symbol, limit: limit(opts)) do
@@ -243,7 +246,8 @@ defmodule Harness.CodeSearch do
 
   @spec rebuild_index(String.t(), String.t(), keyword()) :: :ok | {:error, term()}
   defp rebuild_index(repo_path, index_path, opts) do
-    # sobelow_skip ["Traversal.FileModule"] - index_path is built under the CodeSearch cache root.
+    # sobelow_skip ["Traversal.FileModule"]
+    # index_path is built under the CodeSearch cache root.
     File.mkdir_p!(Path.dirname(index_path))
     Server.close(index_path, opts)
     clear_duckdb_files(index_path)
@@ -543,7 +547,8 @@ defmodule Harness.CodeSearch do
 
   @spec source_fact(String.t()) :: [map()]
   defp source_fact(path) do
-    # sobelow_skip ["Traversal.FileModule"] - path comes from source_paths/1's lib/test glob under a registered repo.
+    # sobelow_skip ["Traversal.FileModule"]
+    # path comes from source_paths/1's lib/test glob under a registered repo.
     with {:ok, source} <- File.read(path),
          {:ok, ast} <- Code.string_to_quoted(source, columns: true, token_metadata: true) do
       symbols_module = Module.concat([ExAST, Symbols])
@@ -770,7 +775,8 @@ defmodule Harness.CodeSearch do
 
   @spec clear_duckdb_files(String.t()) :: :ok
   defp clear_duckdb_files(index_path) do
-    # sobelow_skip ["Traversal.FileModule"] - removes only the cache index and its adjacent DuckDB WAL file.
+    # sobelow_skip ["Traversal.FileModule"]
+    # removes only the cache index and its adjacent DuckDB WAL file.
     Enum.each([index_path, index_path <> ".wal"], &File.rm/1)
   end
 
