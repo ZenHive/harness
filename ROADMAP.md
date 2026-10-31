@@ -9,9 +9,9 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (25 of 33 done · 1 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (26 of 33 done · 0 in progress)
 
-**Last shipped:** no recent shipments
+**Last shipped:** Task 478 — Update all repository libraries and verify compatibility on 2026-10-31
 
 **Up next:** Task 360 — Enforce consumer-to-core dependency boundaries and remove accidental reverse edges [D:7/B:6/U:4 → Eff:0.71] ⚠️
 <!-- FOCUS:END -->
@@ -400,7 +400,7 @@
 | Task 428 | ✅ | 🎁 **resilience** · Node-pressure gate samples a naive RSS sum, not memory headroom — switch to MemAvailable and give the mark an env override [D:3/B:5/U:4 → Eff:1.5?] 🚀 |
 | Task 465 | ⬜ | 🎁 **roadmap-writeback** · 🐛 Route audit discovery filings into the separate roadmap repository for split-roadmap projects [D:4/B:6/U:5 → Eff:1.38?] 📋 |
 | Task 466 | ⬜ | 🎁 **audit-hygiene** · 🐛 Injected .cursor/rules/harness-operational.mdc still lands in agent-delivery commits [D:3/B:6/U:6 → Eff:2.0?] 🎯 |
-| Task 478 | 🔄 | 🎁 **audit-hygiene** · Update all repository libraries and verify compatibility [D:4/B:7/U:6 → Eff:1.62] 🚀 |
+| Task 478 | ✅ | 🎁 **audit-hygiene** · Update all repository libraries and verify compatibility [D:4/B:7/U:6 → Eff:1.62] 🚀 |
 <!-- TASKS:END -->
 
 ---

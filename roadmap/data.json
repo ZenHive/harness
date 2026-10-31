@@ -22228,7 +22228,7 @@
       "id": "478",
       "phase": 23,
       "bundle": "audit-hygiene",
-      "status": "in_progress",
+      "status": "done",
       "title": "Update all repository libraries and verify compatibility",
       "scores": {
         "d": 4,
@@ -22253,10 +22253,17 @@
         "mix.lock",
         ".mcp.json"
       ],
+      "shipped_in": "c18a1c854bc03a60b99a7447d79dd9c656f3bc9a",
       "body": "Operator request: update all libraries (JavaScript, Elixir, etc.) in harness. Inventory every actual dependency manifest and separately pinned JS/tool asset; update to latest stable published releases, including direct and transitive Hex dependencies and required constraint changes. The 2026-10-31 live scan found 16 direct updates including muontrap 1.8.0 -> 2.0.1, anubis_mcp 2.0.0 -> 2.2.0, ex_ast 0.12.10 -> 0.16.0 and volt 0.14.12 -> 0.23.0. Refresh this evidence from registries. No npm manifest was found locally; Phoenix JS may be supplied by Hex, and .mcp.json pins chrome-devtools-mcp. Inspect actual wiring. Review upstream changelogs before updating, make required compatibility fixes and regression tests, and run format/compile plus tests covering affected runtime and tooling boundaries. Do not add new product features, change agent model pins, replace registry deps with git/path sources, or restart the server. Report genuine solver/upstream blockers precisely. All manifest/lock updates belong together. Difficulty 4: coupled runtime/tooling upgrades; benefit 7: explicitly requested freshness. The dependency-update convenience helper failed before creating tasks with unsupported System.cmd option :input; this task is created through the standard rmap CLI and runs through the ordinary reviewer gate.",
       "created_at": "2026-10-31",
       "started_at": "2026-10-31",
+      "done_at": "2026-10-31",
       "scored_at": "2026-10-31",
+      "implemented": "Landed by codex via merge-train; reviewer-approved (run run-1793415488987-568bd562, c18a1c854bc03a60b99a7447d79dd9c656f3bc9a).",
+      "delivered_by": "codex",
+      "verified": true,
+      "verified_by": "claude",
+      "verification_ref": "harness-run:run-1793415488987-568bd562",
       "cross_repo": []
     }
   ]
