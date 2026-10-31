@@ -12,7 +12,7 @@
 - `test/support/fixtures/rust_project/Cargo.toml` / `Cargo.lock`: intentionally outdated Serde 1.0.0, asserted by `test/harness/dep_freshness/integration_test.exs`; retained as test input. The failing Rust fixture has no dependencies.
 - `test/fixtures/flutter_app/pubspec.yaml`: Flutter SDK dependencies only, no separately versioned libraries. `.tool-versions` pins toolchains, not libraries; unchanged. Agent model pins unchanged.
 
-Raw registry responses, upstream packaged changelogs, before/after scans, solver output and commands are retained under `.harness/evidence/dependency-update/` for reviewer inspection (excluded from delivery commits).
+Raw registry responses, upstream packaged changelogs, before/after scans, solver output and commands were captured under `.harness/evidence/dependency-update/` during run `run-1793414754387-a5affa80`; that directory is run-local and not part of this repository, so file names cited below refer to that run's evidence.
 
 ## Applied Hex updates
 
@@ -80,7 +80,7 @@ Reviewed upstream changelogs from published Hex tarballs before resolution. Impo
 
 ## Verification
 
-All paths below are relative to `.harness/evidence/dependency-update/`.
+Evidence file names below refer to that run-local directory.
 
 | Command | Result / evidence |
 |---|---|
@@ -116,3 +116,7 @@ PostgreSQL integration selection was those four Oban files with `--only integrat
 The browser runner is an evidence-local copy of `test/browser/run_insights.mjs`, with output redirected into evidence and its readiness selector narrowed from `.phx-connected` to `[data-phx-main].phx-connected`. The original selector matched both the inbox badge and main LiveView and failed strict mode. `browser.txt` retains that failure; `browser-retry.txt` and `browser/browser.json` record the corrected run. No operator server was used or restarted.
 
 Full-project tests, coverage and full analyzers were not run under the focused-verification policy. Live-agent/provider tests were excluded. `mix_audit` and `osv-scanner` are not installed; no comprehensive supply-chain audit is claimed. The cross-family reviewer remains the acceptance gate.
+
+## Reviewer re-verification (run-1793415488987-568bd562)
+
+`mix hex.outdated --all` re-run 2026-10-31: the nine retained packages above are the only outdated entries. Hex API confirms the blockers: Reach 2.8.4 `ex_ast ~> 0.12.0`, Exograph 0.9.12 `ex_ast ~> 0.12.9` / `volt ~> 0.14.2` / `quackdb ~> 0.5.13` / `json_codec ~> 0.1.1`, Igniter 0.8.5 `ex_ast ~> 0.16`. npm `chrome-devtools-mcp` latest is 1.12.0. `mix format --check-formatted`, `mix compile --warnings-as-errors`, `mix harness.deps.check` and 680 focused dashboard/deps/tooling tests passed.
