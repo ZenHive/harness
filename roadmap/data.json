@@ -22223,6 +22223,40 @@
       "created_at": "2026-10-03",
       "scored_at": "2026-10-03",
       "cross_repo": []
+    },
+    {
+      "id": "478",
+      "phase": 23,
+      "bundle": "audit-hygiene",
+      "status": "pending",
+      "title": "Update all repository libraries and verify compatibility",
+      "scores": {
+        "d": 4,
+        "b": 7,
+        "u": 6
+      },
+      "eff": 1.63,
+      "dep_layer": 0,
+      "unlocks": 0,
+      "markers": [],
+      "depends_on": [],
+      "assignee": "codex",
+      "model": "gpt-6-astra",
+      "acceptance_criteria": [
+        "All repository library ecosystems and separately pinned JS tools are inventoried; latest stable upgrades are applied or a concrete upstream incompatibility is evidenced.",
+        "Hex direct and transitive updates resolve together; no git/path dependency substitutes or unrelated feature additions.",
+        "Required compatibility fixes have regression coverage; format, compile and affected runtime/tooling tests pass, with exact commands and honest missing checks in the review.",
+        "Report before/after versions and remaining outdated packages using fresh registry evidence."
+      ],
+      "files_to_modify": [
+        "mix.exs",
+        "mix.lock",
+        ".mcp.json"
+      ],
+      "body": "Operator request: update all libraries (JavaScript, Elixir, etc.) in harness. Inventory every actual dependency manifest and separately pinned JS/tool asset; update to latest stable published releases, including direct and transitive Hex dependencies and required constraint changes. The 2026-10-31 live scan found 16 direct updates including muontrap 1.8.0 -> 2.0.1, anubis_mcp 2.0.0 -> 2.2.0, ex_ast 0.12.10 -> 0.16.0 and volt 0.14.12 -> 0.23.0. Refresh this evidence from registries. No npm manifest was found locally; Phoenix JS may be supplied by Hex, and .mcp.json pins chrome-devtools-mcp. Inspect actual wiring. Review upstream changelogs before updating, make required compatibility fixes and regression tests, and run format/compile plus tests covering affected runtime and tooling boundaries. Do not add new product features, change agent model pins, replace registry deps with git/path sources, or restart the server. Report genuine solver/upstream blockers precisely. All manifest/lock updates belong together. Difficulty 4: coupled runtime/tooling upgrades; benefit 7: explicitly requested freshness. The dependency-update convenience helper failed before creating tasks with unsupported System.cmd option :input; this task is created through the standard rmap CLI and runs through the ordinary reviewer gate.",
+      "created_at": "2026-10-31",
+      "scored_at": "2026-10-31",
+      "cross_repo": []
     }
   ]
 }

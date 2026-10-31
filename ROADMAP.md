@@ -9,7 +9,7 @@
 ## 🎯 Current Focus
 
 <!-- FOCUS:BEGIN -->
-**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (25 of 32 done · 0 in progress)
+**Focus phase:** 23 — Audit Hardening — findings from the 2026-07-12 project health audit (25 of 33 done · 0 in progress)
 
 **Last shipped:** no recent shipments
 
@@ -76,14 +76,14 @@
 | Task 59 | ✅ | 🎁 **multi-agent** · Cross-agent grader as a repair-loop move (gated, asymmetric, budgeted) [D:5/B:5/U:4 → Eff:0.9?] ⚠️ |
 | Task 67 | ✅ | 🎁 **multi-agent** · 🐛 Audit-surfaced: Batch.run_pinned settles entire pinned queue on one adapter's pre-dispatch unavailability [D:3/B:5/U:5 → Eff:1.67?] 🚀 |
 | Task 187 | ✅ | 🎁 **multi-agent** · Flip Antigravity worktree_isolation to true — agy 1.0.5 honors port cwd (Task 32 finding is stale) [D:2/B:5/U:5 → Eff:2.5?] 🎯 |
-| Task 366 `[P]` | ⬜ | 🎁 **multi-agent** · Integrate the package-owned Kimi adapter across harness surfaces [D:4/B:5/U:5 → Eff:1.25] 📋 |
-| Task 421 | ✅ | 🎁 **multi-agent** · Prepare keyed project caches before agent fan-out [D:6/B:8/U:8 → Eff:1.33] 📋 |
-| Task 422 | ✅ | 🎁 **multi-agent** · Consume explicitly prepared test database templates for isolated runs [D:5/B:6/U:5 → Eff:1.1] 📋 |
-| Task 423 | ✅ | 🎁 **multi-agent** · Preserve project cache generations across explicit non-build input changes [D:4/B:7/U:7 → Eff:1.75] 🚀 |
-| Task 425 | ✅ | 🎁 **multi-agent** · Reuse dependency and PLT build work across application-only task landings [D:6/B:7/U:7 → Eff:1.17] 📋 |
-| Task 429 | ⬜ | 🎁 **multi-agent** · 🐛 ProjectCache is Linux-only: make its runtime prerequisites and tests pass on a macOS operator machine so the architect-seat mix ci gate can go green there [D:4/B:5/U:4 → Eff:1.12] 📋 |
-| Task 430 | ✅ | 🎁 **contract** · 🐛 Vendor the AGENTS.md generator into the repo so a dispatched agent can regenerate it instead of hand-editing a generated file [D:4/B:7/U:7 → Eff:1.75] 🚀 |
-| Task 442 | 🔶 | 🎁 **multi-agent** · Add and verify the Kimi adapter in its owning package [D:5/B:5/U:5 → Eff:1.0] 📋 ⛔ Paused at operator request; resume only on explicit operator instruction. |
+| Task 366 `[P]` | ⬜ | 🎁 **multi-agent** · Integrate the package-owned Kimi adapter across harness surfaces [D:4/B:5/U:5 → Eff:1.25?] 📋 |
+| Task 421 | ✅ | 🎁 **multi-agent** · Prepare keyed project caches before agent fan-out [D:6/B:8/U:8 → Eff:1.33?] 📋 |
+| Task 422 | ✅ | 🎁 **multi-agent** · Consume explicitly prepared test database templates for isolated runs [D:5/B:6/U:5 → Eff:1.1?] 📋 |
+| Task 423 | ✅ | 🎁 **multi-agent** · Preserve project cache generations across explicit non-build input changes [D:4/B:7/U:7 → Eff:1.75?] 🚀 |
+| Task 425 | ✅ | 🎁 **multi-agent** · Reuse dependency and PLT build work across application-only task landings [D:6/B:7/U:7 → Eff:1.17?] 📋 |
+| Task 429 | ⬜ | 🎁 **multi-agent** · 🐛 ProjectCache is Linux-only: make its runtime prerequisites and tests pass on a macOS operator machine so the architect-seat mix ci gate can go green there [D:4/B:5/U:4 → Eff:1.12?] 📋 |
+| Task 430 | ✅ | 🎁 **contract** · 🐛 Vendor the AGENTS.md generator into the repo so a dispatched agent can regenerate it instead of hand-editing a generated file [D:4/B:7/U:7 → Eff:1.75?] 🚀 |
+| Task 442 | 🔶 | 🎁 **multi-agent** · Add and verify the Kimi adapter in its owning package [D:5/B:5/U:5 → Eff:1.0?] 📋 ⛔ Paused at operator request; resume only on explicit operator instruction. |
 | Task 473 | ✅ | 🎁 **multi-agent** · 🐛 Bound project-cache generation disk usage (no eviction exists) [D:3/B:7/U:8 → Eff:2.5] 🎯 |
 <!-- TASKS:END -->
 
@@ -107,7 +107,7 @@
 | Task | Status | Notes |
 |------|--------|-------|
 | Task 17 | ⛔ | 🎁 **deferred** · Agent-shaped surface — MCP tools + JSON CLI [D:6/B:8/U:8 → Eff:1.33?] 📋 |
-| Task 21 | 🔶 | 🎁 **deferred** · Reassess ACP for a named execution capability unavailable through native adapters [D:3/B:4/U:2 → Eff:1.0] 📋 ⛔ Needs a named ACP backend/workload with verified operator-acceptable authentication and billing; historical Claude-specific evidence does not establish a global ACP blocker. |
+| Task 21 | 🔶 | 🎁 **deferred** · Reassess ACP for a named execution capability unavailable through native adapters [D:3/B:4/U:2 → Eff:1.0?] 📋 ⛔ Needs a named ACP backend/workload with verified operator-acceptable authentication and billing; historical Claude-specific evidence does not establish a global ACP blocker. |
 | Task 80 | ⛔ | 🎁 **deferred** · Harness.Dashboard.RoadmapLive — multi-project rmap-next browser with 1-click dispatch [D:3/B:5/U:4 → Eff:1.5?] 🚀 |
 | Task 81 | ✅ | 🎁 **dashboard-chrome** · Harness.Dashboard.CompareLive — A/B agent-evaluation view [D:3/B:4/U:3 → Eff:1.17?] 📋 |
 | Task 97 | ✅ | 🎁 **deferred** · Reconcile harness verification stack vs project mix precommit [D:4/B:7/U:6 → Eff:1.62?] 🚀 |
@@ -201,7 +201,7 @@
 | Task 168 | ⛔ | 🎁 **reviewer-pair** · Worktree/branch collision wedges Oban retries — clean up retained worktree+branch before a same-run_id re-attempt [D:3/B:8/U:8 → Eff:2.67?] 🎯 |
 | Task 169 | ⛔ | 🎁 **reviewer-pair** · Agent compile errors surfacing in verification SETUP are misclassified as environment failures — route them to the reviewer [D:4/B:8/U:8 → Eff:2.0?] 🎯 |
 | Task 173 | ✅ | 🎁 **reviewer-pair** · 🚀 **v0_11** · Deterministic full-pipeline E2E test: roadmap task → Oban dispatch → run → verify → review → land → writeback in one flow [D:4/B:7/U:7 → Eff:1.75?] 🚀 |
-| Task 174 | ✅ | 🎁 **reviewer-pair** · Live-agent E2E smoke test: one real headless agent CLI through the full pipeline, :integration/:live_agent tagged [D:4/B:7/U:6 → Eff:1.62] 🚀 |
+| Task 174 | ✅ | 🎁 **reviewer-pair** · Live-agent E2E smoke test: one real headless agent CLI through the full pipeline, :integration/:live_agent tagged [D:4/B:7/U:6 → Eff:1.62?] 🚀 |
 | Task 179 | ⛔ | 🎁 **reviewer-pair** · SMOKE: add a one-sentence summary line to Harness.LineBuffer @moduledoc [D:1/B:1/U:1 → Eff:1.0?] 📋 |
 | Task 183 | ⛔ | 🎁 **agent-gate** · Smoke test (throwaway): add Harness.LineBuffer.empty?/1 predicate + test [D:1/B:1/U:1 → Eff:1.0?] 📋 |
 | Task 186 | ✅ | 🎁 **agent-gate** · 🔒 Neuter the push remote in harness-created worktrees so in-run agents can't push/PR past landing_policy [D:3/B:6/U:5 → Eff:1.83?] 🚀 |
@@ -272,9 +272,9 @@
 | Task 344 | ✅ | 🎁 **autolanding** · Land-conflict resolver AI cannot spawn: claude adapter has no configured agent_model [D:2/B:6/U:6 → Eff:3.0?] 🎯 |
 | Task 351 `[P]` | ✅ | 🎁 **autolanding** · 🐛 TaskIdRewriter misses unquoted integer task ids — collision reassignment silently no-ops for integer-id projects [D:2/B:5/U:4 → Eff:2.25?] 🎯 |
 | Task 375 | ✅ | 🎁 **config-surface** · 🚀 **v0_16** · 🐛 Validate optional %Harness.Project{} fields at registration — an uncast concurrency_cap silently kills batch dispatch [D:2/B:6/U:6 → Eff:3.0?] 🎯 |
-| Task 412 | ⬜ | 🎁 **config-surface** · 🔒 Harden project-scoped agent execution policy [D:6/B:8/U:7 → Eff:1.25] 📋 |
+| Task 412 | ⬜ | 🎁 **config-surface** · 🔒 Harden project-scoped agent execution policy [D:6/B:8/U:7 → Eff:1.25?] 📋 |
 | Task 416 | ✅ | 🎁 **reviewer-pair** · 🐛 Fix post-merge cold-check red for 1e345b9 [D:3/B:8/U:5 → Eff:2.17?] 🎯 |
-| Task 432 | ⛔ | 🎁 **reviewer-pair** · 🐛 Diagnose and pin cold-check dependency bootstrap behavior [D:3/B:5/U:4 → Eff:1.5] 🚀 |
+| Task 432 | ⛔ | 🎁 **reviewer-pair** · 🐛 Diagnose and pin cold-check dependency bootstrap behavior [D:3/B:5/U:4 → Eff:1.5?] 🚀 |
 <!-- TASKS:END -->
 
 ---
@@ -344,21 +344,21 @@
 | Task 411 | ✅ | 🎁 **agent-gate** · 🐛 run_records read path discards a whole row when one persisted atom is absent from the reading node [D:3/B:6/U:5 → Eff:1.83?] 🚀 |
 | Task 415 | ✅ | 🎁 **agent-gate** · 🐛 Close the last AgentAdapter.Driver bypass and make the single-entry-point invariant a test [D:4/B:7/U:7 → Eff:1.75?] 🚀 |
 | Task 418 | ✅ | 🎁 **contract** · Publish Task 392 tree-kill in harness_agent_adapter and restore the git dependency pin [D:4/B:7/U:7 → Eff:1.75?] 🚀 |
-| Task 433 | ✅ | 🎁 **operator-surface** · 🐛 Suite-health check leaks its test database on every successful run [D:3/B:7/U:6 → Eff:2.17] 🎯 |
-| Task 434 | ⬜ | 🎁 **operator-surface** · Orphan test-database sweeper — the Worktree.Sweeper equivalent for scratch DBs [D:7/B:7/U:6 → Eff:0.93] ⚠️ |
-| Task 437 | ✅ | 🎁 **operator-surface** · 🐛 Suite-health never runs deps.get — its guard is unreachable because warm paths always seed deps/ [D:3/B:7/U:6 → Eff:2.17] 🎯 |
-| Task 438 | ⬜ | 🎁 **operator-surface** · 🐛 A failed suite-health bootstrap is silently dropped — inspect(reason) overflows skip_reason varchar(255) [D:4/B:8/U:7 → Eff:1.88] 🚀 |
-| Task 450 | ✅ | 🎁 **audit-hygiene** · Clear the 10 ex_dna clones that fail mix precommit.full [D:5/B:7/U:6 → Eff:1.3] 📋 |
-| Task 453 | ✅ | 🎁 **core-loop** · 🐛 Make Worktree Reclaim report incomplete inspection instead of an empty backlog [D:4/B:6/U:5 → Eff:1.38] 📋 |
-| Task 454 | ⬜ | 🎁 **audit-agent** · 🐛 Pin audit adapter and model to one validated settings snapshot [D:3/B:5/U:4 → Eff:1.5] 🚀 |
-| Task 455 | ⬜ | 🎁 **audit-hygiene** · 🐛 Repair model configuration isolation behind the integrated Cron and Maintenance failures [D:4/B:6/U:5 → Eff:1.38] 📋 |
-| Task 456 | ⛔ | 🎁 **audit-hygiene** · 🐛 Make the AgentDriver Codex-channel fixture available before asynchronous tests run [D:2/B:4/U:4 → Eff:2.0] 🎯 |
-| Task 457 | ⬜ | 🎁 **audit-hygiene** · 🐛 Complete private security triage from integrated QA [D:4/B:5/U:4 → Eff:1.12] 📋 |
-| Task 458 | ⬜ | 🎁 **core-loop** · 🐛 Stop Task 386's writeback gating from permanently stranding an already-pushed run [D:4/B:8/U:7 → Eff:1.88] 🚀 |
-| Task 460 `[P]` | ⬜ | 🎁 **core-loop** · 🐛 A project without a target branch must not disable Worktree Reclaim for the whole fleet [D:2/B:6/U:6 → Eff:3.0] 🎯 |
-| Task 462 | ⬜ | 🎁 **reviewer-pair** · 🐛 Stop a reviewer from approving a delivery it authored on an empty implementer diff [D:4/B:8/U:7 → Eff:1.88] 🚀 |
-| Task 463 | ⬜ | 🎁 **run-history** · 🐛 Never attribute a landed SHA to a failed or unapproved run [D:3/B:7/U:6 → Eff:2.17] 🎯 |
-| Task 464 | ⬜ | 🎁 **audit-hygiene** · 🐛 Make the test suite refuse to write to a non-test database [D:3/B:9/U:7 → Eff:2.67] 🎯 |
+| Task 433 | ✅ | 🎁 **operator-surface** · 🐛 Suite-health check leaks its test database on every successful run [D:3/B:7/U:6 → Eff:2.17?] 🎯 |
+| Task 434 | ⬜ | 🎁 **operator-surface** · Orphan test-database sweeper — the Worktree.Sweeper equivalent for scratch DBs [D:7/B:7/U:6 → Eff:0.93?] ⚠️ |
+| Task 437 | ✅ | 🎁 **operator-surface** · 🐛 Suite-health never runs deps.get — its guard is unreachable because warm paths always seed deps/ [D:3/B:7/U:6 → Eff:2.17?] 🎯 |
+| Task 438 | ⬜ | 🎁 **operator-surface** · 🐛 A failed suite-health bootstrap is silently dropped — inspect(reason) overflows skip_reason varchar(255) [D:4/B:8/U:7 → Eff:1.88?] 🚀 |
+| Task 450 | ✅ | 🎁 **audit-hygiene** · Clear the 10 ex_dna clones that fail mix precommit.full [D:5/B:7/U:6 → Eff:1.3?] 📋 |
+| Task 453 | ✅ | 🎁 **core-loop** · 🐛 Make Worktree Reclaim report incomplete inspection instead of an empty backlog [D:4/B:6/U:5 → Eff:1.38?] 📋 |
+| Task 454 | ⬜ | 🎁 **audit-agent** · 🐛 Pin audit adapter and model to one validated settings snapshot [D:3/B:5/U:4 → Eff:1.5?] 🚀 |
+| Task 455 | ⬜ | 🎁 **audit-hygiene** · 🐛 Repair model configuration isolation behind the integrated Cron and Maintenance failures [D:4/B:6/U:5 → Eff:1.38?] 📋 |
+| Task 456 | ⛔ | 🎁 **audit-hygiene** · 🐛 Make the AgentDriver Codex-channel fixture available before asynchronous tests run [D:2/B:4/U:4 → Eff:2.0?] 🎯 |
+| Task 457 | ⬜ | 🎁 **audit-hygiene** · 🐛 Complete private security triage from integrated QA [D:4/B:5/U:4 → Eff:1.12?] 📋 |
+| Task 458 | ⬜ | 🎁 **core-loop** · 🐛 Stop Task 386's writeback gating from permanently stranding an already-pushed run [D:4/B:8/U:7 → Eff:1.88?] 🚀 |
+| Task 460 `[P]` | ⬜ | 🎁 **core-loop** · 🐛 A project without a target branch must not disable Worktree Reclaim for the whole fleet [D:2/B:6/U:6 → Eff:3.0?] 🎯 |
+| Task 462 | ⬜ | 🎁 **reviewer-pair** · 🐛 Stop a reviewer from approving a delivery it authored on an empty implementer diff [D:4/B:8/U:7 → Eff:1.88?] 🚀 |
+| Task 463 | ⬜ | 🎁 **run-history** · 🐛 Never attribute a landed SHA to a failed or unapproved run [D:3/B:7/U:6 → Eff:2.17?] 🎯 |
+| Task 464 | ⬜ | 🎁 **audit-hygiene** · 🐛 Make the test suite refuse to write to a non-test database [D:3/B:9/U:7 → Eff:2.67?] 🎯 |
 <!-- TASKS:END -->
 
 ---
@@ -370,7 +370,7 @@
 |------|--------|-------|
 | Task 358 | ✅ | 🎁 **audit-perf** · 🚀 **v0_16** · Bound KPI dashboard fleet-wide aggregate reads on run settlement [D:3/B:5/U:4 → Eff:1.5?] 🚀 |
 | Task 359 | ✅ | 🎁 **audit-architecture** · 🚀 **v0_16** · Separate Dispatch concerns behind the existing public facade [D:5/B:5/U:4 → Eff:0.9?] ⚠️ |
-| Task 360 | ⬜ | 🎁 **audit-architecture** · 🚀 **v0_16** · Enforce consumer-to-core dependency boundaries and remove accidental reverse edges [D:7/B:6/U:4 → Eff:0.71] ⚠️ |
+| Task 360 | ⬜ | 🎁 **audit-architecture** · 🚀 **v0_16** · Enforce consumer-to-core dependency boundaries and remove accidental reverse edges [D:7/B:6/U:4 → Eff:0.71?] ⚠️ |
 | Task 361 | ✅ | 🎁 **audit-tests** · 🚀 **v0_16** · Add direct coverage for Harness.Store.EtsScope create/lookup and owner-exit table ownership [D:2/B:5/U:4 → Eff:2.25?] 🎯 |
 | Task 362 | ✅ | 🎁 **audit-tests** · 🚀 **v0_16** · 🐛 Diagnose and eliminate the AgentRegistry empty-registry test flake [D:4/B:6/U:5 → Eff:1.38?] 📋 |
 | Task 363 | ✅ | 🎁 **audit-hygiene** · 🚀 **v0_16** · 📝 🔒 Document the mountable-consumer auth boundary for the dashboard / Oban Web / MCP router [D:1/B:5/U:4 → Eff:4.5?] 🎯 |
@@ -378,7 +378,7 @@
 | Task 365 | ✅ | 🎁 **run-history** · 🐛 ResultStore.Postgres list/aggregate path fails whole query on atom decode — tolerant row decode like the File store [D:3/B:7/U:7 → Eff:2.33?] 🎯 |
 | Task 372 | ⛔ | 🎁 **dashboard-observability** · Persist witness events as a shared, queryable human+agent timeline [D:3/B:5/U:4 → Eff:1.5?] 🚀 |
 | Task 373 | ⛔ | 🎁 **run-history** · 🚀 **v0_17** · Per-adapter/model activity trail across runs and agent seats [D:5/B:6/U:6 → Eff:1.2?] 📋 |
-| Task 374 | ⬜ | 🎁 **run-history** · 🚀 **v0_17** · Unify lifecycle event history and bounded actor queries with explicit durability guarantees [D:8/B:7/U:7 → Eff:0.88] ⚠️ |
+| Task 374 | ⬜ | 🎁 **run-history** · 🚀 **v0_17** · Unify lifecycle event history and bounded actor queries with explicit durability guarantees [D:8/B:7/U:7 → Eff:0.88?] ⚠️ |
 | Task 376 | ✅ | 🎁 **test-suite-perf** · Landing tests leak an empty temp repo dir per run into the shared worktree root [D:2/B:4/U:5 → Eff:2.25?] 🎯 |
 | Task 377 | ✅ | 🎁 **resilience** · Retry safe post-land cleanup and reclaim historical run branches/worktree orphans [D:4/B:5/U:5 → Eff:1.25?] 📋 |
 | Task 378 `[P]` | ✅ | 🎁 **roadmap-durability** · Durable roadmap writes ignore roadmap_path and push tasks.toml into the source repo [D:4/B:7/U:7 → Eff:1.75?] 🚀 |
@@ -396,10 +396,11 @@
 | Task 413 | ✅ | 🎁 **witness-legibility** · Surface an in-flight audit signal on the fleet count strip, not just the ops panel [D:4/B:7/U:6 → Eff:1.62?] 🚀 |
 | Task 414 | ✅ | 🎁 **config-surface** · 🐛 Give dispatch-register_project a typed languages schema so MCP clients can send a JSON array [D:3/B:7/U:6 → Eff:2.17?] 🎯 |
 | Task 417 | ✅ | 🎁 **resilience** · 🐛 Delivery staging must never carry a symlink or dependency/build artifact — a leaked deps symlink destroyed the base checkout [D:3/B:9/U:8 → Eff:2.83?] 🎯 |
-| Task 424 | ✅ | 🎁 **roadmap-writeback** · 🐛 Sync the roadmap checkout (fetch + ff-only) before ingest and writeback so dispatch reads the tasks that are actually on origin [D:3/B:7/U:6 → Eff:2.17] 🎯 |
-| Task 428 | ✅ | 🎁 **resilience** · Node-pressure gate samples a naive RSS sum, not memory headroom — switch to MemAvailable and give the mark an env override [D:3/B:5/U:4 → Eff:1.5] 🚀 |
-| Task 465 | ⬜ | 🎁 **roadmap-writeback** · 🐛 Route audit discovery filings into the separate roadmap repository for split-roadmap projects [D:4/B:6/U:5 → Eff:1.38] 📋 |
-| Task 466 | ⬜ | 🎁 **audit-hygiene** · 🐛 Injected .cursor/rules/harness-operational.mdc still lands in agent-delivery commits [D:3/B:6/U:6 → Eff:2.0] 🎯 |
+| Task 424 | ✅ | 🎁 **roadmap-writeback** · 🐛 Sync the roadmap checkout (fetch + ff-only) before ingest and writeback so dispatch reads the tasks that are actually on origin [D:3/B:7/U:6 → Eff:2.17?] 🎯 |
+| Task 428 | ✅ | 🎁 **resilience** · Node-pressure gate samples a naive RSS sum, not memory headroom — switch to MemAvailable and give the mark an env override [D:3/B:5/U:4 → Eff:1.5?] 🚀 |
+| Task 465 | ⬜ | 🎁 **roadmap-writeback** · 🐛 Route audit discovery filings into the separate roadmap repository for split-roadmap projects [D:4/B:6/U:5 → Eff:1.38?] 📋 |
+| Task 466 | ⬜ | 🎁 **audit-hygiene** · 🐛 Injected .cursor/rules/harness-operational.mdc still lands in agent-delivery commits [D:3/B:6/U:6 → Eff:2.0?] 🎯 |
+| Task 478 | ⬜ | 🎁 **audit-hygiene** · Update all repository libraries and verify compatibility [D:4/B:7/U:6 → Eff:1.62] 🚀 |
 <!-- TASKS:END -->
 
 ---
@@ -410,21 +411,21 @@
 | Task | Status | Notes |
 |------|--------|-------|
 | Task 387 `[P]` | ✅ | 🎁 **operator-cockpit** · 🚀 **v0_18** · Build a fleet task Kanban from rmap and Harness lifecycle facts [D:5/B:8/U:7 → Eff:1.5?] 🚀 |
-| Task 388 | ✅ | 🎁 **operator-cockpit** · 🚀 **v0_18** · Add an operator Action Inbox over existing recovery and approval contracts [D:5/B:8/U:7 → Eff:1.5] 🚀 |
+| Task 388 | ✅ | 🎁 **operator-cockpit** · 🚀 **v0_18** · Add an operator Action Inbox over existing recovery and approval contracts [D:5/B:8/U:7 → Eff:1.5?] 🚀 |
 | Task 406 `[P]` | ✅ | 🎁 **witness-legibility** · Run-detail becomes where a failure is diagnosed and acted on [D:3/B:8/U:6 → Eff:2.33?] 🎯 |
 | Task 407 `[P]` | ✅ | 🎁 **witness-legibility** · 🐛 Split the run-state bucket vocabulary and recompose the index around it [D:3/B:7/U:6 → Eff:2.17?] 🎯 |
 | Task 408 `[P]` | ✅ | 🎁 **witness-legibility** · Responsive strategy for the dashboard [D:3/B:6/U:5 → Eff:1.83?] 🚀 |
 | Task 409 `[P]` | ✅ | 🎁 **witness-legibility** · Surface the reviewer's testimony on the run row and detail [D:4/B:7/U:5 → Eff:1.5?] 🚀 |
-| Task 441 | ⬜ | 🎁 **operator-cockpit** · 🚀 **v0_18** · Expose bounded durable lifecycle Activity in the operator dashboard [D:4/B:6/U:6 → Eff:1.5] 🚀 |
-| Task 443 | ✅ | 🎁 **operator-cockpit** · Add Run Insights to observe runs and track recurring problems [D:8/B:8/U:5 → Eff:0.81] ⚠️ |
-| Task 444 | ✅ | 🎁 **repo-maintenance** · Add autonomous maintenance sweeps across opted-in repositories [D:8/B:9/U:6 → Eff:0.94] ⚠️ |
-| Task 445 | ✅ | 🎁 **operator-cockpit** · Correct Run Insights evidence and finding memory, support Codex, and finish its dashboard UX [D:8/B:9/U:8 → Eff:1.06] 📋 |
-| Task 447 | ✅ | 🎁 **audit-agent** · Extend post-merge audit into durable full-project QA independent of dispatch checks [D:7/B:9/U:8 → Eff:1.21] 📋 |
-| Task 448 | ✅ | 🎁 **audit-agent** · Roll out focused dispatch checks and full audit QA across all registered projects [D:6/B:8/U:7 → Eff:1.25] 📋 |
-| Task 449 | ✅ | 🎁 **audit-agent** · Provide a unified QA dashboard with evidence, start/retry and rollout visibility [D:5/B:8/U:6 → Eff:1.4] 📋 |
-| Task 451 | ✅ | 🎁 **operator-cockpit** · 🐛 Reconcile Insights with revision-bound inline repairs and current workflow decisions [D:6/B:8/U:7 → Eff:1.25] 📋 |
-| Task 452 | ✅ | 🎁 **operator-cockpit** · 🐛 Expose incomplete roadmap coverage in the Action Inbox [D:4/B:7/U:6 → Eff:1.62] 🚀 |
-| Task 459 | ⬜ | 🎁 **operator-cockpit** · 🐛 Bound Insights evidence assembly: per-pass project paging, honest completeness, and capped QA transcripts [D:4/B:7/U:7 → Eff:1.75] 🚀 |
+| Task 441 | ⬜ | 🎁 **operator-cockpit** · 🚀 **v0_18** · Expose bounded durable lifecycle Activity in the operator dashboard [D:4/B:6/U:6 → Eff:1.5?] 🚀 |
+| Task 443 | ✅ | 🎁 **operator-cockpit** · Add Run Insights to observe runs and track recurring problems [D:8/B:8/U:5 → Eff:0.81?] ⚠️ |
+| Task 444 | ✅ | 🎁 **repo-maintenance** · Add autonomous maintenance sweeps across opted-in repositories [D:8/B:9/U:6 → Eff:0.94?] ⚠️ |
+| Task 445 | ✅ | 🎁 **operator-cockpit** · Correct Run Insights evidence and finding memory, support Codex, and finish its dashboard UX [D:8/B:9/U:8 → Eff:1.06?] 📋 |
+| Task 447 | ✅ | 🎁 **audit-agent** · Extend post-merge audit into durable full-project QA independent of dispatch checks [D:7/B:9/U:8 → Eff:1.21?] 📋 |
+| Task 448 | ✅ | 🎁 **audit-agent** · Roll out focused dispatch checks and full audit QA across all registered projects [D:6/B:8/U:7 → Eff:1.25?] 📋 |
+| Task 449 | ✅ | 🎁 **audit-agent** · Provide a unified QA dashboard with evidence, start/retry and rollout visibility [D:5/B:8/U:6 → Eff:1.4?] 📋 |
+| Task 451 | ✅ | 🎁 **operator-cockpit** · 🐛 Reconcile Insights with revision-bound inline repairs and current workflow decisions [D:6/B:8/U:7 → Eff:1.25?] 📋 |
+| Task 452 | ✅ | 🎁 **operator-cockpit** · 🐛 Expose incomplete roadmap coverage in the Action Inbox [D:4/B:7/U:6 → Eff:1.62?] 🚀 |
+| Task 459 | ⬜ | 🎁 **operator-cockpit** · 🐛 Bound Insights evidence assembly: per-pass project paging, honest completeness, and capped QA transcripts [D:4/B:7/U:7 → Eff:1.75?] 🚀 |
 <!-- TASKS:END -->
 
 ---
@@ -434,14 +435,14 @@
 <!-- TASKS:BEGIN phase=25 -->
 | Task | Status | Notes |
 |------|--------|-------|
-| Task 394 | ⬜ | 🎁 **gate-runner** · Gate runner: declare check dependencies, run independent gates in parallel, capture one log per gate [D:6/B:6/U:6 → Eff:1.0] 📋 |
-| Task 395 | ⬜ | 🎁 **doc-governance** · Move settled rationale and postmortems out of the eager floor into decision records, with a portable word-ceiling gate [D:4/B:7/U:7 → Eff:1.75] 🚀 |
+| Task 394 | ⬜ | 🎁 **gate-runner** · Gate runner: declare check dependencies, run independent gates in parallel, capture one log per gate [D:6/B:6/U:6 → Eff:1.0?] 📋 |
+| Task 395 | ⬜ | 🎁 **doc-governance** · Move settled rationale and postmortems out of the eager floor into decision records, with a portable word-ceiling gate [D:4/B:7/U:7 → Eff:1.75?] 🚀 |
 | Task 419 | ✅ | 🎁 **core-loop** · 🐛 Dispatch reads a local checkout the lander never syncs, so a landed task stays pending and re-dispatches forever [D:5/B:9/U:9 → Eff:1.8?] 🚀 |
 | Task 420 `[P]` | ✅ | 🎁 **core-loop** · Every ready-set consumer syncs the roadmap checkout before selecting work, the cron poller included, and refuses only when the sync skips; display reads never sync [D:4/B:6/U:5 → Eff:1.38?] 📋 |
-| Task 427 | ✅ | 🎁 **core-loop** · 🐛 Persist recoverable run outcomes during graceful node shutdown [D:6/B:9/U:8 → Eff:1.42] 📋 |
-| Task 431 | ✅ | 🎁 **core-loop** · 🐛 Cron orchestrator counts in-flight from rmap in_progress, so a manual-landing project deadlocks permanently at its concurrency cap [D:3/B:8/U:8 → Eff:2.67] 🎯 |
-| Task 436 | ⬜ | 🎁 **core-loop** · 🐛 Make the host-local dependency bootstrap fix reproducible from version control [D:4/B:7/U:6 → Eff:1.62] 🚀 |
-| Task 439 | ✅ | 🎁 **core-loop** · 🐛 Keep legitimate long-running jobs anchored while retaining crash rescue [D:4/B:8/U:7 → Eff:1.88] 🚀 |
-| Task 440 | ⬜ | 🎁 **core-loop** · 🐛 Bound MCP SSE transport shutdown independently of connection count [D:4/B:6/U:5 → Eff:1.38] 📋 |
-| Task 446 | ✅ | 🎁 **core-loop** · 🐛 Cron planner distinguishes verified empty history from missing recovery evidence [D:2/B:8/U:8 → Eff:4.0] 🎯 |
+| Task 427 | ✅ | 🎁 **core-loop** · 🐛 Persist recoverable run outcomes during graceful node shutdown [D:6/B:9/U:8 → Eff:1.42?] 📋 |
+| Task 431 | ✅ | 🎁 **core-loop** · 🐛 Cron orchestrator counts in-flight from rmap in_progress, so a manual-landing project deadlocks permanently at its concurrency cap [D:3/B:8/U:8 → Eff:2.67?] 🎯 |
+| Task 436 | ⬜ | 🎁 **core-loop** · 🐛 Make the host-local dependency bootstrap fix reproducible from version control [D:4/B:7/U:6 → Eff:1.62?] 🚀 |
+| Task 439 | ✅ | 🎁 **core-loop** · 🐛 Keep legitimate long-running jobs anchored while retaining crash rescue [D:4/B:8/U:7 → Eff:1.88?] 🚀 |
+| Task 440 | ⬜ | 🎁 **core-loop** · 🐛 Bound MCP SSE transport shutdown independently of connection count [D:4/B:6/U:5 → Eff:1.38?] 📋 |
+| Task 446 | ✅ | 🎁 **core-loop** · 🐛 Cron planner distinguishes verified empty history from missing recovery evidence [D:2/B:8/U:8 → Eff:4.0?] 🎯 |
 <!-- TASKS:END -->

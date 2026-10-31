@@ -14686,3 +14686,18 @@ model = "gpt-6-astra"
 body = "Landed commits must not carry agent attribution trailers. The operator does not want Co-authored-by footers in any repo. Observed in ZenHive/mpp: reviewer-fix commits made during cursor review runs carry `Co-authored-by: Cursor <cursoragent@cursor.com>` (b29fe65, ef0d453, bcc232a, 154db8f, 0065e24), while implementer deliveries committed by harness do not. Premise unverified: whether the trailer is added by the cursor CLI on its own commit or elsewhere; confirm before choosing the fix. Prefer disabling the attribution at its source (adapter/CLI configuration) over rewriting messages; if only rewriting is possible, strip the trailer before the branch is landed, never after a push. Applies to every adapter that can commit, not only cursor."
 created_at = "2026-10-03"
 scored_at = "2026-10-03"
+
+[[task]]
+id = "478"
+phase = 23
+bundle = "audit-hygiene"
+status = "pending"
+title = "Update all repository libraries and verify compatibility"
+scores = { d = 4, b = 7, u = 6 }
+acceptance_criteria = ["All repository library ecosystems and separately pinned JS tools are inventoried; latest stable upgrades are applied or a concrete upstream incompatibility is evidenced.", "Hex direct and transitive updates resolve together; no git/path dependency substitutes or unrelated feature additions.", "Required compatibility fixes have regression coverage; format, compile and affected runtime/tooling tests pass, with exact commands and honest missing checks in the review.", "Report before/after versions and remaining outdated packages using fresh registry evidence."]
+files_to_modify = ["mix.exs", "mix.lock", ".mcp.json"]
+assignee = "codex"
+model = "gpt-6-astra"
+body = "Operator request: update all libraries (JavaScript, Elixir, etc.) in harness. Inventory every actual dependency manifest and separately pinned JS/tool asset; update to latest stable published releases, including direct and transitive Hex dependencies and required constraint changes. The 2026-10-31 live scan found 16 direct updates including muontrap 1.8.0 -> 2.0.1, anubis_mcp 2.0.0 -> 2.2.0, ex_ast 0.12.10 -> 0.16.0 and volt 0.14.12 -> 0.23.0. Refresh this evidence from registries. No npm manifest was found locally; Phoenix JS may be supplied by Hex, and .mcp.json pins chrome-devtools-mcp. Inspect actual wiring. Review upstream changelogs before updating, make required compatibility fixes and regression tests, and run format/compile plus tests covering affected runtime and tooling boundaries. Do not add new product features, change agent model pins, replace registry deps with git/path sources, or restart the server. Report genuine solver/upstream blockers precisely. All manifest/lock updates belong together. Difficulty 4: coupled runtime/tooling upgrades; benefit 7: explicitly requested freshness. The dependency-update convenience helper failed before creating tasks with unsupported System.cmd option :input; this task is created through the standard rmap CLI and runs through the ordinary reviewer gate."
+created_at = "2026-10-31"
+scored_at = "2026-10-31"
