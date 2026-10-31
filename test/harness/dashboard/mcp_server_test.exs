@@ -285,6 +285,51 @@ defmodule Harness.Dashboard.MCPServerTest do
                :persistent_term.get({Anubis.Server.Supervisor, MCPServer, :session_config})
     end
 
+    test "stateless clients can list harness tools without initializing a session" do
+      message = %{
+        "jsonrpc" => "2.0",
+        "id" => 1,
+        "method" => "tools/list",
+        "params" => %{
+          "_meta" => %{
+            "io.modelcontextprotocol/protocolVersion" => "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities" => %{}
+          }
+        }
+      }
+
+      result =
+        :post
+        |> Plug.Test.conn("/", Jason.encode!(message))
+        |> Plug.Conn.put_req_header("content-type", "application/json")
+        |> Plug.Conn.put_req_header("accept", "application/json")
+        |> Plug.Conn.put_req_header("mcp-protocol-version", "2026-07-28")
+        |> Plug.Conn.put_req_header("mcp-method", "tools/list")
+        |> parse_body()
+        |> MCPPlug.call(plug_opts())
+
+      assert result.status == 200
+      assert Plug.Conn.get_resp_header(result, "mcp-session-id") == []
+      assert %{"id" => 1, "result" => %{"tools" => tools}} = Jason.decode!(result.resp_body)
+      assert Enum.any?(tools, &(&1["name"] == "dispatch-await_runs"))
+      refute Map.has_key?(Jason.decode!(result.resp_body), "error")
+    end
+
+    test "stateless requests without protocol metadata are rejected" do
+      result =
+        :post
+        |> Plug.Test.conn("/", Jason.encode!(%{"jsonrpc" => "2.0", "id" => 1, "method" => "tools/list"}))
+        |> Plug.Conn.put_req_header("content-type", "application/json")
+        |> Plug.Conn.put_req_header("accept", "application/json")
+        |> Plug.Conn.put_req_header("mcp-protocol-version", "2026-07-28")
+        |> Plug.Conn.put_req_header("mcp-method", "tools/list")
+        |> parse_body()
+        |> MCPPlug.call(plug_opts())
+
+      assert result.status == 400
+      assert %{"id" => 1, "error" => %{"code" => -32_602}} = Jason.decode!(result.resp_body)
+    end
+
     test "initialize from claude-code 2.1.153 (protocol 2025-11-25) returns 200 with the harness tools capability" do
       body =
         Jason.encode!(%{

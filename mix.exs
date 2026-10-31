@@ -132,12 +132,12 @@ defmodule Harness.MixProject do
       {:muontrap, "~> 1.8"},
       {:ecto_sql, "~> 3.13"},
       {:postgrex, ">= 0.0.0"},
-      {:oban, "~> 2.22"},
+      {:oban, "~> 2.24"},
       # Time-zone database for Oban's Cron plugin. Without it Elixir ships only
       # `Calendar.UTCOnlyTimeZoneDatabase`, so a `timezone:` cron entry raises
       # and every daily schedule silently means UTC midnight.
-      {:tzdata, "~> 1.1"},
-      {:anubis_mcp, "~> 2.0"},
+      {:tzdata, "~> 1.2"},
+      {:anubis_mcp, "~> 2.2"},
 
       # Dashboard (Task 50) — Phoenix LiveView + embedded Oban Web. Bandit is
       # optional so mountable consumers with their own Phoenix endpoint do not
@@ -145,11 +145,11 @@ defmodule Harness.MixProject do
       # standalone Harness.Dashboard.Endpoint guards its Bandit reference with
       # `Code.ensure_loaded?(Bandit)` and falls back with a clear log message.
       {:phoenix, "~> 1.8"},
-      {:phoenix_live_view, "~> 1.1"},
-      {:phoenix_pubsub, "~> 2.2"},
-      {:phoenix_html, "~> 4.2"},
-      {:oban_web, "~> 2.12"},
-      {:bandit, "~> 1.11", optional: true},
+      {:phoenix_live_view, "~> 1.2"},
+      {:phoenix_pubsub, "~> 2.4"},
+      {:phoenix_html, "~> 4.4"},
+      {:oban_web, "~> 2.13"},
+      {:bandit, "~> 1.14", optional: true},
 
       # Dev/test tooling — standard harness stack per global conventions
       # lazy_html: LiveView 1.x's DOM parser for Phoenix.LiveViewTest assertions.
@@ -163,7 +163,7 @@ defmodule Harness.MixProject do
       {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
       {:ex_doc, "~> 0.40", only: :dev, runtime: false},
       {:doctor, "~> 0.23", only: [:dev, :test], runtime: false},
-      {:sobelow, "~> 0.14", only: [:dev, :test], runtime: false},
+      {:sobelow, "~> 0.18", only: [:dev, :test], runtime: false},
       {:ex_dna, "~> 1.5", only: [:dev, :test], runtime: false},
       {:ex_ast, "~> 0.12", only: [:dev, :test], runtime: false},
       {:reach, "~> 2.7", only: [:dev, :test], runtime: false},
@@ -172,11 +172,11 @@ defmodule Harness.MixProject do
       {:boxart, "~> 0.3", only: [:dev, :test], runtime: false},
       # Igniter powers `mix igniter.install vibe_kit`; vibe_kit keeps
       # `mix vibe_kit.install` available for re-runs (installer, never runtime).
-      {:igniter, "~> 0.7", only: [:dev, :test]},
+      {:igniter, "~> 0.8", only: [:dev, :test]},
       {:vibe_kit, "~> 0.1", only: [:dev, :test], runtime: false},
 
       # Tidewave (dev MCP + HTTP server for agent interface)
-      {:tidewave, "~> 0.5", only: :dev}
+      {:tidewave, "~> 0.9", only: :dev}
     ]
   end
 
