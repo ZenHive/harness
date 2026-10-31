@@ -14691,7 +14691,7 @@ scored_at = "2026-10-03"
 id = "478"
 phase = 23
 bundle = "audit-hygiene"
-status = "in_progress"
+status = "pending"
 title = "Update all repository libraries and verify compatibility"
 scores = { d = 4, b = 7, u = 6 }
 acceptance_criteria = ["All repository library ecosystems and separately pinned JS tools are inventoried; latest stable upgrades are applied or a concrete upstream incompatibility is evidenced.", "Hex direct and transitive updates resolve together; no git/path dependency substitutes or unrelated feature additions.", "Required compatibility fixes have regression coverage; format, compile and affected runtime/tooling tests pass, with exact commands and honest missing checks in the review.", "Report before/after versions and remaining outdated packages using fresh registry evidence."]
