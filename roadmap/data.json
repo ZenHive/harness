@@ -22228,7 +22228,7 @@
       "id": "478",
       "phase": 23,
       "bundle": "audit-hygiene",
-      "status": "pending",
+      "status": "in_progress",
       "title": "Update all repository libraries and verify compatibility",
       "scores": {
         "d": 4,
